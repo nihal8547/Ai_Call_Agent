@@ -41,6 +41,7 @@ jobs:
       TEST_APP_DATABASE_URL: postgresql://voice_app:voice_app@localhost:5432/voice_test
       # CI-only throwaway key
       MASTER_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      JWT_SECRET: ci-only-jwt-secret-0123456789abcdefghijklmnop
       REDIS_URL: redis://localhost:6379
 
     steps:

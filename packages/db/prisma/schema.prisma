@@ -200,15 +200,17 @@ model User {
 
 /// Rotating refresh tokens (only the SHA-256 hash is stored)
 model RefreshToken {
-  id        String    @id @default(uuid(7)) @db.Uuid
-  userId    String    @map("user_id") @db.Uuid
-  tokenHash String    @unique @map("token_hash")
-  familyId  String    @map("family_id") @db.Uuid
-  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
-  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
-  userAgent String?   @map("user_agent")
-  ip        String?   @db.Inet
-  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  id             String    @id @default(uuid(7)) @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  tokenHash      String    @unique @map("token_hash")
+  familyId       String    @map("family_id") @db.Uuid
+  /// Tenant the session is signed into (restored on refresh); membership is re-checked on every request
+  activeTenantId String?   @map("active_tenant_id") @db.Uuid
+  expiresAt      DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt      DateTime? @map("revoked_at") @db.Timestamptz(3)
+  userAgent      String?   @map("user_agent")
+  ip             String?   @db.Inet
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

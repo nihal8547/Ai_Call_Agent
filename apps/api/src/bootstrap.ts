@@ -14,7 +14,7 @@ export async function createApp(
   options: { logger?: boolean } = {},
 ): Promise<NestFastifyApplication> {
   const adapter = new FastifyAdapter({
-    trustProxy: true,
+    trustProxy: env.TRUST_PROXY.length ? env.TRUST_PROXY : false,
     bodyLimit: 1024 * 1024,
     genReqId: (req: { headers: Record<string, string | string[] | undefined> }) => {
       const incoming = req.headers["x-request-id"];

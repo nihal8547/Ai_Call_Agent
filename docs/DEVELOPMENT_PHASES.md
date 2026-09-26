@@ -348,44 +348,84 @@ Test setup note: the integration tests apply migrations with the non-destructive
 
 ---
 
-## P2 — Auth, RBAC, tenant & user management
+## P2 — Auth, RBAC, tenant & user management ✅
 
 **Goal:** secure login, tenant context on every request, permission checks.
 
-**Backend (`modules/auth`, `users`, `tenants`, `api-keys`, `audit`)**
+**Status: done.**
 
-| Method                | Endpoint                                                               | Permission                     |
-| --------------------- | ---------------------------------------------------------------------- | ------------------------------ |
-| POST                  | `/auth/register` (creates tenant + owner, seeds roles & lead statuses) | public, rate-limited           |
-| POST                  | `/auth/login` · `/auth/refresh` · `/auth/logout`                       | public / cookie                |
-| GET                   | `/auth/me` → user + memberships (`user_memberships()`)                 | authenticated                  |
-| POST                  | `/auth/switch-tenant`                                                  | member of target               |
-| GET/PATCH             | `/tenant` (profile, timezone, industry)                                | `tenant:read` / `tenant:write` |
-| GET/POST/PATCH/DELETE | `/members`, `/invitations`, `/roles`                                   | `users:*`, `roles:*`           |
-| POST                  | `/invitations/:token/accept`                                           | public (token)                 |
-| GET/POST/DELETE       | `/api-keys`                                                            | `api_keys:*`                   |
-| GET                   | `/audit-logs`                                                          | `audit:read`                   |
+**Backend (`apps/api`):**
 
-- **Passwords:** argon2id; minimum 10 characters + zxcvbn score ≥ 3 (validated in `shared`).
-- **Tokens:**
-  - Access JWT (15 min, `jose`, EdDSA) in an httpOnly cookie.
-  - Refresh token (30 days, rotating, family revocation on reuse), stored hashed in `refresh_tokens`.
-- **Guards:** `AuthGuard` (cookie or `Authorization: ApiKey …`) → `TenantGuard` (membership check, sets `RequestContext.tenantId`) → `PermissionsGuard` (`@RequirePermissions('agents:write')`).
-- **Permission catalogue:** `packages/shared/permissions.ts` is the single source, with default role matrices for OWNER / ADMIN / MANAGER / STAFF. The platform owner is handled separately (`isPlatformOwner`).
-- **Rate limits:** `@nestjs/throttler` with Redis storage. Login: 5/min/IP + 10/hour/email.
+| Method                | Endpoint                                                                      | Access                                  |
+| --------------------- | ----------------------------------------------------------------------------- | --------------------------------------- |
+| POST                  | `/auth/register` (user + tenant with roles, lead statuses, and encrypted DEK) | public, 5/hour/IP                       |
+| POST                  | `/auth/login` · `/auth/refresh` · `/auth/logout`                              | public; login 20/min/IP + 10/hour/email |
+| GET                   | `/auth/me` · POST `/auth/switch-tenant`                                       | any signed-in user (not API keys)       |
+| GET/PATCH             | `/tenant`                                                                     | `tenant:read` / `tenant:write`          |
+| GET/PATCH/DELETE      | `/members`, `/members/:id`                                                    | `users:read` / `users:write`            |
+| GET/POST/PATCH/DELETE | `/roles`, `/roles/permissions`, `/roles/:id`                                  | `roles:read` / `roles:write`            |
+| GET/POST/DELETE       | `/invitations`, POST `/invitations/accept`                                    | `users:*`; accept is public (token)     |
+| GET/POST/DELETE       | `/api-keys`                                                                   | `api_keys:*`, people only               |
+| GET                   | `/audit-logs`                                                                 | `audit:read`                            |
 
-**Frontend**
+- **Sessions:**
+  - HS256 access JWT in an httpOnly cookie (15 min).
+  - Rotating refresh token in an httpOnly cookie scoped to `/api/v1/auth` (30 days, SHA-256 hashed in the DB). Replaying a used token revokes the whole token family.
+  - Double-submit **CSRF** token on every cookie-authenticated write.
+- **Guards (global, in order):**
+  1. `RateLimitGuard`: Redis fixed window; fails open if Redis is down.
+  2. `AuthGuard`: API key or session. Membership, role, and tenant status are re-read on **every** request, so a removed member loses access immediately.
+  3. `PermissionsGuard`: **deny by default**. A route without `@Public`, `@RequirePermissions`, or `@AnyAuthenticated` returns 403, and a test enforces that every route declares a policy.
+- **Privilege-escalation rules:**
+  - Nobody can grant a role, an invitation, or an API key permissions they do not hold, or manage a member whose role exceeds their own.
+  - A business always keeps at least one OWNER.
+  - System roles are immutable; custom roles can be created.
+- **Audit:** every mutation writes an audit row in the same transaction as the change.
+- **Errors:** Prisma unique/not-found errors map to problem+json 409/404.
+- **Client IPs:** trusted proxies are configured by address (`TRUST_PROXY`), so a spoofed `X-Forwarded-For` from anywhere else is ignored. This is covered by a test.
+- **Login:** unknown emails verify against a dummy argon2 hash, so response time does not reveal whether an account exists.
 
-- `/login`, `/register`, `/invite/[token]`, and a tenant switcher.
-- Settings → Users (invite, change role, remove), Roles (permission matrix editor), API keys (create shows the key once), Audit log.
+**Frontend (`apps/web`):**
+
+- `/login` (with a safe `?next=`), `/register`, and `/invite/[token]`. Forms use the shared zod schemas + react-hook-form, and server field errors are mapped onto inputs.
+- `/t/[tenant]/…` layout:
+  - The server fetches `/auth/me` with the forwarded cookies.
+  - An expired access token is refreshed client-side by `SessionGate`, which then re-renders.
+  - URLs for another business the user belongs to switch automatically.
+- App shell: responsive sidebar filtered by permissions, mobile drawer, tenant switcher, and sign out.
+- Settings pages:
+  - **Members:** invite with a one-time link, change role, remove, pending invitations.
+  - **API keys:** create with grantable scopes (the key is shown once), revoke.
+  - **Audit log:** infinite list.
 
 **Tests**
 
-- Auth flows, refresh-token reuse detection, RBAC matrix test (every endpoint × every role → expected 2xx/403), cross-tenant access → 404.
+- API: 29 integration tests against real Postgres + Redis as the RLS app role, covering:
+  - register, validation, and duplicates
+  - identical answers for a wrong password and an unknown email
+  - rate limiting
+  - CSRF
+  - refresh rotation + reuse detection
+  - logout
+  - invitations and weak passwords
+  - STAFF/MANAGER limits
+  - escalation attempts by ADMIN
+  - the last-owner guard
+  - cross-tenant 404s
+  - tenant switching
+  - instant loss of access for removed members
+  - scoped API keys
+  - the audit trail
+  - the deny-by-default route scan
+  - trusted-proxy IP handling
+- Browser E2E (Playwright, run manually against the built apps): register → dashboard → invite → accept in a second browser → staff menu hides settings → audit shows `member.joined` → sign out → protected page redirects to login with `next` → wrong password message → login returns to `next` → expired access token restored via refresh. The mobile layout and drawer were checked at 390 px.
 
-**Definition of Done**
+**Deferred:**
 
-- A new business can register, invite a teammate with the Manager role, and that user sees only permitted menus. Forbidden API calls return 403.
+- Role editor UI (the API exists) → P7.
+- 2FA (TOTP) → P12.
+- Invitation emails (links are currently shown to the inviter) → P9.
+- Tenant profile settings page → P6.
 
 ---
 

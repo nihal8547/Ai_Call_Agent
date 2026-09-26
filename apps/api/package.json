@@ -27,7 +27,9 @@
     "pino-http": "^10.5.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
-    "zod": "^4.6.5"
+    "zod": "^4.6.5",
+    "jose": "^6.2.12",
+    "@platform/crypto": "workspace:*"
   },
   "devDependencies": {
     "@nestjs/testing": "~11.2.6",

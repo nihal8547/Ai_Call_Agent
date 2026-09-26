@@ -5,6 +5,12 @@ export const ApiEnvSchema = z.object({
   NODE_ENV: envPrimitives.nodeEnv,
   API_PORT: envPrimitives.port.default(4000),
   API_HOST: z.string().default("0.0.0.0"),
+  /**
+   * Addresses of reverse proxies allowed to set X-Forwarded-For (comma-separated IPs/CIDRs, or
+   * "loopback"/"linklocal"/"uniquelocal"). Include the web app's proxy and any load balancer.
+   * Requests from other peers use the socket address, so clients cannot spoof their IP to dodge rate limits.
+   */
+  TRUST_PROXY: envPrimitives.csv,
   LOG_LEVEL: envPrimitives.logLevel,
   DATABASE_URL: envPrimitives.postgresUrl,
   REDIS_URL: envPrimitives.redisUrl,
@@ -12,12 +18,25 @@ export const ApiEnvSchema = z.object({
   CORS_ORIGINS: envPrimitives.csv,
   /** Public HTTPS base URL of this API, used to build telephony webhook URLs */
   PUBLIC_BASE_URL: envPrimitives.url.default("http://localhost:4000"),
+  /** Base URL of the web app, used in invitation links */
+  WEB_BASE_URL: envPrimitives.url.default("http://localhost:3000"),
+  /** HMAC key for access tokens (≥ 32 characters) */
+  JWT_SECRET: z.string().min(32, "must be at least 32 characters"),
+  ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(900),
+  REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(90).default(30),
+  /** Secure cookies (HTTPS only). Defaults to true outside development/test. */
+  COOKIE_SECURE: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === "true")),
+  MASTER_ENCRYPTION_KEY: envPrimitives.key32,
 });
 
-export type ApiEnv = z.infer<typeof ApiEnvSchema>;
+export type ApiEnv = z.infer<typeof ApiEnvSchema> & { COOKIE_SECURE: boolean };
 
 export const API_ENV = Symbol("API_ENV");
 
 export function loadApiEnv(source: Record<string, string | undefined> = process.env): ApiEnv {
-  return parseEnv(ApiEnvSchema, source);
+  const env = parseEnv(ApiEnvSchema, source);
+  return { ...env, COOKIE_SECURE: env.COOKIE_SECURE ?? env.NODE_ENV === "production" };
 }

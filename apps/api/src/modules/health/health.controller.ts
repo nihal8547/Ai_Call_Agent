@@ -1,11 +1,13 @@
 import { Controller, Get, HttpStatus } from "@nestjs/common";
 import { pingDatabase } from "@platform/db";
+import { Public } from "../../common/auth/decorators";
 import { AppException } from "../../common/filters/problem-details.filter";
 import { PrismaService } from "../../infra/prisma.service";
 import { RedisService } from "../../infra/redis.service";
 
 type CheckResult = "ok" | "error";
 
+@Public()
 @Controller()
 export class HealthController {
   constructor(

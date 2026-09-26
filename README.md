@@ -48,3 +48,8 @@ pnpm dev                                           # api :4000, web :3000, worke
 
 - The app connects as `voice_app` (member of `app_user`), so **Row-Level Security isolates tenants**. Migrations use the owner connection (`DATABASE_MIGRATION_URL`).
 - Prisma cannot model the pgvector HNSW index. When a generated migration contains `DROP INDEX "document_chunks_embedding_hnsw_idx"`, delete that line. `pnpm db:check` catches any other drift.
+
+### Deployment notes
+
+- **Client IPs and rate limits:** the web app proxies `/api/*` to the API and passes `X-Forwarded-For` through unchanged. In production, run the web app behind a load balancer that appends the real client IP (Cloud Run, Vercel, ALB, nginx all do), and list the load balancer and web server addresses in `TRUST_PROXY`. The API only honours `X-Forwarded-For` from those peers.
+- **Cookies:** sessions use httpOnly cookies scoped to the web origin. Set `COOKIE_SECURE=true` (the default in production) and serve over HTTPS.

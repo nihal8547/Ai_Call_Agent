@@ -7,6 +7,7 @@ import {
   Logger,
 } from "@nestjs/common";
 import { type ErrorCode, type FieldError, type ProblemDetails } from "@platform/shared";
+import { Prisma } from "@platform/db";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
 /** Throw this from services/controllers to return a specific problem code */
@@ -31,6 +32,11 @@ const STATUS_TO_CODE: Record<number, ErrorCode> = {
   415: "UNSUPPORTED_MEDIA_TYPE",
   429: "RATE_LIMITED",
   503: "SERVICE_UNAVAILABLE",
+};
+
+const PRISMA_CODES: Record<string, [number, ErrorCode, string]> = {
+  P2002: [409, "CONFLICT", "A record with these values already exists"],
+  P2025: [404, "NOT_FOUND", "Record not found"],
 };
 
 /**
@@ -59,6 +65,10 @@ export class ProblemDetailsFilter implements ExceptionFilter {
       const status = exception.getStatus();
       const code = STATUS_TO_CODE[status] ?? (status >= 500 ? "INTERNAL_ERROR" : "VALIDATION_FAILED");
       const detail = status >= 500 ? undefined : exception.message;
+      body = this.problem(status, code, detail, req);
+    } else if (exception instanceof Prisma.PrismaClientKnownRequestError && PRISMA_CODES[exception.code]) {
+      // Unique violations and missing records are client errors; the message never includes SQL details
+      const [status, code, detail] = PRISMA_CODES[exception.code]!;
       body = this.problem(status, code, detail, req);
     } else if (isFastifyClientError(exception)) {
       const status = exception.statusCode;

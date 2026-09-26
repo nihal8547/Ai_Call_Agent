@@ -1,10 +1,18 @@
 import { type DynamicModule, Module, RequestMethod } from "@nestjs/common";
-import { APP_FILTER } from "@nestjs/core";
+import { APP_FILTER, APP_GUARD } from "@nestjs/core";
 import { LoggerModule } from "nestjs-pino";
+import { AuthGuard } from "./common/auth/auth.guard";
+import { PermissionsGuard } from "./common/auth/permissions.guard";
 import { ProblemDetailsFilter } from "./common/filters/problem-details.filter";
+import { RateLimitGuard } from "./common/rate-limit/rate-limit";
 import { API_ENV, type ApiEnv } from "./config/env";
 import { InfraModule } from "./infra/infra.module";
+import { ApiKeysModule } from "./modules/api-keys/api-keys.module";
+import { AuditModule } from "./modules/audit/audit.module";
+import { AuthModule } from "./modules/auth/auth.module";
 import { HealthModule } from "./modules/health/health.module";
+import { TenantsModule } from "./modules/tenants/tenants.module";
+import { UsersModule } from "./modules/users/users.module";
 
 @Module({})
 export class AppModule {
@@ -26,10 +34,19 @@ export class AppModule {
         }),
         InfraModule,
         HealthModule,
+        AuditModule,
+        AuthModule,
+        TenantsModule,
+        UsersModule,
+        ApiKeysModule,
       ],
       providers: [
         { provide: API_ENV, useValue: env },
         { provide: APP_FILTER, useClass: ProblemDetailsFilter },
+        // Order matters: rate limit → authenticate → authorise
+        { provide: APP_GUARD, useClass: RateLimitGuard },
+        { provide: APP_GUARD, useClass: AuthGuard },
+        { provide: APP_GUARD, useClass: PermissionsGuard },
       ],
       exports: [API_ENV],
     };
