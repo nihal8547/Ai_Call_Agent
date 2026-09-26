@@ -1,0 +1,703 @@
+// Universal AI Voice Agent Platform — database schema (PostgreSQL + pgvector)
+//
+// Conventions
+// - Every tenant-owned table has `tenantId` and is protected by PostgreSQL
+//   Row-Level Security (policies: migrations/*_rls/migration.sql).
+// - pgvector HNSW index is hand-written in the init migration (Prisma cannot model it);
+//   scripts/check-migrations.sh guards against drift.
+// - Tables/columns are snake_case in the database, camelCase in Prisma Client.
+// - Business-specific data (qualification fields, workflows, collected answers)
+//   lives in JSONB validated by zod schemas in @platform/shared — never as columns.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DATABASE_MIGRATION_URL")
+  extensions = [vector, citext, pgcrypto]
+}
+
+// ─────────────────────────────── Enums ───────────────────────────────
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum AgentStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum AgentVersionStatus {
+  DRAFT
+  PUBLISHED
+  RETIRED
+}
+
+enum TelephonyProvider {
+  TWILIO
+  TELNYX
+  PLIVO
+  SIP
+}
+
+enum DocumentStatus {
+  UPLOADING
+  PROCESSING
+  EXTRACTING
+  EMBEDDING
+  READY
+  FAILED
+}
+
+enum IntegrationType {
+  GOOGLE_SHEETS
+  GOOGLE_CALENDAR
+  CALCOM
+  HUBSPOT
+  ZOHO
+  SALESFORCE
+  EMAIL_SMTP
+  WHATSAPP
+  WEBHOOK
+  REST_API
+}
+
+enum IntegrationStatus {
+  CONNECTED
+  ERROR
+  EXPIRED
+  DISCONNECTED
+}
+
+enum CallDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum CallStatus {
+  RINGING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  NO_ANSWER
+  BUSY
+  CANCELED
+}
+
+enum CallOutcome {
+  LEAD_CAPTURED
+  APPOINTMENT_BOOKED
+  ENQUIRY_ANSWERED
+  HUMAN_HANDOFF
+  FOLLOW_UP_REQUIRED
+  ABANDONED
+  NONE
+}
+
+enum QualificationStatus {
+  NOT_STARTED
+  PARTIAL
+  QUALIFIED
+  DISQUALIFIED
+}
+
+enum CallEventType {
+  CALL_STARTED
+  USER_TURN
+  AGENT_TURN
+  EXTRACTION
+  VALIDATION_ERROR
+  RAG_RETRIEVAL
+  TOOL_CALL
+  FALLBACK
+  GUARD_BLOCKED
+  HANDOFF
+  CALL_ENDED
+}
+
+enum AppointmentStatus {
+  UPCOMING
+  COMPLETED
+  CANCELLED
+  RESCHEDULED
+  NO_SHOW
+}
+
+enum UsageKind {
+  TELEPHONY_MINUTES
+  LLM_INPUT_TOKENS
+  LLM_OUTPUT_TOKENS
+  EMBEDDING_TOKENS
+  TTS_CHARACTERS
+  STT_SECONDS
+  STORAGE_BYTES
+}
+
+// ─────────────────────── Tenancy, users, access ───────────────────────
+
+model Tenant {
+  id           String       @id @default(uuid(7)) @db.Uuid
+  name         String       @db.VarChar(120)
+  slug         String       @unique @db.Citext
+  industry     String?      @db.VarChar(60)
+  timezone     String       @default("Asia/Kolkata") @db.VarChar(64)
+  status       TenantStatus @default(ACTIVE)
+  plan         String       @default("free") @db.VarChar(40)
+  /// zod: TenantLimits (max calls/day, minutes/month, documents, storage, tokens)
+  usageLimits  Json         @default("{}") @map("usage_limits")
+  /// Per-tenant data-encryption key, itself encrypted with the platform master key (envelope encryption)
+  encryptedDek Bytes        @map("encrypted_dek")
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  memberships   Membership[]
+  roles         Role[]
+  invitations   Invitation[]
+  apiKeys       ApiKey[]
+  agents        Agent[]
+  agentVersions AgentVersion[]
+  phoneNumbers  PhoneNumber[]
+  collections   KnowledgeCollection[]
+  documents     Document[]
+  chunks        DocumentChunk[]
+  integrations  Integration[]
+  agentTools    AgentTool[]
+  calls         Call[]
+  callEvents    CallEvent[]
+  leadStatuses  LeadStatus[]
+  leads         Lead[]
+  appointments  Appointment[]
+  usageRecords  UsageRecord[]
+  auditLogs     AuditLog[]
+
+  @@map("tenants")
+}
+
+model User {
+  id              String    @id @default(uuid(7)) @db.Uuid
+  email           String    @unique @db.Citext
+  name            String    @db.VarChar(120)
+  passwordHash    String    @map("password_hash")
+  isPlatformOwner Boolean   @default(false) @map("is_platform_owner")
+  totpSecretEnc   Bytes?    @map("totp_secret_enc")
+  lastLoginAt     DateTime? @map("last_login_at") @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  memberships   Membership[]
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+/// Rotating refresh tokens (only the SHA-256 hash is stored)
+model RefreshToken {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  familyId  String    @map("family_id") @db.Uuid
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
+  userAgent String?   @map("user_agent")
+  ip        String?   @db.Inet
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("refresh_tokens")
+}
+
+/// Roles are per tenant. System roles (OWNER, ADMIN, MANAGER, STAFF) are seeded on tenant creation.
+model Role {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  key         String   @db.VarChar(40)
+  name        String   @db.VarChar(80)
+  /// Permission strings, e.g. "agents:write", "calls:read_transcript" (catalogue in @platform/shared)
+  permissions String[]
+  isSystem    Boolean  @default(false) @map("is_system")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  memberships Membership[]
+  invitations Invitation[]
+
+  @@unique([tenantId, key])
+  @@map("roles")
+}
+
+model Membership {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  roleId    String   @map("role_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  assignedLeads Lead[] @relation("LeadAssignee")
+
+  @@unique([tenantId, userId])
+  @@index([userId])
+  @@map("memberships")
+}
+
+model Invitation {
+  id         String    @id @default(uuid(7)) @db.Uuid
+  tenantId   String    @map("tenant_id") @db.Uuid
+  email      String    @db.Citext
+  roleId     String    @map("role_id") @db.Uuid
+  tokenHash  String    @unique @map("token_hash")
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(3)
+  acceptedAt DateTime? @map("accepted_at") @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, email])
+  @@map("invitations")
+}
+
+model ApiKey {
+  id         String    @id @default(uuid(7)) @db.Uuid
+  tenantId   String    @map("tenant_id") @db.Uuid
+  name       String    @db.VarChar(80)
+  prefix     String    @db.VarChar(12)
+  keyHash    String    @unique @map("key_hash")
+  scopes     String[]
+  lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz(3)
+  expiresAt  DateTime? @map("expires_at") @db.Timestamptz(3)
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("api_keys")
+}
+
+// ──────────────────────────── Agents ────────────────────────────
+
+model Agent {
+  id                 String      @id @default(uuid(7)) @db.Uuid
+  tenantId           String      @map("tenant_id") @db.Uuid
+  name               String      @db.VarChar(80)
+  description        String?     @db.VarChar(500)
+  status             AgentStatus @default(INACTIVE)
+  templateKey        String?     @map("template_key") @db.VarChar(60)
+  /// Version that live calls use; null until first publish
+  publishedVersionId String?     @unique @map("published_version_id") @db.Uuid
+  createdAt          DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  publishedVersion AgentVersion?     @relation("PublishedVersion", fields: [publishedVersionId], references: [id], onDelete: SetNull)
+  versions         AgentVersion[]    @relation("AgentVersions")
+  phoneNumbers     PhoneNumber[]
+  collections      AgentCollection[]
+  documentLinks    DocumentAgent[]
+  tools            AgentTool[]
+  calls            Call[]
+  leads            Lead[]
+  appointments     Appointment[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, status])
+  @@map("agents")
+}
+
+model AgentVersion {
+  id          String             @id @default(uuid(7)) @db.Uuid
+  tenantId    String             @map("tenant_id") @db.Uuid
+  agentId     String             @map("agent_id") @db.Uuid
+  version     Int
+  status      AgentVersionStatus @default(DRAFT)
+  /// zod: AgentConfig (greeting, persona, instructions, qualificationFields, workflow, knowledge,
+  /// tools, escalation, handoff, workingHours, appointment, llm, limits)
+  config      Json
+  configHash  String             @map("config_hash") @db.VarChar(64)
+  changeNote  String?            @map("change_note") @db.VarChar(500)
+  createdById String?            @map("created_by_id") @db.Uuid
+  publishedAt DateTime?          @map("published_at") @db.Timestamptz(3)
+  createdAt   DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agent       Agent  @relation("AgentVersions", fields: [agentId], references: [id], onDelete: Cascade)
+  publishedOf Agent? @relation("PublishedVersion")
+  calls       Call[]
+
+  @@unique([agentId, version])
+  @@index([tenantId])
+  @@map("agent_versions")
+}
+
+model PhoneNumber {
+  id           String            @id @default(uuid(7)) @db.Uuid
+  tenantId     String            @map("tenant_id") @db.Uuid
+  agentId      String?           @map("agent_id") @db.Uuid
+  e164         String            @unique @db.VarChar(20)
+  provider     TelephonyProvider @default(TWILIO)
+  providerSid  String?           @map("provider_sid") @db.VarChar(64)
+  friendlyName String?           @map("friendly_name") @db.VarChar(80)
+  isActive     Boolean           @default(true) @map("is_active")
+  createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agent  Agent? @relation(fields: [agentId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@map("phone_numbers")
+}
+
+// ─────────────────────── Knowledge & documents (RAG) ───────────────────────
+
+model KnowledgeCollection {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  name        String   @db.VarChar(120)
+  description String?  @db.VarChar(500)
+  /// zod: CollectionSettings (chunkSize, chunkOverlap, defaultTopK, minScore)
+  settings    Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  documents Document[]
+  chunks    DocumentChunk[]
+  agents    AgentCollection[]
+
+  @@unique([tenantId, name])
+  @@map("knowledge_collections")
+}
+
+model AgentCollection {
+  tenantId     String @map("tenant_id") @db.Uuid
+  agentId      String @map("agent_id") @db.Uuid
+  collectionId String @map("collection_id") @db.Uuid
+
+  agent      Agent               @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  collection KnowledgeCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  @@id([agentId, collectionId])
+  @@index([tenantId])
+  @@map("agent_collections")
+}
+
+model Document {
+  id            String         @id @default(uuid(7)) @db.Uuid
+  tenantId      String         @map("tenant_id") @db.Uuid
+  collectionId  String         @map("collection_id") @db.Uuid
+  title         String         @db.VarChar(200)
+  fileName      String         @map("file_name") @db.VarChar(255)
+  mimeType      String         @map("mime_type") @db.VarChar(120)
+  sizeBytes     BigInt         @map("size_bytes")
+  storageKey    String         @map("storage_key")
+  checksum      String         @db.VarChar(64)
+  status        DocumentStatus @default(UPLOADING)
+  statusMessage String?        @map("status_message")
+  progress      Int            @default(0)
+  enabled       Boolean        @default(true)
+  version       Int            @default(1)
+  /// Previous document this one replaced (kept until the new version is READY)
+  replacesId    String?        @map("replaces_id") @db.Uuid
+  pageCount     Int?           @map("page_count")
+  chunkCount    Int            @default(0) @map("chunk_count")
+  /// Free-form metadata (tags, language, extracted title/author)
+  metadata      Json           @default("{}")
+  uploadedById  String?        @map("uploaded_by_id") @db.Uuid
+  processedAt   DateTime?      @map("processed_at") @db.Timestamptz(3)
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant     Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  collection KnowledgeCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  chunks     DocumentChunk[]
+  agents     DocumentAgent[]
+
+  @@unique([tenantId, collectionId, checksum])
+  @@index([tenantId, status])
+  @@index([tenantId, collectionId, enabled])
+  @@map("documents")
+}
+
+/// Optional restriction of a document to specific agents (no rows = visible to all agents of the collection)
+model DocumentAgent {
+  tenantId   String @map("tenant_id") @db.Uuid
+  documentId String @map("document_id") @db.Uuid
+  agentId    String @map("agent_id") @db.Uuid
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  agent    Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@id([documentId, agentId])
+  @@index([tenantId])
+  @@map("document_agents")
+}
+
+model DocumentChunk {
+  id             String                      @id @default(uuid(7)) @db.Uuid
+  tenantId       String                      @map("tenant_id") @db.Uuid
+  collectionId   String                      @map("collection_id") @db.Uuid
+  documentId     String                      @map("document_id") @db.Uuid
+  ordinal        Int
+  content        String
+  tokenCount     Int                         @map("token_count")
+  /// page, headingPath, sheet, row, etc.
+  metadata       Json                        @default("{}")
+  /// pgvector column — read/written with $queryRaw (Prisma does not map vector types)
+  embedding      Unsupported("vector(768)")?
+  embeddingModel String                      @map("embedding_model") @db.VarChar(80)
+  /// Full-text search vector for hybrid search (GENERATED ALWAYS column — never written by the app)
+  searchVector   Unsupported("tsvector")?    @default(dbgenerated("to_tsvector('simple'::regconfig, content)")) @map("search_vector")
+  createdAt      DateTime                    @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant     Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  collection KnowledgeCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  document   Document            @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, ordinal])
+  @@index([tenantId, collectionId])
+  @@index([searchVector], type: Gin)
+  @@map("document_chunks")
+}
+
+// ─────────────────────── Integrations & tools ───────────────────────
+
+model Integration {
+  id                   String            @id @default(uuid(7)) @db.Uuid
+  tenantId             String            @map("tenant_id") @db.Uuid
+  type                 IntegrationType
+  name                 String            @db.VarChar(80)
+  status               IntegrationStatus @default(CONNECTED)
+  /// AES-256-GCM ciphertext of credentials, encrypted with the tenant DEK. Never returned by the API.
+  credentialsEncrypted Bytes             @map("credentials_encrypted")
+  /// Non-secret settings (calendar id, sheet id, field mapping, base URL)
+  config               Json              @default("{}")
+  lastError            String?           @map("last_error")
+  lastCheckedAt        DateTime?         @map("last_checked_at") @db.Timestamptz(3)
+  expiresAt            DateTime?         @map("expires_at") @db.Timestamptz(3)
+  createdAt            DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agentTools AgentTool[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, type])
+  @@map("integrations")
+}
+
+/// Permission grant: an agent may execute `toolName` using `integration`
+model AgentTool {
+  id            String   @id @default(uuid(7)) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  agentId       String   @map("agent_id") @db.Uuid
+  toolName      String   @map("tool_name") @db.VarChar(80)
+  integrationId String?  @map("integration_id") @db.Uuid
+  config        Json     @default("{}")
+  enabled       Boolean  @default(true)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agent       Agent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  integration Integration? @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, toolName])
+  @@index([tenantId])
+  @@map("agent_tools")
+}
+
+// ─────────────────────── Calls, leads, appointments ───────────────────────
+
+model Call {
+  id                  String              @id @default(uuid(7)) @db.Uuid
+  tenantId            String              @map("tenant_id") @db.Uuid
+  agentId             String              @map("agent_id") @db.Uuid
+  agentVersionId      String              @map("agent_version_id") @db.Uuid
+  provider            TelephonyProvider   @default(TWILIO)
+  providerCallSid     String              @unique @map("provider_call_sid") @db.VarChar(64)
+  direction           CallDirection       @default(INBOUND)
+  fromNumber          String              @map("from_number") @db.VarChar(20)
+  toNumber            String              @map("to_number") @db.VarChar(20)
+  status              CallStatus          @default(RINGING)
+  outcome             CallOutcome         @default(NONE)
+  qualificationStatus QualificationStatus @default(NOT_STARTED) @map("qualification_status")
+  /// Final validated answers, keyed by qualification field key
+  collectedData       Json                @default("{}") @map("collected_data")
+  summary             String?
+  fallbackTurns       Int                 @default(0) @map("fallback_turns")
+  totalTurns          Int                 @default(0) @map("total_turns")
+  recordingKey        String?             @map("recording_key")
+  startedAt           DateTime            @default(now()) @map("started_at") @db.Timestamptz(3)
+  answeredAt          DateTime?           @map("answered_at") @db.Timestamptz(3)
+  endedAt             DateTime?           @map("ended_at") @db.Timestamptz(3)
+  durationSec         Int?                @map("duration_sec")
+  costMicros          BigInt              @default(0) @map("cost_micros")
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agent        Agent         @relation(fields: [agentId], references: [id], onDelete: Restrict)
+  agentVersion AgentVersion  @relation(fields: [agentVersionId], references: [id], onDelete: Restrict)
+  events       CallEvent[]
+  leads        Lead[]
+  appointments Appointment[]
+  usage        UsageRecord[]
+
+  @@index([tenantId, startedAt(sort: Desc)])
+  @@index([tenantId, agentId, startedAt(sort: Desc)])
+  @@index([tenantId, outcome])
+  @@map("calls")
+}
+
+/// Conversation timeline: turns, extractions, RAG retrievals, tool calls, fallbacks, guards
+model CallEvent {
+  id        String        @id @default(uuid(7)) @db.Uuid
+  tenantId  String        @map("tenant_id") @db.Uuid
+  callId    String        @map("call_id") @db.Uuid
+  seq       Int
+  type      CallEventType
+  /// zod: CallEventPayload discriminated union by `type` (PII-redacted before insert)
+  payload   Json
+  latencyMs Int?          @map("latency_ms")
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  call   Call   @relation(fields: [callId], references: [id], onDelete: Cascade)
+
+  @@unique([callId, seq])
+  @@index([tenantId, type, createdAt])
+  @@map("call_events")
+}
+
+/// Tenant-configurable lead pipeline stages
+model LeadStatus {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  key        String   @db.VarChar(40)
+  label      String   @db.VarChar(80)
+  color      String   @default("#64748b") @db.VarChar(9)
+  sortOrder  Int      @default(0) @map("sort_order")
+  isDefault  Boolean  @default(false) @map("is_default")
+  isTerminal Boolean  @default(false) @map("is_terminal")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  leads  Lead[]
+
+  @@unique([tenantId, key])
+  @@map("lead_statuses")
+}
+
+model Lead {
+  id           String    @id @default(uuid(7)) @db.Uuid
+  tenantId     String    @map("tenant_id") @db.Uuid
+  agentId      String?   @map("agent_id") @db.Uuid
+  callId       String?   @map("call_id") @db.Uuid
+  statusId     String    @map("status_id") @db.Uuid
+  assigneeId   String?   @map("assignee_id") @db.Uuid
+  customerName String?   @map("customer_name") @db.VarChar(160)
+  phone        String?   @db.VarChar(20)
+  email        String?   @db.Citext
+  source       String    @default("inbound_call") @db.VarChar(40)
+  /// Validated answers keyed by the agent's qualification field keys
+  data         Json      @default("{}")
+  notes        String?
+  followUpAt   DateTime? @map("follow_up_at") @db.Timestamptz(3)
+  syncedToCrm  Boolean   @default(false) @map("synced_to_crm")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agent        Agent?        @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  call         Call?         @relation(fields: [callId], references: [id], onDelete: SetNull)
+  status       LeadStatus    @relation(fields: [statusId], references: [id], onDelete: Restrict)
+  assignee     Membership?   @relation("LeadAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  appointments Appointment[]
+
+  @@index([tenantId, statusId])
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@index([tenantId, phone])
+  @@map("leads")
+}
+
+model Appointment {
+  id                String            @id @default(uuid(7)) @db.Uuid
+  tenantId          String            @map("tenant_id") @db.Uuid
+  agentId           String?           @map("agent_id") @db.Uuid
+  leadId            String?           @map("lead_id") @db.Uuid
+  callId            String?           @map("call_id") @db.Uuid
+  title             String            @db.VarChar(200)
+  startsAt          DateTime          @map("starts_at") @db.Timestamptz(3)
+  endsAt            DateTime          @map("ends_at") @db.Timestamptz(3)
+  timezone          String            @db.VarChar(64)
+  status            AppointmentStatus @default(UPCOMING)
+  externalRef       String?           @map("external_ref") @db.VarChar(200)
+  rescheduledFromId String?           @map("rescheduled_from_id") @db.Uuid
+  notes             String?
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agent  Agent? @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  lead   Lead?  @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  call   Call?  @relation(fields: [callId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, startsAt])
+  @@index([tenantId, status])
+  @@map("appointments")
+}
+
+// ─────────────────────── Usage, billing, audit ───────────────────────
+
+model UsageRecord {
+  id         String    @id @default(uuid(7)) @db.Uuid
+  tenantId   String    @map("tenant_id") @db.Uuid
+  callId     String?   @map("call_id") @db.Uuid
+  kind       UsageKind
+  quantity   BigInt
+  costMicros BigInt    @default(0) @map("cost_micros")
+  provider   String?   @db.VarChar(40)
+  model      String?   @db.VarChar(80)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  call   Call?  @relation(fields: [callId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, kind, createdAt])
+  @@map("usage_records")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  tenantId   String?  @map("tenant_id") @db.Uuid
+  actorType  String   @map("actor_type") @db.VarChar(20) // user | api_key | system
+  actorId    String?  @map("actor_id") @db.Uuid
+  action     String   @db.VarChar(80) // e.g. agent.published, integration.connected
+  entityType String   @map("entity_type") @db.VarChar(60)
+  entityId   String?  @map("entity_id") @db.Uuid
+  before     Json?
+  after      Json?
+  ip         String?  @db.Inet
+  userAgent  String?  @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@index([tenantId, entityType, entityId])
+  @@map("audit_logs")
+}

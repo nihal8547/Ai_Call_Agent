@@ -51,7 +51,7 @@ A new cross-cutting layer, **Management & Configuration** (`frontend/` + `app/ap
 
 ### 1.4 Key design decisions
 
-1. **The LLM is never the source of truth.** It proposes extractions and answers. A Pydantic model built from the agent's qualification schema validates them, and Python code decides the next step.
+1. **The LLM is never the source of truth.** It proposes extractions and answers. A zod schema built from the agent's qualification fields validates them, and deterministic application code decides the next step.
 2. **Two execution paths on every turn.** The LLM path runs first. The deterministic fallback takes over on LLM timeout, provider failure, invalid JSON, Pydantic validation failure, RAG failure, tool failure, or a guardrail violation. The caller never hears a technical error.
 3. **Configuration over code.** Agents, fields, workflows, tools, and knowledge are rows and versioned JSON documents, not Python code. Adding a new business requires no deploy.
 4. **Tenant isolation at three levels:**
@@ -62,7 +62,7 @@ A new cross-cutting layer, **Management & Configuration** (`frontend/` + `app/ap
    Vectors follow the same rules.
 5. **Published agent versions.** Editing an agent creates a draft, and publishing freezes a version. Each call pins the `agent_version_id` it started with, so config edits never change a call already in progress, and call records can be audited later.
 6. **Grounded answers only.** Business-specific facts must come from retrieved chunks above a similarity threshold. Otherwise the agent gives a safe "I'll have someone confirm that" and creates a follow-up or handoff.
-7. **Tools never block the call.** Non-critical tools (CRM push, Sheets, email, webhooks) run in the background: FastAPI `BackgroundTasks` at first, Redis + arq in production. Critical tools such as slot lookup run with hard timeouts and have fallbacks.
+7. **Tools never block the call.** Non-critical tools (CRM push, Sheets, email, webhooks) run in the background: BullMQ queues on Redis. Critical tools such as slot lookup run with hard timeouts and have fallbacks.
 8. **Start with webhooks, move to streaming later.** L1–L3 use Twilio `<Gather input="speech">`, which is simple and robust. L4 moves to streaming while reusing the same state, workflow, RAG, and guard code.
 
 ---
@@ -79,7 +79,7 @@ A new cross-cutting layer, **Management & Configuration** (`frontend/` + `app/ap
                │ Analytics · Settings                    │
                └──────────────────┬──────────────────────┘
                                   ▼
-┌────────────────────────── FastAPI (app/) ─────────────────────────────┐
+┌────────────────────── NestJS API + workers ───────────────────────────┐
 │  api/ ─ auth/RBAC ─ tenant context (sets RLS tenant) ─ audit log      │
 │                                                                       │
 │  Management APIs: agents, documents, knowledge, leads, calls,         │
@@ -100,7 +100,7 @@ A new cross-cutting layer, **Management & Configuration** (`frontend/` + `app/ap
 │      output guard → TwiML / audio                                     │
 │                                                                       │
 │  Live call state: Redis    System of record: PostgreSQL + pgvector    │
-│  Background workers (arq): document ingestion, exports, CRM, email,   │
+│  Background workers (BullMQ): document ingestion, exports, CRM, email,   │
 │                            webhooks, analytics roll-ups               │
 └───────────────────────────────────────────────────────────────────────┘
          ▲                                      │
@@ -112,100 +112,49 @@ A new cross-cutting layer, **Management & Configuration** (`frontend/` + `app/ap
 
 ## 3. Technology stack
 
-| Concern | Choice | Notes |
-|---|---|---|
-| Backend | Python 3.12, FastAPI, Pydantic v2 | `uv` for dependency management |
-| ORM / migrations | SQLAlchemy 2.0 (async) + asyncpg + Alembic | |
-| Database | PostgreSQL 16 | RLS for tenant isolation |
-| Vector store | **pgvector** (HNSW index, cosine) | Same DB, so tenant filter + metadata filter + SQL joins work together |
-| Cache / live state | Redis | Session state, locks, rate limits, arq queue |
-| Orchestration | LangGraph | One generic graph, driven by configuration |
-| LLM | Provider interface: Gemini (default), OpenAI, Claude | Per-agent model choice |
-| Embeddings | Provider interface (default Gemini `gemini-embedding-001`, fixed dimension, e.g. 768) | Model name stored per chunk; changing the model requires a re-embed job |
-| Document extraction | `pypdf`/`pdfplumber`, `python-docx`, `pandas`+`openpyxl`, plain text; OCR via Tesseract or an LLM vision model | |
-| Object storage | S3-compatible (MinIO locally, S3/GCS in prod) | Presigned uploads |
-| Background jobs | FastAPI `BackgroundTasks` → Redis + **arq** | |
-| Telephony | Twilio Voice (provider interface) | Telnyx / Plivo later |
-| Speech | Twilio Speech + TTS → Deepgram + ElevenLabs/Cartesia | |
-| Frontend | **Next.js (App Router) + TypeScript**, Tailwind, shadcn/ui, TanStack Query, react-hook-form + zod, Recharts | TS client generated from the FastAPI OpenAPI schema |
-| Auth | Own auth: argon2 password hashes, short-lived access JWT + rotating refresh token in httpOnly cookies, email invites; API keys for server-to-server access | Can be swapped for Auth0/Clerk later |
-| Observability | structlog JSON, OpenTelemetry traces, Prometheus metrics / Grafana | |
-| CI/CD | GitHub Actions, Docker, Cloud Run / Fly.io / Kubernetes | |
+> **Updated:** the platform is built in **TypeScript end-to-end with Prisma + PostgreSQL**. Full details, and the Python → TypeScript mapping, are in [`DEVELOPMENT_PHASES.md` §0](./DEVELOPMENT_PHASES.md#0-stack-decision-typescript-end-to-end-with-prisma). Pydantic snippets in this document describe the schema shape; they are implemented as zod schemas in `packages/shared`.
+
+| Concern | Choice |
+|---|---|
+| API server | NestJS (Fastify adapter), REST `/api/v1`, OpenAPI generated from zod |
+| Validation | zod, shared by API, workers and frontend |
+| Database / ORM | PostgreSQL 16 + Prisma (schema: `packages/db/prisma/schema.prisma`); RLS + pgvector in hand-written SQL migrations |
+| Vector store | pgvector (HNSW, cosine) in the same database |
+| Cache / live state / queues | Redis + BullMQ |
+| Orchestration | LangGraph.js around a pure-TypeScript decision core (`packages/core`) |
+| LLM / embeddings | Provider interfaces: Gemini (default), OpenAI, Anthropic |
+| Document extraction | unpdf/pdf.js, mammoth, papaparse, exceljs, tesseract.js (or LLM vision) |
+| Object storage | S3-compatible (MinIO locally) |
+| Telephony / speech | Twilio (provider interface) → Deepgram + Cartesia/ElevenLabs streaming, LiveKit Agents |
+| Frontend | Next.js (App Router) + TypeScript, Tailwind, shadcn/ui, TanStack Query, react-hook-form + zod |
+| Auth | argon2id, JWT access + rotating refresh tokens in httpOnly cookies, API keys |
+| Observability | pino, OpenTelemetry, Prometheus/Grafana |
+| Tests | Vitest, Supertest, Testcontainers, Playwright |
 
 ---
 
 ## 4. Repository layout
 
+A pnpm + Turborepo monorepo. The full tree and dependency rules are in [`DEVELOPMENT_PHASES.md` §1](./DEVELOPMENT_PHASES.md#1-monorepo-structure).
+
 ```
-Ai_Call_Agent/
-├── app/
-│   ├── main.py                  # App factory, routers, lifespan
-│   ├── core/                    # config (pydantic-settings), db session, redis, security utils,
-│   │                            # crypto (credential encryption), errors, logging, ids
-│   ├── api/                     # Versioned REST routers (/api/v1/...) — thin, call services
-│   ├── auth/                    # Login, refresh, invites, API keys, RBAC permission checks
-│   ├── tenants/                 # Tenant model, tenant context, RLS session setup, plans/limits
-│   ├── agents/                  # Agent + AgentVersion, AgentConfig schema, publish/validate
-│   ├── telephony/
-│   │   ├── base.py              # TelephonyProvider protocol (parse webhook, render reply, transfer)
-│   │   ├── twilio/              # routes, TwiML builders, signature validation, number provisioning
-│   │   └── routing.py           # To-number → phone_number → tenant + agent_version
-│   ├── voice/                   # ASR/TTS abstraction (Twilio built-in → streaming providers)
-│   ├── brain/
-│   │   ├── providers/           # LLMProvider protocol: gemini.py, openai.py, anthropic.py
-│   │   ├── prompts/             # Prompt builders: persona + rules + fields + context → messages
-│   │   └── structured.py        # JSON-schema output, parse + validate, retries
-│   ├── rag/
-│   │   ├── embeddings.py        # EmbeddingProvider protocol
-│   │   ├── retriever.py         # Tenant/agent-scoped vector search (+ hybrid in L4)
-│   │   └── grounding.py         # Threshold, context packing, citation check, "not found" path
-│   ├── documents/
-│   │   ├── storage.py           # Object storage, presigned URLs
-│   │   ├── extractors/          # pdf, docx, txt, csv, xlsx, image_ocr
-│   │   ├── cleaning.py
-│   │   ├── chunking.py          # Structure-aware chunker (headings, tables, rows)
-│   │   └── pipeline.py          # Status machine: uploading→processing→extracting→embedding→ready|failed
-│   ├── state/
-│   │   ├── dynamic_schema.py    # Build a Pydantic model from qualification field config
-│   │   ├── session.py           # CallSession (generic)
-│   │   └── store.py             # MemoryStore / RedisStore with locks + TTL
-│   ├── workflows/
-│   │   ├── schema.py            # WorkflowDefinition (steps, conditions)
-│   │   ├── graph.py             # Generic LangGraph builder
-│   │   ├── nodes.py             # ingest, understand, retrieve, decide, respond, run_tool, handoff, finalize
-│   │   ├── fallback.py          # Deterministic responses from config
-│   │   └── guards.py            # Output guard, domain scope, PII
-│   ├── tools/
-│   │   ├── registry.py          # Tool definitions (name, input/output schema, side-effect level)
-│   │   ├── executor.py          # Permission check, credential load, timeout, retries, idempotency, audit
-│   │   └── builtin/             # sheets, google_calendar, calcom, email, whatsapp, webhook, http_api, crm_*
-│   ├── integrations/            # Tenant connections, OAuth flows, encrypted credential storage
-│   ├── calls/                   # Call, CallEvent (timeline), transcripts, recordings
-│   ├── leads/                   # Leads, configurable lead statuses, follow-ups
-│   ├── appointments/            # Appointments, availability, reschedule/cancel
-│   ├── outcomes/                # Outcome resolution: lead / booking / enquiry / handoff
-│   ├── analytics/               # Aggregations, cost tracking, roll-up jobs
-│   └── background/              # arq worker settings, job definitions, schedules
-├── frontend/                    # Next.js management app
-├── migrations/                  # Alembic
-├── templates/                   # Seed agent templates: real_estate (Ava), clinic, hotel, restaurant...
-├── tests/                       # unit/, workflows/, rag/, api/, isolation/, e2e/
-├── scripts/                     # simulate_call.py (text mode), seed_demo.py, reembed.py
-├── docs/
-├── docker-compose.yml           # api, worker, postgres+pgvector, redis, minio, frontend
-├── Dockerfile / frontend/Dockerfile
-└── .github/workflows/ci.yml
+apps/      api (NestJS) · worker (BullMQ) · web (Next.js) · voice (streaming, L4)
+packages/  db (Prisma) · shared (zod) · core (engine) · runtime (graph) · ai · rag · telephony · tools · crypto · config
+templates/ seed agent templates (real-estate/Ava, clinic, hotel, restaurant)
 ```
 
-**Layer boundaries**, enforced by review and import-linter:
+**Layer boundaries:**
 
-- `workflows` depends on the `brain`, `rag`, `tools`, and `state` interfaces, never on Twilio.
+- `core` is pure logic.
+- `runtime` is the only package that combines `core`, `ai`, `rag`, `tools`, and state.
 - `telephony` knows nothing about LLMs.
-- `api` contains no business logic.
+- `web` never imports `db`.
 
 ---
 
 ## 5. Multi-tenant data model
+
+Implemented in [`packages/db/prisma/schema.prisma`](../packages/db/prisma/schema.prisma), with RLS in `packages/db/prisma/migrations/*_rls`.
 
 Every table below has `tenant_id` (except `tenants` and `users`). RLS policy: `tenant_id = current_setting('app.tenant_id')::uuid`.
 
@@ -286,7 +235,7 @@ class AgentConfig(BaseModel):
 
 `state/dynamic_schema.py` turns `qualification_fields` into:
 
-1. **A runtime Pydantic model**, via `pydantic.create_model`, with one validator per field type (number parsing incl. "80 lakh"/"1.2 crore"/"50k" normalisers, date parsing, select → closest option match, phone → E.164).
+1. **A runtime zod schema**, built from the field list, with one validator per field type (number parsing incl. "80 lakh"/"1.2 crore"/"50k" normalisers, date parsing, select → closest option match, phone → E.164).
 2. **A JSON schema for LLM structured output**: every field optional, plus `intent`, `question_text`, `wants_human`, `sentiment`.
 3. **Fallback prompts**: `field.question` and `field.reask_prompts`.
 
@@ -496,7 +445,7 @@ Default roles, with permissions editable per tenant:
 | Manager | Calls, transcripts, leads, appointments, analytics; read-only agents |
 | Agent / Staff | Assigned leads and appointments, limited call view (no recordings unless granted) |
 
-Permissions are strings like `resource:action`, checked by a FastAPI dependency `require("agents:write")`. The tenant comes from the membership, never from the request body.
+Permissions are strings like `resource:action`, checked by a NestJS guard `@RequirePermissions("agents:write")`. The tenant comes from the membership, never from the request body.
 
 ---
 
@@ -535,7 +484,7 @@ Customer ───────┤
 | Invalid JSON | Parse error | Same as above |
 | Pydantic validation failure | Per-field validation | Keep the valid fields, re-ask the invalid field with `reask_prompts` |
 | RAG failure / no knowledge | Timeout, error, score < threshold | Safe response + follow-up task |
-| Tool failure | Timeout / error | Step `on_error` (e.g. offer callback); background retry via arq |
+| Tool failure | Timeout / error | Step `on_error` (e.g. offer callback); background retry via BullMQ |
 | Guardrail violation | Output guard | Replace with fallback text |
 | ASR empty / noisy | Empty `SpeechResult`, low confidence | "Sorry, I didn't catch that", then goodbye after 3 |
 | Redis unavailable | Connection error | Serve the turn from a Postgres snapshot; alert |
@@ -546,19 +495,21 @@ The caller never hears stack traces, provider names, or "error".
 
 ## 15. Phased implementation (Levels 1–4)
 
+> The detailed, step-by-step execution plan (P0–P14, with backend, Prisma, frontend, validation, tests, and Definition of Done per phase) is in [`DEVELOPMENT_PHASES.md`](./DEVELOPMENT_PHASES.md). This section is the level-by-level summary.
+
 Multi-tenancy (`tenant_id` + RLS) and the dynamic field schema are built **from Level 1**, even though the UI to edit them comes later. Retrofitting either one afterwards would mean rewriting every table and the core loop.
 
 ### Phase 0 — Prerequisites (1–2 days)
 
 - [ ] Twilio account + test number; Gemini API key (OpenAI/Anthropic keys optional)
-- [ ] Python 3.12, `uv`, Node 20+, pnpm, Docker, ngrok/cloudflared
+- [ ] Node 22, pnpm, Docker, ngrok/cloudflared
 - [ ] `docker-compose.yml`: postgres (pgvector image), redis, minio
 - [ ] `.env.example`: DB/Redis/S3 URLs, `TWILIO_*`, `GEMINI_API_KEY`, `JWT_SECRET`, `MASTER_ENCRYPTION_KEY`, `PUBLIC_BASE_URL`, timeouts
 
 ### Phase 1 — Level 1: Working voice agent + basic qualification + basic frontend (3–4 weeks)
 
 Backend:
-1. Scaffold `app/` (§4), `core/` config, async DB, Alembic, Redis.
+1. Scaffold the monorepo (§4), env config, Prisma + migrations, Redis.
 2. Tables: tenants, users, memberships, roles, agents, agent_versions, phone_numbers, calls, call_events, leads, with **RLS on**.
 3. `AgentConfig` + `QualificationField` + `dynamic_schema.py` (create_model, JSON schema, normalisers) + unit tests.
 4. Deterministic fallback engine, written **before** the LLM code.
@@ -595,7 +546,7 @@ Frontend:
 - [ ] Knowledge Base UI: collections, document list, **search playground** (semantic search over the tenant's chunks)
 - [ ] Configurable lead statuses; lead detail page
 - [ ] Full RBAC (5 roles, permission matrix UI), user invites
-- [ ] Test suite (§17), ruff/mypy/pytest + frontend lint/typecheck/build in GitHub Actions; Docker images for api, worker, frontend
+- [ ] Test suite (§17), ESLint/tsc/Vitest + frontend lint/typecheck/build in GitHub Actions; Docker images for api, worker, frontend
 
 **Exit criteria:** a new business can be onboarded fully from the UI (create agent from a template, edit fields, upload documents, connect a calendar, attach a phone number, publish) and take calls without any engineer involved.
 
@@ -605,11 +556,11 @@ Frontend:
 - [ ] RAG sources on the call detail page; RAG stats (hit rate, not-found rate, top unanswered questions → "add to knowledge" suggestions)
 - [ ] OCR for images and scanned PDFs; SSE live document status
 - [ ] **RedisStore** for live sessions (TTL, per-call lock), idempotent turn handling (replay cached reply on Twilio retries)
-- [ ] **arq workers**: ingestion, exports, CRM sync, emails, webhooks, analytics roll-ups; retries + dead-letter + a failed-job view in the UI
+- [ ] **BullMQ workers**: ingestion, exports, CRM sync, emails, webhooks, analytics roll-ups; retries + dead-letter + a failed-job view in the UI
 - [ ] CRM adapters: HubSpot + Zoho (OAuth), field mapping UI (agent field → CRM property)
 - [ ] Analytics: daily roll-up tables, full Analytics page, per-hop latency, tool failure rates, cost per call/tenant
 - [ ] Security hardening (§13): Twilio subaccounts per tenant, rate limits, usage limits, toll-fraud controls, PII redaction + retention purge, audit log UI, 2FA, API keys
-- [ ] Observability: structlog + OpenTelemetry traces per call, Grafana dashboards, alerts (fallback rate, error rate, p95 latency, failed ingestions)
+- [ ] Observability: pino + OpenTelemetry traces per call, Grafana dashboards, alerts (fallback rate, error rate, p95 latency, failed ingestions)
 - [ ] Deployment: managed Postgres (pgvector) + Redis, Cloud Run/Kubernetes with min instances ≥ 1, separate worker service, backups + restore drill
 
 **Exit criteria:** the production readiness checklist (§18) passes; load test at 50 concurrent calls with p95 turn processing under 1.2 s on the webhook path; zero cross-tenant leaks in the isolation test suite.
@@ -644,11 +595,11 @@ Both are rows in the database. Neither exists as Python code.
 
 | Level | What | How |
 |---|---|---|
-| Unit | Dynamic schema + normalisers, `decide`, fallback, guards, chunker, extractors, permission checks, encryption | pytest, no network |
+| Unit | Dynamic schema + normalisers, `decide`, fallback, guards, chunker, extractors, permission checks, encryption | Vitest, no network |
 | Workflow | Full multi-turn conversations per template (happy path, out-of-order answers, corrections, silence, off-topic, wants human, LLM timeout, invalid JSON, RAG not found, tool failure) | Scripted `FakeLLM` + `FakeRetriever` + fake tools |
-| RAG | Ingestion of sample PDF/DOCX/XLSX; retrieval accuracy on a Q&A set per template; grounding (no answer without sources) | pytest + eval script tracked per prompt/embedding version |
+| RAG | Ingestion of sample PDF/DOCX/XLSX; retrieval accuracy on a Q&A set per template; grounding (no answer without sources) | Vitest + eval script tracked per prompt/embedding version |
 | Tenant isolation | Every repository/API endpoint called as tenant B tries to read tenant A's agents, documents, chunks, calls, leads, integrations | Dedicated `tests/isolation/`; must always pass |
-| API | Auth, RBAC matrix, Twilio signature rejection, idempotent retries, upload limits | httpx AsyncClient + Testcontainers Postgres/Redis |
+| API | Auth, RBAC matrix, Twilio signature rejection, idempotent retries, upload limits | Supertest + Testcontainers Postgres/Redis |
 | Frontend | Components, forms (zod), key flows: login → create agent → upload document → publish | Vitest + Playwright |
 | Failure drills | LLM down, embeddings down, Redis restart, Sheets/CRM down, 10 s silence, noisy audio | Chaos flags (`FORCE_LLM_FAILURE`, `FORCE_RAG_FAILURE`, …) |
 | Load | Concurrent calls, ingestion throughput | Locust against webhook + simulator endpoints |
@@ -699,7 +650,7 @@ Both are rows in the database. Neither exists as Python code.
 | 0 | Accounts, tooling, docker-compose | 1–2 days |
 | 1 | L1: multi-tenant core, dynamic fields, working phone agent, basic UI | 3–4 weeks |
 | 2 | L2: full config UI, workflows, tools, integrations, documents & knowledge base | 4–5 weeks |
-| 3 | L3: live RAG, Redis, arq, CRM, analytics, security hardening, production deploy | 4–6 weeks |
+| 3 | L3: live RAG, Redis, BullMQ, CRM, analytics, security hardening, production deploy | 4–6 weeks |
 | 4 | L4: streaming voice, advanced RAG, multi-provider, billing, enterprise | 6–8 weeks |
 
 **Recommended next step:** start Phase 1 steps 1–8. Build the multi-tenant DB with RLS, `AgentConfig`, the dynamic schema, fallback, `decide`, the generic graph, and the text simulator, and run it against both the real estate and clinic templates. Then connect Twilio and the frontend.
