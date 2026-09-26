@@ -65,6 +65,7 @@ Ai_Call_Agent/
 ├── packages/
 │   ├── db/                          # Prisma schema, migrations, client, tenant-scoped client, seed
 │   ├── shared/                      # zod schemas + TS types + permission catalogue + error codes
+│   ├── templates/                   # agent templates as pure data (real-estate/Ava, clinic, hotel, restaurant)
 │   ├── core/                        # conversation engine: dynamic schema, decide, fallback, guards (pure, no I/O)
 │   ├── runtime/                     # LangGraph graph wiring core + ai + rag + tools + state store
 │   ├── ai/                          # LLMProvider + EmbeddingProvider adapters (Gemini, OpenAI, Anthropic)
@@ -72,7 +73,6 @@ Ai_Call_Agent/
 │   ├── telephony/                   # TelephonyProvider interface + Twilio adapter
 │   ├── tools/                       # tool registry, executor, built-in tools
 │   └── crypto/                      # envelope encryption, hashing, token utils
-├── templates/                       # seed agent templates (real-estate/Ava, clinic, hotel, restaurant)
 ├── docs/
 ├── infra/                           # docker-compose, Dockerfiles, deploy manifests
 ├── .github/workflows/
@@ -429,44 +429,89 @@ Test setup note: the integration tests apply migrations with the non-destructive
 
 ---
 
-## P3 — Shared schemas & conversation core
+## P3 — Shared schemas & conversation core ✅
 
 **Goal:** the business-agnostic brain logic, testable without network, DB, or phone.
 
-**`packages/shared`**
+**Status: done.**
 
-- `AgentConfig` (§6 of the plan) and its parts: `QualificationField`, `WorkflowDefinition` (step union: `greeting | collect_fields | tool | confirm_and_act | say | branch | handoff | end`), `KnowledgeConfig`, `EscalationRules`, `HandoffConfig`, `WorkingHours`, `AppointmentConfig`, `LLMConfig`, `CallLimits`.
-- `AgentConfig.superRefine` does cross-checks: unique field keys, workflow steps reference existing fields/tools, `branch` conditions reference valid fields and operators, and working hours are in order.
-- `CallEventPayload` discriminated union, `CallSession`, `Outcome`.
+**`packages/shared/src/agent`: configuration schemas (zod)**
 
-**`packages/core`** (pure functions)
+- `QualificationField`, with these types:
+  - `text`, `name`
+  - `number`, `currency` (ISO code; INR spoken as lakh/crore)
+  - `select`, `multiselect`
+  - `boolean`, `date`, `time`
+  - `phone`, `email`
 
-- `buildFieldSchema(fields)` → zod object with type normalisers:
-  - number: "80 lakh", "1.2 crore", "50k", "fifty thousand"
-  - date and time: relative expressions ("next Monday", "tomorrow evening") in the tenant timezone
-  - select: fuzzy match to options
-  - phone: E.164 via libphonenumber-js
-  - email, boolean ("yes/yeah/sure/nope")
-- `buildExtractionJsonSchema(fields)`: all fields optional, plus `intent`, `question`, `wantsHuman`, `sentiment`.
-- `mergeExtraction(session, raw)`: validates per field, keeps the valid values, records the invalid ones, and returns events.
-- `decide(session, config, now)` → `Action` (`ask_field | answer_question | run_tool | confirm | handoff | say | end`). Handles workflow position, attempts, escalation, working hours, limits, and the circuit breaker.
-- `fallbackText(action, session, config)`: deterministic phrasing from config, never throws.
-- `guardOutput(text, context)`: length, JSON/markup/error text, secrets, a numeric-fact check against sources, and a domain scope check.
-- `redactPII(text)`.
+  Each field has: validation (min/max, length, regex, future-only dates), re-ask prompts, confirm-back, and ASR hints.
 
-**Templates**
+- `WorkflowDefinition`: typed steps `greeting | collect_fields | say | tool | confirm_and_act | branch | handoff | end`.
+  - `branch` conditions: `eq, neq, in, gt, gte, lt, lte, exists, not_exists`.
+  - Tool inputs are `{{field}}` templates.
+  - `confirm_and_act` supports `resetOnDecline`/`onDecline`/`onError`.
+- `AgentConfig`: persona, instructions, business rules, fields, workflow, knowledge, tools, escalation, handoff, working hours, appointment, LLM, limits, and **every fallback sentence**.
+- Cross-checks in `superRefine`:
+  - unique field keys and step ids
+  - every referenced field, step, and tool exists and is enabled
+  - `{{placeholders}}` are known
+  - handoff is configured before use
+  - the workflow ends with `end`/`handoff`
+- `TOOL_NAMES` catalogue.
 
-- `templates/real-estate-ava.json`, `templates/clinic-reception.json`, `templates/hotel-reservations.json`, `templates/restaurant-booking.json`, all validated by `AgentConfig` in a test.
+**`packages/templates`: pure-data templates**
 
-**Tests**
+| Template               | Flow                                                                                                                                                                      |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **real-estate-ava**    | name → property type → budget (confirm-back) → timeline → area → financing → branch: _just exploring_ → lead only, otherwise site-visit date/time → confirm & book → lead |
+| **clinic-reception**   | name → service → urgency → branch: _emergency_ → transfer to front desk, otherwise date/time → confirm & book. Working hours with an off-hours message.                   |
+| **hotel-reservations** | dates, nights, guests, room type, optional breakfast                                                                                                                      |
+| **restaurant-booking** | party size, date, time, optional occasion                                                                                                                                 |
 
-- More than 150 unit tests are expected: normalisers (table-driven), `decide` for every step type and escalation rule, fallback coverage for every field and attempt, and guard cases.
-- Property tests (fast-check): `decide` always returns a valid action, and `fallbackText` never returns an empty string.
+`instantiateTemplate(key, {businessName, agentName})` returns a validated config.
 
-**Definition of Done**
+**`packages/core`: the engine (pure functions, no I/O)**
 
-- 95%+ line coverage on `packages/core`.
-- `pnpm simulate --template clinic-reception --llm off` completes a full conversation in the terminal using fallbacks only.
+- **Normalisers:**
+  - amounts: "80 lakh", "1.2 crore", "eighty five thousand", "50k", "80 to 90 lakh", "₹1,20,000"
+  - dates in the business time zone: today/tomorrow, weekdays, "next Friday", "12th October", "the fifth of January", "15/10", "on the 30th"
+  - times: "5:30 pm", "half past five", "quarter to six", "evening", with bare hours 1–7 read as PM
+  - choice matching with synonyms and word overlap: flat → Apartment, cash → Own funds
+  - yes/no, including Hindi/Malayalam basics
+  - spoken phone numbers ("double nine…") and emails ("john dot doe at gmail dot com")
+  - names
+  - intent signals: wants-a-person, not-interested, question
+- `validateFieldValue`: the single gate every value (from the LLM or from rules) passes through. `buildExtractionJsonSchema` generates the LLM's structured-output schema from the fields.
+- **Engine:** `startCall` / `handleTurn` / `resumeAfterTool` → new session + speech segments + prompt + tool calls + control (`listen | await_tool | hangup | transfer`) + typed events. It supports:
+  - out-of-order answers
+  - corrections ("Okay, I've updated…")
+  - confirm-back of captured values
+  - a question in the middle of a flow: a grounded answer, or a **safe response + follow-up** (never invented), without using up an attempt
+  - re-asks, then skip/handoff/end per the escalation policy
+  - silence handling, then a polite hang-up
+  - decline → reset → ask again, and "no, make it 6 pm" → re-confirm
+  - tool failure → a spoken apology + `onError`
+  - background tools
+  - wants-a-person → transfer (only within working hours) or take a message
+  - off-hours: closed message or take a message
+  - a turn limit, a workflow loop guard, and an **LLM circuit breaker** (`fallbackOnly` after N failures)
+  - outcome + qualification resolution matching the DB enums
+  - idempotency keys on tool calls
+  - immutable sessions (the input is never mutated)
+- **Guards:** `guardOutput` blocks technical/error words, markup/JSON, secrets, and URLs, and trims long replies. `unsupportedNumbers` catches invented figures in knowledge answers.
+- **`redactPII` / `redactDeep`:** phone, email, card (Luhn), Aadhaar, PAN.
+- **Simulator:** `pnpm simulate --template clinic-reception` (interactive) or `--say "Priya|cleaning|…"`; `--fail-tools` simulates outages.
+
+**Tests:** 133 in core + 9 in templates.
+
+- 81 normaliser cases.
+- 23 full conversations: all 4 templates in fallback-only mode, plus the LLM path (multi-field, invalid/invented values, corrections, circuit breaker), questions, silence, re-ask/skip, decline, change-while-confirming, tool failure, handoff vs take-message, off-hours, not interested, turn limit, immutability, idempotency keys.
+- Field validation, JSON schema, working hours, guards, and PII.
+- **Property-based fuzzing** (fast-check, 300 random conversations per template in CI; 2,000 per template verified locally). Invariants: the engine never throws, never goes silent while listening, and always ends with an outcome; its speech always passes the output guard.
+
+  The fuzzer found one real bug, now fixed: markup characters spoken as a "name" were echoed back.
+
+**Definition of Done:** ✅ all four templates complete in the simulator with no LLM.
 
 ---
 

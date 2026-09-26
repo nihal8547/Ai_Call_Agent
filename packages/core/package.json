@@ -1,0 +1,34 @@
+{
+  "name": "@platform/core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Business-agnostic conversation engine: dynamic fields, workflow decisions, fallbacks, guards (pure, no I/O)",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src test scripts",
+    "test": "vitest run",
+    "simulate": "tsx scripts/simulate.ts"
+  },
+  "dependencies": {
+    "@platform/shared": "workspace:*",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@platform/templates": "workspace:*",
+    "fast-check": "^4.3.0",
+    "tsx": "^4.23.15"
+  }
+}

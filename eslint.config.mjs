@@ -16,6 +16,11 @@ export default tseslint.config(
       "no-console": ["warn", { allow: ["warn", "error"] }],
     },
   },
+  // Command-line scripts print to the terminal
+  {
+    files: ["**/scripts/**/*.ts"],
+    rules: { "no-console": "off" },
+  },
   // NestJS injects constructor parameters by their runtime class, so those imports must stay value imports.
   {
     files: ["apps/api/**/*.ts"],
