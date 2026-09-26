@@ -1,3 +1,4 @@
+import { DEFAULT_GEMINI_MODEL } from "./gemini";
 const PAGE_BREAK = "---PAGE---";
 
 /**
@@ -7,7 +8,7 @@ const PAGE_BREAK = "---PAGE---";
 export class GeminiOcr {
   constructor(
     private readonly apiKey: string,
-    private readonly model = "gemini-2.5-flash",
+    private readonly model = DEFAULT_GEMINI_MODEL,
     private readonly fetchImpl: typeof fetch = fetch,
     private readonly baseUrl = "https://generativelanguage.googleapis.com/v1beta",
   ) {}

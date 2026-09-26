@@ -22,9 +22,9 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@platform/ai": "workspace:*",
-    "@platform/db": "workspace:*",
-    "@platform/storage": "workspace:*",
+    "@platform/ai": "*",
+    "@platform/db": "*",
+    "@platform/storage": "*",
     "exceljs": "^4.4.0",
     "mammoth": "^1.12.0",
     "papaparse": "^5.5.0",

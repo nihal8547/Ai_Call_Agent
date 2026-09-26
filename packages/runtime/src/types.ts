@@ -41,6 +41,8 @@ export type RuntimeEvent =
       rejected?: string;
     }
   | { type: "phrase_rejected"; reasons: string[] }
+  /** Understanding/tools used most of the turn's latency budget, so the reply was not rephrased */
+  | { type: "phrase_skipped"; reason: "latency_budget"; spentMs: number }
   | { type: "guard_blocked"; violations: string[] }
   | { type: "tool_timeout"; tool: string };
 

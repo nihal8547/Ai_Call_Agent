@@ -27,7 +27,8 @@ describe("GeminiProvider", () => {
 
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(String(url)).toBe(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+      // A retired model name in a saved config is served by the current default
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
     );
     expect((init!.headers as Record<string, string>)["x-goog-api-key"]).toBe("k-123");
     const body = JSON.parse(String(init!.body));
@@ -36,13 +37,28 @@ describe("GeminiProvider", () => {
     expect(body.generationConfig).toMatchObject({
       responseMimeType: "application/json",
       responseJsonSchema: params.jsonSchema,
+      // No "thinking" on live calls: it adds seconds of silence
+      thinkingConfig: { thinkingBudget: 0 },
     });
 
     expect(r).toMatchObject({
       ok: true,
+      model: "gemini-flash-latest",
       json: { intent: "answer" },
       usage: { inputTokens: 42, outputTokens: 7 },
     });
+  });
+
+  it("leaves thinking on for non-flash models", async () => {
+    const fetchMock = vi.fn(async () =>
+      json({ candidates: [{ content: { parts: [{ text: '{"intent":"x"}' }] } }] }),
+    );
+    await new GeminiProvider("k", fetchMock as unknown as typeof fetch).generate({
+      ...params,
+      model: "gemini-pro-latest",
+    });
+    const init = (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1];
+    expect(JSON.parse(String(init.body)).generationConfig.thinkingConfig).toBeUndefined();
   });
 
   it.each([

@@ -22,6 +22,6 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@platform/shared": "workspace:*"
+    "@platform/shared": "*"
   }
 }

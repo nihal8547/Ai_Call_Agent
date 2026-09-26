@@ -54,6 +54,21 @@ describe("redactPII", () => {
     );
   });
 
+  it("never mangles ids or timestamps (their digits look like phone numbers)", () => {
+    const id = "74838446-7c35-4201-af52-b72b4e404ecb";
+    expect(redactPII(id)).toBe(id);
+    expect(redactPII(`Call reference: ${id}, caller 9876543210`)).toBe(
+      `Call reference: ${id}, caller [PHONE]`,
+    );
+    expect(redactPII("at 2026-09-28T04:30:00.000Z")).toBe("at 2026-09-28T04:30:00.000Z");
+    expect(
+      redactDeep({ integrationId: "12345678-1234-4234-8234-123456789012", text: "ring 98765 43210" }),
+    ).toEqual({
+      integrationId: "12345678-1234-4234-8234-123456789012",
+      text: "ring [PHONE]",
+    });
+  });
+
   it("redacts nested payloads", () => {
     expect(redactDeep({ turn: { text: "I'm at asha@example.com" }, n: 3 })).toEqual({
       turn: { text: "I'm at [EMAIL]" },

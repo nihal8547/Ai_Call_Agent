@@ -9,6 +9,21 @@ import type {
 
 const BASE = "https://generativelanguage.googleapis.com/v1beta";
 
+/** Fast, generally available model for live calls (an alias Google keeps current) */
+export const DEFAULT_GEMINI_MODEL = "gemini-flash-latest";
+
+/** Models Google no longer serves to new keys; saved configs that name them keep working */
+const RETIRED: Record<string, string> = {
+  "gemini-1.5-flash": DEFAULT_GEMINI_MODEL,
+  "gemini-2.0-flash": DEFAULT_GEMINI_MODEL,
+  "gemini-2.5-flash": DEFAULT_GEMINI_MODEL,
+  "gemini-2.5-flash-lite": DEFAULT_GEMINI_MODEL,
+};
+
+export function resolveGeminiModel(model: string): string {
+  return RETIRED[model] ?? model;
+}
+
 type GeminiResponse = {
   candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[];
   promptFeedback?: { blockReason?: string };
@@ -39,9 +54,10 @@ export class GeminiProvider implements LLMProvider {
     const done = (r: Omit<Extract<LLMResult, { ok: false }>, "latencyMs" | "model">): LLMResult => ({
       ...r,
       latencyMs: Date.now() - started,
-      model: p.model,
+      model,
     });
 
+    const model = resolveGeminiModel(p.model);
     const body = {
       systemInstruction: { parts: [{ text: p.system }] },
       contents: p.messages.map((m) => ({
@@ -52,12 +68,14 @@ export class GeminiProvider implements LLMProvider {
         temperature: p.temperature ?? 0.2,
         maxOutputTokens: p.maxOutputTokens ?? 512,
         ...(p.jsonSchema ? { responseMimeType: "application/json", responseJsonSchema: p.jsonSchema } : {}),
+        // Flash models "think" by default, which costs seconds a caller would hear as silence
+        ...(/flash/.test(model) ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
       },
     };
 
     let res: Response;
     try {
-      res = await this.fetchImpl(`${this.baseUrl}/models/${encodeURIComponent(p.model)}:generateContent`, {
+      res = await this.fetchImpl(`${this.baseUrl}/models/${encodeURIComponent(model)}:generateContent`, {
         method: "POST",
         headers: { "content-type": "application/json", "x-goog-api-key": this.apiKey },
         body: JSON.stringify(body),
@@ -113,7 +131,7 @@ export class GeminiProvider implements LLMProvider {
         outputTokens: data.usageMetadata?.candidatesTokenCount ?? 0,
       },
       latencyMs: Date.now() - started,
-      model: p.model,
+      model,
     };
   }
 }

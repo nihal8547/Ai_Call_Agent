@@ -1,0 +1,16 @@
+# Keep the build context small and free of secrets
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+**/coverage
+**/*.tsbuildinfo
+.git
+.github
+.data
+*.rdb
+.env
+.env.*
+!.env.example
+Dockerfile
+docker-compose*.yml

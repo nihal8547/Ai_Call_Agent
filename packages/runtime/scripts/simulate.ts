@@ -1,9 +1,9 @@
 /**
  * Talk to an agent template in the terminal — the same runtime a phone call uses, without the phone.
  *
- *   pnpm simulate --template clinic-reception                 # deterministic (no LLM)
- *   pnpm simulate --template clinic-reception --llm gemini    # needs GEMINI_API_KEY
- *   pnpm simulate --template real-estate-ava --say "Rahul|apartment|80 lakh"
+ *   npm run simulate -- --template clinic-reception                 # deterministic (no LLM)
+ *   npm run simulate -- --template clinic-reception --llm gemini    # needs GEMINI_API_KEY
+ *   npm run simulate -- --template real-estate-ava --say "Rahul|apartment|80 lakh"
  *
  * Blocking tools succeed automatically; --fail-tools simulates an outage.
  */

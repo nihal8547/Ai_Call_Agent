@@ -26,7 +26,20 @@ function luhn(digits: string): boolean {
   return sum % 10 === 0;
 }
 
+/**
+ * Identifiers and timestamps are not personal data, but their digit runs look like phone numbers
+ * (a UUID starting "74838446-7c35…" would otherwise become "[PHONE]-7c35…"). They are kept verbatim.
+ */
+const KEEP =
+  /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b|\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?/gi;
+
 export function redactPII(text: string): string {
+  const kept: string[] = [];
+  const masked = text.replace(KEEP, (m) => `\uE000${kept.push(m) - 1}\uE000`);
+  return redactText(masked).replace(/\uE000(\d+)\uE000/g, (m: string, i: string) => kept[Number(i)] ?? m);
+}
+
+function redactText(text: string): string {
   let out = text.replace(CARD, (m) => {
     const digits = m.replace(/\D/g, "");
     return digits.length >= 13 && luhn(digits) ? "[CARD]" : m;

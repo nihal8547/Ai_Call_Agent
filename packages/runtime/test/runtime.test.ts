@@ -184,6 +184,35 @@ describe("runtime turn graph", () => {
     expect(t.speech).toContain("May I have the patient's name?");
   });
 
+  it("skips rephrasing when understanding used up the turn's latency budget", async () => {
+    let phraseCalls = 0;
+    const slow = new ScriptedLLM((p) => {
+      if (isUnderstand(p))
+        return { json: { intent: "answer", fields: { patient_name: "Priya" }, question: null } };
+      phraseCalls++;
+      return { json: { reply: "unused" } };
+    });
+    // A provider that reports a slow understanding call (as seen with real Gemini: ~1.3–2.7 s)
+    const reportingSlow = {
+      ...slow,
+      name: "slow",
+      generate: async (p: GenerateParams) => {
+        const r = await slow.generate(p);
+        return isUnderstand(p) ? { ...r, latencyMs: 2600 } : r;
+      },
+    };
+    const rt = createRuntime({ llm: reportingSlow, tools: okTools });
+    const start = await rt.start(config, ctx, "c-slow");
+    const t = await rt.turn(config, start.output.session, { transcript: "I'm Priya" }, ctx);
+    expect(phraseCalls).toBe(0);
+    const skipped = t.runtimeEvents.find((e) => e.type === "phrase_skipped");
+    expect(skipped).toMatchObject({ reason: "latency_budget" });
+    // understanding (2600 ms) plus the real decide time
+    expect((skipped as { spentMs: number }).spentMs).toBeGreaterThanOrEqual(2600);
+    expect(t.output.session.collected.patient_name).toBe("Priya");
+    expect(t.speech).toMatch(/^Which service do you need/);
+  });
+
   it("works with no LLM at all", async () => {
     const rt = createRuntime({ llm: null, tools: okTools });
     let out = await rt.start(config, ctx, "c1");

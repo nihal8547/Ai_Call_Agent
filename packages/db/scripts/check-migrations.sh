@@ -22,7 +22,7 @@ fi
 
 ALLOWED='^DROP INDEX "document_chunks_embedding_hnsw_idx";$'
 
-PRISMA_BIN="${PRISMA_BIN:-pnpm exec prisma}"
+PRISMA_BIN="${PRISMA_BIN:-npx prisma}"
 
 diff_sql="$($PRISMA_BIN migrate diff \
   --from-migrations prisma/migrations \
@@ -36,7 +36,7 @@ if [[ -n "$unexpected" ]]; then
   echo "Schema drift detected between schema.prisma and migrations:" >&2
   printf '%s\n' "$unexpected" >&2
   echo >&2
-  echo "Run: pnpm --filter @platform/db migrate:dev --create-only --name <change>" >&2
+  echo "Run: npm run db:migrate:dev -- --create-only --name <change>" >&2
   echo "and delete any DROP of document_chunks_embedding_hnsw_idx from the generated SQL." >&2
   exit 1
 fi

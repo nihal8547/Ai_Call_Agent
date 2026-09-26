@@ -30,7 +30,7 @@ Benefits: one language, one type system, and the **same zod schemas** validate t
 
 ## 1. Monorepo structure
 
-pnpm workspaces + Turborepo.
+npm workspaces + Turborepo.
 
 ```
 Ai_Call_Agent/
@@ -77,7 +77,7 @@ Ai_Call_Agent/
 ├── docs/
 ├── infra/                           # docker-compose, Dockerfiles, deploy manifests
 ├── .github/workflows/
-├── package.json · pnpm-workspace.yaml · turbo.json
+├── package.json · package-lock.json · turbo.json
 └── .env.example
 ```
 
@@ -215,9 +215,9 @@ export function tenantClient(prisma: PrismaClient, tenantId: string) {
 
 - One branch per phase (`phase/03-conversation-core`) and small PRs into `main`.
 - CI gates on every PR:
-  1. `pnpm lint`
-  2. `pnpm typecheck`
-  3. `pnpm test` (unit + integration with Testcontainers Postgres/Redis)
+  1. `npm run lint`
+  2. `npm run typecheck`
+  3. `npm run test` (unit + integration with Testcontainers Postgres/Redis)
   4. `check-migrations.sh`
   5. OpenAPI client drift check
   6. `next build`
@@ -259,7 +259,7 @@ export function tenantClient(prisma: PrismaClient, tenantId: string) {
 **Status: done.**
 
 - [x] **Repo:**
-  - pnpm workspace + Turborepo pipelines (`build`, `dev`, `lint`, `typecheck`, `test`)
+  - npm workspaces + Turborepo pipelines (`build`, `dev`, `lint`, `typecheck`, `test`)
   - root `tsconfig.base.json` (strict, `noUncheckedIndexedAccess`); this replaces a separate `packages/config`
   - ESLint flat config (typescript-eslint + layer-boundary import rules), Prettier, `.editorconfig`, `.nvmrc`
 - [x] **apps/api:**
@@ -290,13 +290,13 @@ export function tenantClient(prisma: PrismaClient, tenantId: string) {
 
 **Verified:**
 
-- `pnpm build`, `typecheck`, `lint`, `test`, and `format:check` are all green.
+- `npm run build`, `typecheck`, `lint`, `test`, and `format:check` are all green.
 - The API against real Postgres 16 + Redis: `/ready` → `{"database":"ok","redis":"ok"}`, and unknown routes → problem+json 404.
 - The worker consumed an enqueued `noop` job.
 
 **Definition of Done**
 
-- `pnpm i && docker compose -f infra/docker-compose.yml up -d && pnpm db:migrate && pnpm dev` starts api, worker, and web.
+- `npm install && docker compose -f infra/docker-compose.yml up -d && npm run db:migrate && npm run dev` starts api, worker, and web.
 - `/health` is green.
 - CI passes.
 
@@ -325,7 +325,7 @@ export function tenantClient(prisma: PrismaClient, tenantId: string) {
   - **`provisionTenant()`**: tenant + encrypted DEK + system roles + default lead statuses + owner membership, created atomically
 - [x] **`packages/crypto`:** AES-256-GCM envelope encryption (versioned format, AAD-bound to the tenant), argon2id password hashing, a timing-safe dummy verify, random tokens, SHA-256.
 - [x] **`packages/shared`:** permission catalogue (30 permissions), the default roles OWNER ⊇ ADMIN ⊇ MANAGER ⊇ STAFF, default lead statuses, `TenantLimits`, and the slug and E.164 validators.
-- [x] **Seed (`pnpm db:seed`):**
+- [x] **Seed (`npm run db:seed`):**
   - idempotent, and runs through the RLS app connection
   - a platform owner user
   - **ABC Real Estate** (Sales Agent, +911140000001) and **XYZ Clinic** (Reception Agent, +911140000002)
@@ -345,7 +345,7 @@ export function tenantClient(prisma: PrismaClient, tenantId: string) {
 
 Test setup note: the integration tests apply migrations with the non-destructive `migrate deploy` and create uniquely named tenants, so they never need to wipe a database.
 
-**Definition of Done:** ✅ `pnpm db:migrate && pnpm db:seed` works on a fresh database, and the isolation suite is green.
+**Definition of Done:** ✅ `npm run db:migrate && npm run db:seed` works on a fresh database, and the isolation suite is green.
 
 ---
 
@@ -501,7 +501,7 @@ Test setup note: the integration tests apply migrations with the non-destructive
   - immutable sessions (the input is never mutated)
 - **Guards:** `guardOutput` blocks technical/error words, markup/JSON, secrets, and URLs, and trims long replies. `unsupportedNumbers` catches invented figures in knowledge answers.
 - **`redactPII` / `redactDeep`:** phone, email, card (Luhn), Aadhaar, PAN.
-- **Simulator:** `pnpm simulate --template clinic-reception` (interactive) or `--say "Priya|cleaning|…"`; `--fail-tools` simulates outages.
+- **Simulator:** `npm run simulate -- --template clinic-reception` (interactive) or `--say "Priya|cleaning|…"`; `--fail-tools` simulates outages.
 
 **Tests:** 133 in core + 9 in templates.
 
@@ -551,7 +551,7 @@ understand ─┬─(question & knowledge configured)→ retrieve ─┐
 
 - **Rules supplement the LLM:** when the model misses the awaited field (or a plain yes/no), the deterministic rules fill the gap. They never override a question.
 - **Per-turn metrics:** total/understand/retrieve/decide/tool/phrase ms, LLM calls, tokens, and a deterministic-or-not flag. Typed runtime events (`llm_call`, `retrieval`, `phrase_rejected`, `guard_blocked`, `tool_timeout`) go to the call timeline in P5.
-- **Simulator:** `pnpm simulate --template <key> [--llm gemini] [--say "a|b|c"] [--fail-tools]` runs this exact runtime.
+- **Simulator:** `npm run simulate -- --template <key> [--llm gemini] [--say "a|b|c"] [--fail-tools]` runs this exact runtime.
 
 **Hardening found by tests:**
 
@@ -564,7 +564,7 @@ understand ─┬─(question & knowledge configured)→ retrieve ─┐
 - `runtime`: 12 tests. Multi-field LLM understanding + phrasing, three kinds of bad rephrasing rejected, LLM failures → rules → circuit breaker (no further LLM calls), a schema-breaking model, grounded vs unsafe retrieved answers, a hanging retriever, a hanging tool, prompt injection, a full call with no LLM.
 - `core`: 135 tests, including the new rules-supplement and name cases.
 
-**Not verified here:** a live Gemini call. The environment has no API key and blocks the Gemini endpoint, so the request and response mapping is covered by mocked-HTTP tests only. Run `pnpm simulate --llm gemini` with `GEMINI_API_KEY` set to check it end to end.
+**Not verified here:** a live Gemini call. The environment has no API key and blocks the Gemini endpoint, so the request and response mapping is covered by mocked-HTTP tests only. Run `npm run simulate -- --llm gemini` with `GEMINI_API_KEY` set to check it end to end.
 
 ---
 
@@ -979,6 +979,23 @@ understand ─┬─(question & knowledge configured)→ retrieve ─┐
 - **Staff reschedules** skip the capacity and working-hours checks (staff decide).
 - **Not verified here:** a real Google account end to end (the tests use a fake Google behind `fetch`, and the live check only confirmed Google rejects a fake key) and a real Twilio `<Dial>`.
 
+### Maintenance after P9
+
+- **npm instead of pnpm:**
+  - npm workspaces (`package-lock.json`), local packages referenced as `"*"`, root `overrides` for `@types/node`, CI on `npm ci`.
+  - Commands are `npm run <script>`; the `db:*` and `simulate` scripts run inside their workspace.
+- **Docker:**
+  - One `Dockerfile` with `api`, `worker`, `web` (Next.js standalone) and `migrate` targets, and a root `docker-compose.yml` for the full stack. Postgres roles are created from `APP_DB_PASSWORD`; there is a shared storage volume.
+  - Verified: all four images build, and the stack starts healthy. Through the containers: registration, publishing an agent, a signed phone call booking an appointment, and seeing it in the UI.
+  - `API_INTERNAL_URL` is declared in `turbo.json`; without it, Turborepo's strict env mode hid it from the web build and the image proxied to localhost.
+- **Real Gemini, verified with a key:**
+  - `gemini-2.5-flash` is no longer served to new keys. The default is now `gemini-flash-latest`, and saved configs naming retired models are mapped to it.
+  - Flash models run without "thinking" (it added seconds of silence).
+  - Measured: understanding about 1.3–1.8 s; embeddings (768-dim) work. Rephrasing now only gets what is left of a ~3 s per-turn budget and is skipped otherwise.
+  - The free tier's per-minute quota returns 429 after a few calls. The runtime falls back to deterministic replies, but production needs a paid plan.
+- **PII redaction fix:** UUIDs and ISO timestamps are kept verbatim. An id starting with eight digits (e.g. `74838446-7c35…`) was being stored as `[PHONE]-7c35…` in call timelines.
+- **Plan for Qatar and existing numbers:** [`QATAR_AND_EXISTING_NUMBERS_PLAN.md`](./QATAR_AND_EXISTING_NUMBERS_PLAN.md).
+
 ### ✅ M2 — Level 2 milestone
 
 A new business onboards entirely from the UI, without an engineer:
@@ -1036,7 +1053,7 @@ A new business onboards entirely from the UI, without an engineer:
 - Toll-fraud and abuse controls: blocklists, per-caller rate limits, max call duration, and anomaly alerts.
 - PII redaction before persisting events and logs; per-tenant retention policy + a nightly purge job; signed short-lived URLs for recordings.
 - 2FA (TOTP) and a session management page (revoke sessions).
-- Security headers (helmet, CSP on web), CORS allow-list, dependency scanning (`pnpm audit`, Dependabot), secret scanning, and `/security-review` before release.
+- Security headers (helmet, CSP on web), CORS allow-list, dependency scanning (`npm audit`, Dependabot), secret scanning, and `/security-review` before release.
 - Observability:
   - pino JSON logs with `tenantId` and `callId`.
   - OpenTelemetry traces across api → runtime → providers → db.

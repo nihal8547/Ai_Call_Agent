@@ -27,18 +27,18 @@
     "migrate:deploy": "prisma migrate deploy",
     "migrate:reset": "prisma migrate reset --force --skip-seed",
     "seed": "tsx --env-file-if-exists=../../.env prisma/seed.ts",
-    "check": "PRISMA_BIN=\"pnpm exec prisma\" ./scripts/check-migrations.sh",
+    "check": "PRISMA_BIN=\"npx prisma\" ./scripts/check-migrations.sh",
     "studio": "prisma studio"
   },
   "dependencies": {
     "@prisma/client": "~6.19.3",
     "zod": "^4.6.5",
-    "@platform/crypto": "workspace:*",
-    "@platform/shared": "workspace:*"
+    "@platform/crypto": "*",
+    "@platform/shared": "*"
   },
   "devDependencies": {
     "prisma": "~6.19.3",
     "tsx": "^4.23.15",
-    "@platform/templates": "workspace:*"
+    "@platform/templates": "*"
   }
 }

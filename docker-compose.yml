@@ -1,0 +1,122 @@
+# Full platform in containers: Postgres (pgvector) + Redis + migrations + API + worker + web.
+#
+#   cp .env.example .env        # then set JWT_SECRET, MASTER_ENCRYPTION_KEY, APP_DB_PASSWORD, POSTGRES_PASSWORD
+#   docker compose up -d --build
+#   open http://localhost:3000
+#
+# For development with hot reload use infra/docker-compose.yml (databases only) + `npm run dev`.
+name: voice-agent-platform
+
+x-app-env: &app-env
+  NODE_ENV: production
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  # The app connects as voice_app so Row-Level Security isolates tenants
+  DATABASE_URL: postgresql://voice_app:${APP_DB_PASSWORD:?set APP_DB_PASSWORD in .env}@postgres:5432/voice
+  REDIS_URL: redis://redis:6379
+  QUEUE_PREFIX: ${QUEUE_PREFIX:-bull}
+  JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+  MASTER_ENCRYPTION_KEY: ${MASTER_ENCRYPTION_KEY:?set MASTER_ENCRYPTION_KEY in .env}
+  GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+  EMBEDDINGS_PROVIDER: ${EMBEDDINGS_PROVIDER:-auto}
+  STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
+  # Shared by the API (uploads) and the worker (processing): see the "storage" volume
+  STORAGE_LOCAL_DIR: /data/storage
+  S3_BUCKET: ${S3_BUCKET:-}
+  S3_REGION: ${S3_REGION:-us-east-1}
+  S3_ENDPOINT: ${S3_ENDPOINT:-}
+  S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+  S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: voice_owner
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: voice
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?set APP_DB_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/10-roles.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U voice_owner -d voice"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 30
+
+  migrate:
+    build: { context: ., target: migrate }
+    image: voice-agent-platform/migrate:local
+    environment:
+      DATABASE_URL: postgresql://voice_owner:${POSTGRES_PASSWORD}@postgres:5432/voice
+      DATABASE_MIGRATION_URL: postgresql://voice_owner:${POSTGRES_PASSWORD}@postgres:5432/voice
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+  api:
+    build: { context: ., target: api }
+    image: voice-agent-platform/api:local
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+      API_PORT: 4000
+      # Requests arrive through the web container's /api proxy (private Docker network)
+      TRUST_PROXY: ${TRUST_PROXY:-loopback,uniquelocal}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:4000}
+      WEB_BASE_URL: ${WEB_BASE_URL:-http://localhost:3000}
+      # Plain http on localhost; set true behind HTTPS
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      DEFAULT_COUNTRY_CODE: ${DEFAULT_COUNTRY_CODE:-91}
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+      GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-50}
+    volumes: [storage:/data/storage]
+    ports: ["${API_PUBLISH_PORT:-4000}:4000"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  worker:
+    build: { context: ., target: worker }
+    image: voice-agent-platform/worker:local
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
+    volumes: [storage:/data/storage]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  web:
+    build:
+      context: .
+      target: web
+      args:
+        API_INTERNAL_URL: http://api:4000
+    image: voice-agent-platform/web:local
+    restart: unless-stopped
+    environment:
+      API_INTERNAL_URL: http://api:4000
+    ports: ["${WEB_PUBLISH_PORT:-3000}:3000"]
+    depends_on:
+      api: { condition: service_healthy }
+
+volumes:
+  pgdata:
+  redisdata:
+  storage:

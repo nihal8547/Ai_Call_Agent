@@ -136,7 +136,7 @@ A new cross-cutting layer, **Management & Configuration** (`frontend/` + `app/ap
 
 ## 4. Repository layout
 
-A pnpm + Turborepo monorepo. The full tree and dependency rules are in [`DEVELOPMENT_PHASES.md` §1](./DEVELOPMENT_PHASES.md#1-monorepo-structure).
+A npm workspaces + Turborepo monorepo. The full tree and dependency rules are in [`DEVELOPMENT_PHASES.md` §1](./DEVELOPMENT_PHASES.md#1-monorepo-structure).
 
 ```
 apps/      api (NestJS) · worker (BullMQ) · web (Next.js) · voice (streaming, L4)
@@ -503,7 +503,7 @@ Multi-tenancy (`tenant_id` + RLS) and the dynamic field schema are built **from 
 ### Phase 0 — Prerequisites (1–2 days)
 
 - [ ] Twilio account + test number; Gemini API key (OpenAI/Anthropic keys optional)
-- [ ] Node 22, pnpm, Docker, ngrok/cloudflared
+- [ ] Node 22, npm, Docker, ngrok/cloudflared
 - [ ] `docker-compose.yml`: postgres (pgvector image), redis, minio
 - [ ] `.env.example`: DB/Redis/S3 URLs, `TWILIO_*`, `GEMINI_API_KEY`, `JWT_SECRET`, `MASTER_ENCRYPTION_KEY`, `PUBLIC_BASE_URL`, timeouts
 

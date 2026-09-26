@@ -48,15 +48,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-          cache: pnpm
+          cache: npm
 
       - name: Install
-        run: pnpm install --frozen-lockfile
+        run: npm ci
 
       - name: Create database roles and databases
         env:
@@ -64,22 +62,22 @@ jobs:
         run: psql -h localhost -U voice_owner -d voice -v ON_ERROR_STOP=1 -f infra/postgres/init.sql
 
       - name: Apply migrations
-        run: pnpm db:migrate
+        run: npm run db:migrate
 
       - name: Migrations match schema.prisma
-        run: pnpm db:check
+        run: npm run db:check
 
       - name: Format
-        run: pnpm format:check
+        run: npm run format:check
 
       - name: Lint
-        run: pnpm lint
+        run: npm run lint
 
       - name: Typecheck
-        run: pnpm typecheck
+        run: npm run typecheck
 
       - name: Test
-        run: pnpm test
+        run: npm run test
 
       - name: Build
-        run: pnpm build
+        run: npm run build

@@ -12,7 +12,7 @@ export default function setup(): void {
     console.warn("TEST_DATABASE_URL not set: database integration tests are skipped");
     return;
   }
-  execFileSync("pnpm", ["exec", "prisma", "migrate", "deploy"], {
+  execFileSync("npx", ["prisma", "migrate", "deploy"], {
     cwd: resolve(__dirname, ".."),
     env: { ...process.env, DATABASE_URL: url, DATABASE_MIGRATION_URL: url },
     stdio: "pipe",

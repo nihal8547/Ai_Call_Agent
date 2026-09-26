@@ -7,7 +7,7 @@ A multi-tenant, configurable, RAG-powered platform for AI phone agents. Any busi
 
 ## Stack
 
-TypeScript monorepo (pnpm + Turborepo):
+TypeScript monorepo (npm workspaces + Turborepo):
 
 | Path                                                                     | What                                                                                          |
 | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
@@ -25,34 +25,50 @@ PostgreSQL 16 + pgvector, Redis.
 
 ## Getting started
 
-Requirements: Node 22.12+, pnpm 10, Docker.
+Requirements: Node 22.12+, npm 10, Docker.
 
 ```bash
-pnpm install
+npm install
 cp .env.example .env
 docker compose -f infra/docker-compose.yml up -d   # postgres+pgvector, redis, minio, mailpit
-pnpm db:migrate                                    # apply migrations (owner connection)
-pnpm dev                                           # api :4000, web :3000, worker
+npm run db:migrate                                    # apply migrations (owner connection)
+npm run dev                                           # api :4000, web :3000, worker
 ```
 
 - API health: http://localhost:4000/health, readiness: http://localhost:4000/ready
 - Web: http://localhost:3000
 
+## Docker
+
+Everything in containers (Postgres + pgvector, Redis, migrations, API, worker, web):
+
+```bash
+cp .env.example .env    # set JWT_SECRET, MASTER_ENCRYPTION_KEY, POSTGRES_PASSWORD, APP_DB_PASSWORD (+ GEMINI_API_KEY, TWILIO_AUTH_TOKEN)
+docker compose up -d --build
+```
+
+- Web: http://localhost:3000 · API: http://localhost:4000 (`/health`, `/ready`; point Twilio webhooks at its public HTTPS URL).
+- The `migrate` service applies database migrations before the API and worker start. The API and worker share the `storage` volume for uploaded documents (or set `STORAGE_DRIVER=s3`).
+- Images come from one `Dockerfile` with the targets `api`, `worker`, `web` and `migrate`. The web image fixes its `/api` proxy target at build time (`API_INTERNAL_URL`, default `http://api:4000`).
+- Behind HTTPS in production: set `COOKIE_SECURE=true`, `PUBLIC_BASE_URL`, `WEB_BASE_URL` and `TRUST_PROXY` (your load balancer's addresses).
+- Builds that cannot reach Debian mirrors: `--build-arg NODE_IMAGE=node:22-bookworm --build-arg INSTALL_SYSTEM_PACKAGES=0`. Behind a TLS-intercepting proxy, pass its CA with `--secret id=ca,src=ca.pem`.
+- For day-to-day development with hot reload, run only the databases (`docker compose -f infra/docker-compose.yml up -d`) and `npm run dev`.
+
 ## Everyday commands
 
-| Command                                                     | Does                                                                         |
-| ----------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `pnpm build` / `pnpm typecheck` / `pnpm lint` / `pnpm test` | Run across all packages (Turborepo)                                          |
-| `pnpm format`                                               | Prettier                                                                     |
-| `pnpm db:migrate:dev --create-only --name <change>`         | Create a migration after editing `schema.prisma` (review the SQL; see below) |
-| `pnpm db:check`                                             | Fail if migrations and `schema.prisma` disagree                              |
-| `pnpm db:seed`                                              | Load demo tenants                                                            |
+| Command                                                                 | Does                                                                         |
+| ----------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `npm run build` / `npm run typecheck` / `npm run lint` / `npm run test` | Run across all packages (Turborepo)                                          |
+| `npm run format`                                                        | Prettier                                                                     |
+| `npm run db:migrate:dev -- --create-only --name <change>`               | Create a migration after editing `schema.prisma` (review the SQL; see below) |
+| `npm run db:check`                                                      | Fail if migrations and `schema.prisma` disagree                              |
+| `npm run db:seed`                                                       | Load demo tenants                                                            |
 
 ### Taking real phone calls (Twilio)
 
 1. Expose the API over HTTPS, e.g. `cloudflared tunnel --url http://localhost:4000`, and set `PUBLIC_BASE_URL` to that URL.
 2. Set `TWILIO_AUTH_TOKEN` (Twilio console → Account → API keys & tokens).
-3. Attach your Twilio number to an agent: `SEED_NUMBER_CLINIC=+91… pnpm db:seed`, or add it under Settings → Phone numbers.
+3. Attach your Twilio number to an agent: `SEED_NUMBER_CLINIC=+91… npm run db:seed`, or add it under Settings → Phone numbers.
 4. In the Twilio console, for that number:
    - **A call comes in** → Webhook `POST {PUBLIC_BASE_URL}/telephony/twilio/voice`
    - **Call status changes** → `POST {PUBLIC_BASE_URL}/telephony/twilio/status`
@@ -60,7 +76,7 @@ pnpm dev                                           # api :4000, web :3000, worke
 
 ### Knowledge base (documents)
 
-- Upload files under **Knowledge Base** in the web app. The **worker** must be running (`pnpm dev` starts it) to process them.
+- Upload files under **Knowledge Base** in the web app. The **worker** must be running (`npm run dev` starts it) to process them.
 - Files are stored under `STORAGE_LOCAL_DIR` (default `.data/storage`) or in S3 with `STORAGE_DRIVER=s3` and the `S3_*` settings. Use S3 when more than one server runs the API or worker.
 - Search is hybrid: meaning (pgvector) plus keywords (Postgres full-text). Meaning search needs embeddings: set `GEMINI_API_KEY` (or `EMBEDDINGS_PROVIDER=hashing` for an offline stand-in). Without either, documents are searchable by keywords only. After changing the provider, **Reprocess** existing documents.
 - Scanned PDFs and images need `GEMINI_API_KEY` for text recognition; without it they fail with a clear message.
@@ -77,7 +93,7 @@ pnpm dev                                           # api :4000, web :3000, worke
 ### Database rules
 
 - The app connects as `voice_app` (member of `app_user`), so **Row-Level Security isolates tenants**. Migrations use the owner connection (`DATABASE_MIGRATION_URL`).
-- Prisma cannot model the pgvector HNSW index. When a generated migration contains `DROP INDEX "document_chunks_embedding_hnsw_idx"`, delete that line. `pnpm db:check` catches any other drift.
+- Prisma cannot model the pgvector HNSW index. When a generated migration contains `DROP INDEX "document_chunks_embedding_hnsw_idx"`, delete that line. `npm run db:check` catches any other drift.
 
 ### Deployment notes
 

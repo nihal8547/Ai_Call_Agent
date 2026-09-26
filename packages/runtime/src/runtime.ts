@@ -20,6 +20,12 @@ import type { RuntimeDeps, RuntimeEvent, RuntimeTurn, TurnMetrics } from "./type
 
 const RETRIEVAL_TIMEOUT_MS = 1500;
 const PHRASE_TIMEOUT_MS = 2000;
+/**
+ * A caller hears silence while the turn runs. Rephrasing is polish, so it only gets what is left
+ * of this budget after understanding, retrieval and tools, and is skipped when too little remains.
+ */
+const TURN_BUDGET_MS = 3000;
+const MIN_PHRASE_MS = 700;
 
 const State = Annotation.Root({
   // inputs
@@ -188,13 +194,22 @@ export function createRuntime(deps: RuntimeDeps) {
     const draft = s.output!.speech;
     const llm = deps.llm;
     if (!llm || !draft || !s.config.llm.rephrase || s.output!.session.fallbackOnly) return { phrased: false };
+    const m = s.metrics;
+    const spent = (m.understandMs ?? 0) + (m.retrieveMs ?? 0) + (m.decideMs ?? 0) + (m.toolMs ?? 0);
+    const budget = Math.min(s.config.llm.timeoutMs, PHRASE_TIMEOUT_MS, TURN_BUDGET_MS - spent);
+    if (budget < MIN_PHRASE_MS) {
+      return {
+        phrased: false,
+        runtimeEvents: [{ type: "phrase_skipped", reason: "latency_budget", spentMs: spent }],
+      };
+    }
     const { system, user } = phrasePrompt(s.config, s.transcript, draft);
     const r = await llm.generate({
       model: s.config.llm.model,
       system,
       messages: [{ role: "user", content: user }],
       temperature: s.config.llm.temperature,
-      timeoutMs: Math.min(s.config.llm.timeoutMs, PHRASE_TIMEOUT_MS),
+      timeoutMs: budget,
       jsonSchema: PHRASE_SCHEMA,
     });
     const base = { purpose: "phrase" as const, latencyMs: r.latencyMs, model: r.model };

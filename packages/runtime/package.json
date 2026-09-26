@@ -25,13 +25,13 @@
   "dependencies": {
     "@langchain/core": "^1.1.0",
     "@langchain/langgraph": "^1.4.0",
-    "@platform/ai": "workspace:*",
-    "@platform/core": "workspace:*",
-    "@platform/shared": "workspace:*",
+    "@platform/ai": "*",
+    "@platform/core": "*",
+    "@platform/shared": "*",
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@platform/templates": "workspace:*",
+    "@platform/templates": "*",
     "tsx": "^4.23.15"
   }
 }

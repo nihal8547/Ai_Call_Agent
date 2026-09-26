@@ -22,13 +22,13 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@platform/core": "workspace:*",
-    "@platform/shared": "workspace:*",
+    "@platform/core": "*",
+    "@platform/shared": "*",
     "nodemailer": "^10.0.10",
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@platform/templates": "workspace:*",
+    "@platform/templates": "*",
     "@types/nodemailer": "^8.0.2",
     "@types/smtp-server": "^3.5.13",
     "smtp-server": "^3.19.13"
