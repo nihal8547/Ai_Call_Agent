@@ -242,3 +242,39 @@ export function formatTimeForSpeech(hhmm: string): string {
   const hour = h! % 12 === 0 ? 12 : h! % 12;
   return m ? `${hour}:${String(m).padStart(2, "0")} ${suffix}` : `${hour} ${suffix}`;
 }
+
+/** Offset of `timezone` from UTC at `at`, in minutes (e.g. Asia/Kolkata → 330) */
+function offsetMinutes(timezone: string, at: Date): number {
+  const p = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  })
+    .formatToParts(at)
+    .reduce<Record<string, string>>((acc, x) => ({ ...acc, [x.type]: x.value }), {});
+  const asUtc = Date.UTC(
+    Number(p.year),
+    Number(p.month) - 1,
+    Number(p.day),
+    Number(p.hour),
+    Number(p.minute),
+    Number(p.second),
+  );
+  return Math.round((asUtc - at.getTime()) / 60000);
+}
+
+/** A wall-clock date and time in a business time zone → the absolute instant */
+export function zonedDateTimeToUtc(date: string, time: string, timezone: string): Date {
+  const [y, m, d] = date.split("-").map(Number);
+  const [h, mi] = time.split(":").map(Number);
+  const naive = Date.UTC(y!, m! - 1, d!, h!, mi!);
+  // Two passes handle DST transitions
+  let utc = naive - offsetMinutes(timezone, new Date(naive)) * 60000;
+  utc = naive - offsetMinutes(timezone, new Date(utc)) * 60000;
+  return new Date(utc);
+}

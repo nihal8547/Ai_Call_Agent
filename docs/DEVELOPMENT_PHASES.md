@@ -567,31 +567,73 @@ understand ─┬─(question & knowledge configured)→ retrieve ─┐
 
 ---
 
-## P5 — Telephony, calls & leads
+## P5 — Telephony, calls & leads ✅
 
 **Goal:** real phone calls, persisted end to end.
 
-- **`packages/telephony`:** `TelephonyProvider` interface (`parseInbound`, `renderReply`, `transfer`, `hangup`, `verifySignature`) and `TwilioProvider` (TwiML builders, `<Gather input="speech" speechTimeout="auto" language hints>`).
-- **`modules/telephony`:**
-  - `POST /telephony/twilio/voice`: `TwilioSignatureGuard` → `resolve_phone_number(To)` → create `Call` (pinned `agentVersionId`) → greeting TwiML.
-  - `POST /telephony/twilio/turn`: load session → run the graph → persist events → TwiML. Idempotent on `CallSid` + turn sequence.
-  - `POST /telephony/twilio/status`: final status, duration, `finalize` → lead upsert, usage records.
-  - An unknown number or inactive agent gets a polite message and a hang-up, plus an alert log.
-- **`modules/calls`:** `GET /calls` (filters: date range, agent, status, outcome, qualification), `GET /calls/:id`, `GET /calls/:id/events`. Transcript access requires `calls:read_transcript`.
-- **`modules/leads`:**
-  - `GET/PATCH /leads`, `GET /leads/:id`, `GET/POST/PATCH /lead-statuses`.
-  - Lead `data` is validated against the **agent version's** field schema on write.
-  - Dedupe by `(tenant, phone)` within 24 h: the lead is updated rather than duplicated.
-- **`modules/phone-numbers`:** CRUD + assign to agent (manual SID entry for now; provisioning comes in P12).
-- **Local dev:** `pnpm tunnel` (cloudflared/ngrok) + a script that sets the Twilio number's webhook URL.
+**Status: done.** Verified with signed webhook simulations against real Postgres + Redis. A live Twilio call needs your account (see README → _Taking real phone calls_).
 
-**Tests**
+**`packages/telephony`**
 
-- Signed and unsigned webhook tests (unsigned → 403), idempotent retry replays the same TwiML, full call via simulated webhooks → lead row with validated data.
+- `TelephonyAdapter` interface (verify signature, parse webhook, render reply) and `TwilioAdapter`.
+- HMAC-SHA1 signature validation, **checked against the official `twilio` library** in tests. It rejects tampered parameters, a wrong token, a wrong URL, or a missing header.
+- TwiML rendering, with every value XML-escaped:
+  - listen: `<Say>` inside `<Gather input="speech">` for barge-in, with `actionOnEmptyResult` so silence also posts back, plus ASR hints
+  - transfer: `<Dial>`
+  - end: `<Hangup/>`
 
-**Definition of Done**
+**`apps/api` → `modules/telephony`** (unversioned webhook URLs, signature guard, per-caller rate limit)
 
-- A real call to the ABC Real Estate number and a real call to the XYZ Clinic number each complete their own qualification flow on the same deployment, with calls and leads stored in the correct tenant.
+- `POST /telephony/twilio/voice`:
+  1. `resolve_phone_number(To)` → tenant, agent, published version. Unknown or inactive numbers get a polite hang-up.
+  2. Create the `Call`, pinned to the agent version.
+  3. Runtime greeting.
+- `POST /telephony/twilio/turn?seq=N`:
+  - Runtime turn under a **Redis lock per call**.
+  - Idempotent: a retried or stale `seq` replays the stored reply.
+- `POST /telephony/twilio/status`: final status + duration + telephony minutes. If the caller hung up mid-conversation, it calls `endCall` → outcome + lead from what was collected.
+- `POST /telephony/twilio/dial-status`: hang up after a transfer.
+- **Call state in Redis:** session, seq, last reply, event counter, 3 h TTL. Any API instance can serve the next webhook of a call.
+- **Published config cache:** versions are immutable, so the parsed config is cached per version id.
+- **Timeline:** every turn is stored as `call_events`: USER_TURN, AGENT_TURN (+ latency and LLM metrics), EXTRACTION, VALIDATION_ERROR, RAG_RETRIEVAL, TOOL_CALL, FALLBACK, GUARD_BLOCKED, HANDOFF, CALL_ENDED. Payloads are **PII-redacted** before storage.
+- **Internal tools:**
+  - `leads.create`
+  - `appointments.create`: business-time-zone → UTC, duration from config, no past bookings, idempotent per call + time.
+  - Only tools enabled in the agent config can run. Other tools report "not available" until P9.
+  - Background tools run after the reply; they move to BullMQ in P11.
+- **Leads:**
+  - One lead per call.
+  - A repeat caller within 24 h is merged **only if it is the same person** (same or missing name). One family phone ≠ one lead; this bug was found by a test.
+  - A one-line summary is stored on the call.
+- Usage records: LLM tokens per turn, telephony minutes per call.
+
+**APIs**
+
+| Endpoint                                                                                                                    | Permission                             |
+| --------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| `GET /calls` (filters: agent, status, outcome, qualification, date range) · `GET /calls/:id`                                | `calls:read`                           |
+| `GET /calls/:id/events` (timeline/transcript)                                                                               | `calls:read` + `calls:read_transcript` |
+| `GET /leads` (status, agent, search) · `GET /leads/:id` (with the agent's field definitions)                                | `leads:read`                           |
+| `PATCH /leads/:id`: status, notes, follow-up, assignee, and `data` **validated per field with the same rules as on a call** | `leads:write`                          |
+| `GET/POST/PATCH /lead-statuses` (single default enforced)                                                                   | `leads:read` / `leads:write`           |
+| `GET/POST/PATCH/DELETE /phone-numbers` (E.164; agent must belong to the tenant; unique platform-wide → 409)                 | `phone_numbers:*`                      |
+
+- **Seed:** the demo agents get published versions built from their templates. `SEED_NUMBER_REAL_ESTATE` / `SEED_NUMBER_CLINIC` attach real numbers.
+- **Core:** `endCall()` for hang-ups; `zonedDateTimeToUtc()` (DST-safe).
+
+**Tests:** 11 telephony integration tests (40 API tests in total).
+
+- signature rejection
+- unknown number
+- **full booking call**: TwiML greeting → 6 turns → confirmation → hang-up, with the appointment at 10:00 IST, lead data, ordered event sequence, redacted phone number in the transcript, status callback → duration + 2 telephony minutes
+- webhook retry replays identical TwiML with no duplicate events
+- silence re-prompt
+- emergency → `<Dial>`
+- mid-call hang-up keeps a partial lead
+- same-person merge vs. different person on the same phone
+- STAFF can see calls but not transcripts
+- lead edits validated per field (`"6 pm"` → `18:00`, unknown field/invalid time → field errors)
+- phone-number tenancy
 
 ---
 

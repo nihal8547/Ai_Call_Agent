@@ -30,6 +30,15 @@ export const ApiEnvSchema = z.object({
     .optional()
     .transform((v) => (v === undefined ? undefined : v === "true")),
   MASTER_ENCRYPTION_KEY: envPrimitives.key32,
+  /** Twilio account auth token (validates webhook signatures). Telephony endpoints return 503 without it. */
+  TWILIO_AUTH_TOKEN: z.string().min(16).optional(),
+  /** Without it, calls run on deterministic understanding and wording */
+  GEMINI_API_KEY: z.string().min(10).optional(),
+  /** Country calling code for phone numbers spoken without one */
+  DEFAULT_COUNTRY_CODE: z
+    .string()
+    .regex(/^\d{1,3}$/)
+    .default("91"),
 });
 
 export type ApiEnv = z.infer<typeof ApiEnvSchema> & { COOKIE_SECURE: boolean };

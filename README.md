@@ -44,6 +44,16 @@ pnpm dev                                           # api :4000, web :3000, worke
 | `pnpm db:check`                                             | Fail if migrations and `schema.prisma` disagree                              |
 | `pnpm db:seed`                                              | Load demo tenants                                                            |
 
+### Taking real phone calls (Twilio)
+
+1. Expose the API over HTTPS, e.g. `cloudflared tunnel --url http://localhost:4000`, and set `PUBLIC_BASE_URL` to that URL.
+2. Set `TWILIO_AUTH_TOKEN` (Twilio console → Account → API keys & tokens).
+3. Attach your Twilio number to an agent: `SEED_NUMBER_CLINIC=+91… pnpm db:seed`, or add it under Settings → Phone numbers.
+4. In the Twilio console, for that number:
+   - **A call comes in** → Webhook `POST {PUBLIC_BASE_URL}/telephony/twilio/voice`
+   - **Call status changes** → `POST {PUBLIC_BASE_URL}/telephony/twilio/status`
+5. Call the number. Calls, transcripts and leads appear in the web app; without `GEMINI_API_KEY` the agent runs on deterministic understanding.
+
 ### Database rules
 
 - The app connects as `voice_app` (member of `app_user`), so **Row-Level Security isolates tenants**. Migrations use the owner connection (`DATABASE_MIGRATION_URL`).

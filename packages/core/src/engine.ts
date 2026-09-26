@@ -257,6 +257,22 @@ export function resumeAfterTool(
   return output(c);
 }
 
+/**
+ * The call ended outside the conversation (caller hung up, network drop, max duration):
+ * close the session and resolve its outcome from whatever was collected.
+ */
+export function endCall(
+  session: CallSession,
+  config: AgentConfig,
+  ctx: EngineContext,
+  reason: string,
+): TurnOutput {
+  const c: Ctx = { config, ctx, s: structuredClone(session), t: new Turn() };
+  if (!c.s.ended) finish(c, reason);
+  c.t.control = "hangup";
+  return output(c);
+}
+
 // ───────────────────────────── workflow ─────────────────────────────
 
 function runSteps(c: Ctx, opts: { countAttempt: boolean; failedAnswer: boolean }): void {

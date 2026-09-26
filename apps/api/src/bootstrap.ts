@@ -31,7 +31,8 @@ export async function createApp(
   await app.register(fastifyHelmet);
   await app.register(fastifyCookie);
   app.enableCors({ origin: env.CORS_ORIGINS, credentials: true });
-  app.setGlobalPrefix("api/v1", { exclude: ["health", "ready"] });
+  // Provider webhooks keep stable, unversioned URLs (they are configured in the provider console)
+  app.setGlobalPrefix("api/v1", { exclude: ["health", "ready", "telephony/{*path}"] });
   app.enableShutdownHooks();
 
   // Echo the request id so clients and logs can be correlated

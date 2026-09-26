@@ -15,6 +15,7 @@ import {
   parseTime,
   parseYesNo,
   stripFillers,
+  zonedDateTimeToUtc,
 } from "../src/normalisers";
 
 describe("parseNumber", () => {
@@ -197,5 +198,19 @@ describe("intent signals", () => {
 
   it("strips fillers", () => {
     expect(stripFillers("Um, I'm looking for Baner or Wakad.")).toBe("baner or wakad");
+  });
+});
+
+describe("zonedDateTimeToUtc", () => {
+  it("converts business wall-clock time to UTC, including DST zones", () => {
+    expect(zonedDateTimeToUtc("2026-10-03", "17:00", "Asia/Kolkata").toISOString()).toBe(
+      "2026-10-03T11:30:00.000Z",
+    );
+    expect(zonedDateTimeToUtc("2026-07-01", "09:00", "America/New_York").toISOString()).toBe(
+      "2026-07-01T13:00:00.000Z",
+    );
+    expect(zonedDateTimeToUtc("2026-12-01", "09:00", "America/New_York").toISOString()).toBe(
+      "2026-12-01T14:00:00.000Z",
+    );
   });
 });

@@ -1,6 +1,6 @@
 import { AgentConfig } from "@platform/shared";
 import { describe, expect, it } from "vitest";
-import { handleTurn, startCall } from "../src";
+import { endCall, handleTurn, startCall } from "../src";
 import { clinic, converse, ctx, hotel, realEstate, restaurant } from "./support";
 
 describe("fallback-only conversations (no LLM) complete every template", () => {
@@ -296,6 +296,20 @@ describe("resilience", () => {
     const cfg = AgentConfig.parse({ ...realEstate(), limits: { maxTurns: 4 } });
     const c = converse(cfg, ["a", "b", "c", "d", "e"]);
     expect(c.last.session.endReason).toBe("max_turns");
+  });
+
+  it("endCall resolves the outcome when the caller hangs up mid-call", () => {
+    const c = converse(realEstate(), ["Rahul", "apartment", "80 lakh"]);
+    const ended = endCall(c.last.session, realEstate(), ctx, "caller_hung_up");
+    expect(ended.session).toMatchObject({
+      ended: true,
+      endReason: "caller_hung_up",
+      qualification: "PARTIAL",
+      outcome: "NONE",
+    });
+    expect(ended.events.at(-1)).toMatchObject({ type: "end", reason: "caller_hung_up" });
+    // idempotent
+    expect(endCall(ended.session, realEstate(), ctx, "again").session.endReason).toBe("caller_hung_up");
   });
 
   it("never mutates the session it was given", () => {

@@ -6,10 +6,12 @@
  *       XYZ Clinic       → "Reception Agent"  (+911140000002)
  *
  * Runs through the RLS-restricted app connection (DATABASE_URL), exactly like the API.
- * Agent configurations (qualification fields, workflows) are added by the P3 templates.
+ * Each agent gets a published version built from its template, so the demo numbers take calls at once.
+ * Point real Twilio numbers at them with SEED_NUMBER_REAL_ESTATE / SEED_NUMBER_CLINIC.
  */
-import { hashPassword, parseMasterKey } from "@platform/crypto";
-import { envPrimitives, parseEnv } from "@platform/shared";
+import { hashPassword, parseMasterKey, sha256Hex } from "@platform/crypto";
+import { instantiateTemplate } from "@platform/templates";
+import { E164, envPrimitives, parseEnv } from "@platform/shared";
 import { z } from "zod";
 import { createPrismaClient } from "../src/client";
 import { provisionTenant } from "../src/provisioning";
@@ -21,6 +23,8 @@ const env = parseEnv(
     MASTER_ENCRYPTION_KEY: envPrimitives.key32,
     SEED_OWNER_EMAIL: z.email().default("owner@example.com"),
     SEED_OWNER_PASSWORD: z.string().min(10).default("ChangeMe-Dev-Only-2026!"),
+    SEED_NUMBER_REAL_ESTATE: E164.optional(),
+    SEED_NUMBER_CLINIC: E164.optional(),
   }),
 );
 
@@ -35,7 +39,7 @@ const DEMO_TENANTS = [
       name: "Sales Agent",
       templateKey: "real-estate-ava",
     },
-    phone: "+911140000001",
+    phone: env.SEED_NUMBER_REAL_ESTATE ?? "+911140000001",
   },
   {
     id: "0199a000-0000-7000-8000-00000000000b",
@@ -47,7 +51,7 @@ const DEMO_TENANTS = [
       name: "Reception Agent",
       templateKey: "clinic-reception",
     },
-    phone: "+911140000002",
+    phone: env.SEED_NUMBER_CLINIC ?? "+911140000002",
   },
 ] as const;
 
@@ -81,11 +85,30 @@ async function main(): Promise<void> {
       }
 
       await withTenant(prisma, t.id, async (tx) => {
-        await tx.agent.upsert({
+        const agent = await tx.agent.upsert({
           where: { id: t.agent.id },
           update: {},
           create: { id: t.agent.id, tenantId: t.id, name: t.agent.name, templateKey: t.agent.templateKey },
         });
+        if (!agent.publishedVersionId) {
+          const config = instantiateTemplate(t.agent.templateKey, { businessName: t.name });
+          const version = await tx.agentVersion.create({
+            data: {
+              tenantId: t.id,
+              agentId: agent.id,
+              version: 1,
+              status: "PUBLISHED",
+              config,
+              configHash: sha256Hex(JSON.stringify(config)),
+              changeNote: "Created from template",
+              publishedAt: new Date(),
+            },
+          });
+          await tx.agent.update({
+            where: { id: agent.id },
+            data: { status: "ACTIVE", publishedVersionId: version.id },
+          });
+        }
         await tx.phoneNumber.upsert({
           where: { e164: t.phone },
           update: {},

@@ -38,6 +38,7 @@
   },
   "devDependencies": {
     "prisma": "~6.19.3",
-    "tsx": "^4.23.15"
+    "tsx": "^4.23.15",
+    "@platform/templates": "workspace:*"
   }
 }

@@ -9,6 +9,9 @@ try {
   // CI provides variables directly
 }
 
+export const TWILIO_TOKEN = "test-twilio-auth-token-0123456789";
+export const PUBLIC_URL = "https://voice.test";
+
 export const hasTestDb = Boolean(process.env.TEST_APP_DATABASE_URL && process.env.REDIS_URL);
 
 /** The real application wired to the integration-test database (RLS app role) */
@@ -20,6 +23,9 @@ export async function createTestApp(): Promise<NestFastifyApplication> {
     DATABASE_URL: process.env.TEST_APP_DATABASE_URL,
     JWT_SECRET: process.env.JWT_SECRET ?? "test-only-jwt-secret-0123456789abcdefghij",
     MASTER_ENCRYPTION_KEY: process.env.MASTER_ENCRYPTION_KEY ?? Buffer.alloc(32, 7).toString("base64"),
+    TWILIO_AUTH_TOKEN: TWILIO_TOKEN,
+    PUBLIC_BASE_URL: PUBLIC_URL,
+    GEMINI_API_KEY: undefined,
   });
   const app = await createApp(env, { logger: false });
   await app.init();
