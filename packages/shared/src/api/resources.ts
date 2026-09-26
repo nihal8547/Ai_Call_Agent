@@ -106,3 +106,14 @@ export const SaveDraftBody = z.object({
 export const SetAgentStatusBody = z.object({ status: z.enum(["ACTIVE", "INACTIVE"]) });
 
 export const AnalyticsSummaryQuery = z.object({ days: z.coerce.number().int().min(1).max(365).default(30) });
+
+// ── Test console ────────────────────────────────────────────────────────────
+export const StartTestSessionBody = z.object({
+  /** Which version to talk to; defaults to the draft, else the published version */
+  versionId: z.uuid().optional(),
+  /** Pretend the call happens at this moment (to try working hours) */
+  simulatedAt: z.coerce.date().optional(),
+  /** Make every tool call fail, to rehearse outages */
+  failTools: z.boolean().default(false),
+});
+export const TestMessageBody = z.object({ text: z.string().max(1000) });

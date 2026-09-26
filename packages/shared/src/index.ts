@@ -10,3 +10,4 @@ export * from "./agent/fields";
 export * from "./agent/tools";
 export * from "./agent/workflow";
 export * from "./api/resources";
+export * from "./common/diff";

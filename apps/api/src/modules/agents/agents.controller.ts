@@ -11,8 +11,9 @@ import {
   zodIssuesToFieldErrors,
 } from "@platform/shared";
 import { getTemplate, instantiateTemplate, TEMPLATES } from "@platform/templates";
+import { INTERNAL_TOOLS } from "../telephony/internal-tools";
 import type { FastifyRequest } from "fastify";
-import { type z } from "zod";
+import { z } from "zod";
 import type { AuthContext } from "../../common/auth/auth.types";
 import { CurrentAuth, RequirePermissions } from "../../common/auth/decorators";
 import { AppException } from "../../common/filters/problem-details.filter";
@@ -20,6 +21,8 @@ import { requestMeta } from "../../common/http/request-meta";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import { TenantDbService } from "../../infra/tenant-db.service";
 import { AuditService } from "../audit/audit.service";
+
+const VersionParams = z.object({ id: z.uuid(), versionId: z.uuid() });
 
 const versionView = (v: AgentVersion | null | undefined) =>
   v
@@ -49,6 +52,19 @@ function parseConfig(raw: unknown): AgentConfig {
     );
   }
   return r.data;
+}
+
+/** Only publish configs whose tools can actually run; drafts may reference anything */
+function assertToolsAvailable(config: AgentConfig): void {
+  const errors = config.tools
+    .map((tool, i) => ({ tool, i }))
+    .filter(({ tool }) => !(INTERNAL_TOOLS as readonly string[]).includes(tool))
+    .map(({ tool, i }) => ({
+      path: `config.tools.${i}`,
+      message: `"${tool}" needs an integration that is not connected yet`,
+    }));
+  if (errors.length)
+    throw new AppException(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "Some tools cannot run yet", errors);
 }
 
 @Controller()
@@ -256,7 +272,8 @@ export class AgentsController {
         orderBy: { version: "desc" },
       });
       if (!draft) throw new AppException(HttpStatus.CONFLICT, "CONFLICT", "There is no draft to publish");
-      parseConfig(readJson(AgentConfig, draft.config, "agent_versions.config"));
+      const config = parseConfig(readJson(AgentConfig, draft.config, "agent_versions.config"));
+      assertToolsAvailable(config);
 
       await tx.agentVersion.updateMany({
         where: { agentId: id, status: "PUBLISHED" },
@@ -307,6 +324,87 @@ export class AgentsController {
         ...requestMeta(req),
       });
       return updated;
+    });
+  }
+
+  @RequirePermissions("agents:read")
+  @Get("agents/:id/versions")
+  async versions(
+    @CurrentAuth() auth: AuthContext,
+    @Param(new ZodValidationPipe(IdParam)) { id }: { id: string },
+  ) {
+    const items = await this.tenantDb.db(auth.tenantId).agentVersion.findMany({
+      where: { agentId: id },
+      orderBy: { version: "desc" },
+      select: {
+        id: true,
+        version: true,
+        status: true,
+        changeNote: true,
+        createdAt: true,
+        publishedAt: true,
+        configHash: true,
+      },
+    });
+    return { items };
+  }
+
+  @RequirePermissions("agents:read")
+  @Get("agents/:id/versions/:versionId")
+  async version(
+    @CurrentAuth() auth: AuthContext,
+    @Param(new ZodValidationPipe(VersionParams)) p: z.output<typeof VersionParams>,
+  ) {
+    const v = await this.tenantDb
+      .db(auth.tenantId)
+      .agentVersion.findFirst({ where: { id: p.versionId, agentId: p.id } });
+    if (!v) throw new AppException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Version not found");
+    return versionView(v);
+  }
+
+  /** Copy an earlier version into the draft (publish it to roll back) */
+  @RequirePermissions("agents:write")
+  @Post("agents/:id/versions/:versionId/restore")
+  restore(
+    @CurrentAuth() auth: AuthContext,
+    @Param(new ZodValidationPipe(VersionParams)) p: z.output<typeof VersionParams>,
+    @Req() req: FastifyRequest,
+  ) {
+    return this.tenantDb.tx(auth.tenantId, async (tx) => {
+      await this.findAgent(tx, p.id);
+      const source = await tx.agentVersion.findFirst({ where: { id: p.versionId, agentId: p.id } });
+      if (!source) throw new AppException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Version not found");
+      const config = parseConfig(source.config);
+      const data = {
+        config,
+        configHash: sha256Hex(JSON.stringify(config)),
+        changeNote: `Restored from version ${source.version}`,
+      };
+      const draft = await tx.agentVersion.findFirst({
+        where: { agentId: p.id, status: "DRAFT" },
+        orderBy: { version: "desc" },
+      });
+      const saved = draft
+        ? await tx.agentVersion.update({ where: { id: draft.id }, data })
+        : await tx.agentVersion.create({
+            data: {
+              tenantId: auth.tenantId,
+              agentId: p.id,
+              version:
+                ((await tx.agentVersion.aggregate({ where: { agentId: p.id }, _max: { version: true } }))._max
+                  .version ?? 0) + 1,
+              createdById: auth.kind === "user" ? auth.userId : null,
+              ...data,
+            },
+          });
+      await this.audit.record(tx, auth, {
+        action: "agent.version_restored",
+        entityType: "agent",
+        entityId: p.id,
+        after: { from: source.version, draft: saved.version },
+        ...requestMeta(req),
+      });
+      return versionView(saved);
     });
   }
 

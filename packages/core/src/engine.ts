@@ -684,6 +684,8 @@ function outcome(c: Ctx, reason: string): CallOutcome {
 // ───────────────────────────── helpers ─────────────────────────────
 
 function output(c: Ctx): TurnOutput {
+  // Keep qualification current every turn, so live calls show progress (the outcome is set only at the end)
+  if (!c.s.ended) c.s.qualification = qualification(c);
   const speech = c.t.segments.map((seg) => seg.text).join(" ");
   if (speech) pushHistory(c.s, "agent", speech);
   return {

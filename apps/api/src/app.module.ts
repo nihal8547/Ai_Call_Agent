@@ -17,6 +17,7 @@ import { HealthModule } from "./modules/health/health.module";
 import { LeadsModule } from "./modules/leads/leads.module";
 import { PhoneNumbersModule } from "./modules/phone-numbers/phone-numbers.module";
 import { TelephonyModule } from "./modules/telephony/telephony.module";
+import { TestConsoleModule } from "./modules/test-console/test-console.module";
 import { TenantsModule } from "./modules/tenants/tenants.module";
 import { UsersModule } from "./modules/users/users.module";
 
@@ -51,6 +52,7 @@ export class AppModule {
         PhoneNumbersModule,
         AgentsModule,
         AnalyticsModule,
+        TestConsoleModule,
       ],
       providers: [
         { provide: API_ENV, useValue: env },

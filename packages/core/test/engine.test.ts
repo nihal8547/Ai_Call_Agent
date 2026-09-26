@@ -312,6 +312,11 @@ describe("resilience", () => {
     expect(endCall(ended.session, realEstate(), ctx, "again").session.endReason).toBe("caller_hung_up");
   });
 
+  it("tracks qualification progress while the call is still going", () => {
+    const c = converse(clinic(), ["Priya"]);
+    expect(c.last.session).toMatchObject({ ended: false, qualification: "PARTIAL", outcome: null });
+  });
+
   it("never mutates the session it was given", () => {
     const start = startCall(clinic(), ctx, "c1");
     const frozen = structuredClone(start.session);

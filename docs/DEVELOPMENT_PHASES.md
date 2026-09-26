@@ -701,24 +701,68 @@ understand ─┬─(question & knowledge configured)→ retrieve ─┐
 
 ---
 
-## P7 — Agent editor, versioning, workflow engine, test console
+## P7 — Agent editor, versioning, workflow engine, test console ✅
 
-- **Backend**
-  - `GET /agents/:id/versions`, `POST /agents/:id/versions` (new draft from current or from a template), `PATCH /agent-versions/:id` (draft only), `POST /agent-versions/:id/publish` (runs `AgentConfig` + domain validation: tools connected, collections exist, phone number assigned), `POST /agents/:id/rollback/:versionId`, `POST /agents/from-template`.
-  - Config diff endpoint between versions.
-  - **Test console**: `POST /agent-versions/:id/test-sessions` and `POST /test-sessions/:id/messages` run the real runtime in text mode against a **draft**, and return the reply plus live state and events.
-  - Workflow engine: all step types, `branch` conditions (`eq, neq, in, gt, lt, exists`), `on_error` routing, and working-hours behaviour (off-hours message / take message / handoff).
-- **Frontend: agent editor tabs**
-  - Profile: name, voice, language, greeting.
-  - Behaviour: persona, instructions, business rules, allowed actions.
-  - **Qualification builder:** drag-and-drop ordering (dnd-kit), type-specific inputs, options editor, validation rules, re-ask prompts, and a live preview of the question sequence.
-  - Workflow: a step list editor with a condition builder.
-  - Working hours: a weekly grid + holidays.
-  - Escalation & handoff.
-  - Versions: history, diff, rollback.
-  - **Test console:** a chat panel with the extracted-state inspector and event timeline.
-  - Unsaved-changes guard; client + server validation errors mapped to fields via problem+json `errors[]`.
-- **Tests:** a publish with invalid references is rejected with field-level errors; calls pin the version (editing a draft during a call does not change that call); workflow branch tests.
+**Status: done.**
+
+**Backend**
+
+- **Versions:**
+  - `GET /agents/:id/versions` (history with change notes)
+  - `GET /agents/:id/versions/:versionId`
+  - `POST /agents/:id/versions/:versionId/restore` copies an earlier version into the draft, so a rollback is restore → publish.
+- **Publish-time checks:** a config can only go live if every enabled tool can actually run. The platform runs `leads.create` and `appointments.create` itself; other tools report `config.tools.N: "<tool>" needs an integration that is not connected yet` until P9. Drafts may reference anything.
+- **Test console:**
+  - `POST /agents/:id/test-sessions` takes a `versionId` (default: draft, else published), a `simulatedAt` to try working hours, and `failTools` to rehearse outages.
+  - `POST /test-sessions/:id/messages` returns the reply plus control, prompt, live state (step, awaited field, collected, skipped, open questions, qualification, outcome), tool calls, events, and metrics.
+  - It runs the **same runtime as phone calls**. Tools are simulated and nothing is written to calls, leads or appointments.
+  - Sessions live in Redis for 30 minutes, are private to the user who started them, and are rate-limited.
+- **Engine:** qualification is updated every turn, so live calls and the test console show progress. The outcome is still set only at the end.
+- `diffJson` in `@platform/shared`: structural config diff. Keyed arrays are matched by `key`/`id`, so reordering or inserting a question doesn't mark everything after it as changed.
+
+**Frontend: tabbed agent editor** (`?tab=` in the URL)
+
+- **Live validation:** the browser runs the same `AgentConfig` zod schema as the API. Problems appear as you type, with a count badge on each tab, and saving is disabled until they are fixed. Server and publish errors are merged into the same list. An unsaved-changes guard applies.
+- **Profile:** identity, greeting, language, voice, persona, instructions, business rules, the "answer questions from knowledge" switch, AI model settings.
+- **Questions:**
+  - add, reorder (the workflow's ask order follows), remove
+  - answer types with friendly labels, options, required
+  - "More options": min/max, currency, regex, future-only dates, re-ask prompts, speech-recognition hints, read-back
+  - a warning when a question is not asked by any step
+  - keys are generated from the label, and renames are applied across the whole workflow
+- **Workflow & tools:**
+  - Tool permissions, with "needs an integration" hints.
+  - Step editor for **every step type**: ask questions, say, run a tool (background, inputs, on-error), confirm-then-act (message, action, on-no step, fields to re-ask, success message, inputs), branch, handoff, end.
+  - **Condition builder** for branches: field, operator, and a typed value (option dropdowns for choices, numbers for amounts, lists for "is one of"), multiple conditions and rules, "otherwise".
+  - Reorder and remove steps; new steps are inserted before the final end step.
+- **Hours & handoff:** weekly hours grid, holidays, off-hours behaviour and message, handoff number and messages, escalation (re-asks, failure policy, silence, AI failures), call limits, and **every fallback sentence**.
+- **Versions:** history; pick a version to see a line-by-line diff against the editor; restore into the draft.
+- **Test:** chat with the draft or the live version; pretend-time and tool-failure switches; a live call-state panel and the last turn's events.
+
+**Tests:**
+
+- API: 52 in total, 6 new.
+  - version history and restore
+  - publish blocked for a not-yet-available tool, while the draft saves fine
+  - a test console booking end to end with simulated tools and **zero rows written**
+  - branches (emergency → transfer) and a simulated night-time clock
+  - tool-outage rehearsal
+  - sessions private per user and per tenant
+- Core: 138 tests, including live qualification.
+- Shared: diff tests.
+
+**Browser E2E (manual Playwright run):**
+
+1. Create an agent from a template.
+2. A broken question shows "1 problem" and disables save.
+3. Add a "Parking needed" yes/no question (key auto-generated).
+4. Edit a branch condition and save.
+5. The test console asks the new question and the state panel fills in.
+6. Publish v1, change the greeting, and see the diff against v1.
+7. Restore brings the old greeting back.
+8. Enabling `calendar.book` blocks publishing, with a badge on the Workflow tab.
+
+**Deferred:** drag-and-drop reordering (arrow buttons for now); more than one opening-hours range per day in the UI (the schema supports several).
 
 ---
 

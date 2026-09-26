@@ -21,6 +21,9 @@ export type ToolContext = {
   config: AgentConfig;
 };
 
+/** Tools the platform runs itself; others need an integration (connected in P9) */
+export const INTERNAL_TOOLS = ["leads.create", "appointments.create"] as const;
+
 const AppointmentInput = z.object({
   title: z.string().trim().min(1).max(200).default("Appointment"),
   date: z.iso.date(),
