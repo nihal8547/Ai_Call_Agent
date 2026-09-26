@@ -73,6 +73,8 @@ export const LLMConfig = z.object({
   model: z.string().min(1).max(80).default("gemini-2.5-flash"),
   temperature: z.number().min(0).max(1).default(0.3),
   timeoutMs: z.number().int().min(500).max(15000).default(2500),
+  /** Let the LLM rephrase the deterministic reply so it sounds natural (facts are verified afterwards) */
+  rephrase: z.boolean().default(true),
 });
 
 export const CallLimits = z.object({

@@ -166,6 +166,19 @@ describe("LLM understanding path", () => {
     expect(c.last.speech).toContain("Okay, I've updated the budget to 1 crore rupees.");
   });
 
+  it("rules fill in what the LLM missed for the awaited field, but never override a question", () => {
+    const c = converse(clinic(), [
+      { transcript: "Priya", understanding: { intent: "unclear", fields: {} } },
+      {
+        transcript: "what about cleaning?",
+        understanding: { intent: "question", fields: {}, question: "what about cleaning?" },
+      },
+    ]);
+    expect(c.outputs[1]!.session.collected.patient_name).toBe("Priya");
+    expect(c.last.session.collected.service_required).toBeUndefined();
+    expect(c.last.session.pendingQuestions).toEqual(["what about cleaning?"]);
+  });
+
   it("opens the circuit breaker after repeated LLM failures", () => {
     const c = converse(realEstate(), [
       { transcript: "Rahul", llmError: true },

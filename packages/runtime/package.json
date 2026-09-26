@@ -1,8 +1,8 @@
 {
-  "name": "@platform/core",
+  "name": "@platform/runtime",
   "version": "0.0.0",
   "private": true,
-  "description": "Business-agnostic conversation engine: dynamic fields, workflow decisions, fallbacks, guards (pure, no I/O)",
+  "description": "Per-turn orchestration (LangGraph): LLM understanding, knowledge retrieval, core engine, phrasing, guard",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -18,15 +18,20 @@
     "build": "tsc -p tsconfig.build.json",
     "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src test",
-    "test": "vitest run"
+    "lint": "eslint src test scripts",
+    "test": "vitest run",
+    "simulate": "tsx --env-file-if-exists=../../.env scripts/simulate.ts"
   },
   "dependencies": {
+    "@langchain/core": "^1.1.0",
+    "@langchain/langgraph": "^1.4.0",
+    "@platform/ai": "workspace:*",
+    "@platform/core": "workspace:*",
     "@platform/shared": "workspace:*",
     "zod": "^4.6.5"
   },
   "devDependencies": {
     "@platform/templates": "workspace:*",
-    "fast-check": "^4.3.0"
+    "tsx": "^4.23.15"
   }
 }

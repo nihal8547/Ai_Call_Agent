@@ -18,7 +18,7 @@
     "db:migrate:dev": "pnpm --filter @platform/db migrate:dev",
     "db:seed": "pnpm --filter @platform/db seed",
     "db:check": "pnpm --filter @platform/db check",
-    "simulate": "pnpm --filter @platform/core simulate --"
+    "simulate": "pnpm --filter @platform/runtime simulate"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

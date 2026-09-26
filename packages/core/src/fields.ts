@@ -101,10 +101,13 @@ export function validateFieldValue(field: QualificationField, raw: unknown, ctx:
   }
 }
 
-/** Names must contain letters; anything else is not a name */
+/** A name is 1–4 words of letters (plus ' . -); a sentence is not a name */
 function nameFallback(s: string): string {
   const t = cleanText(s);
-  return /\p{L}{2,}/u.test(t) ? t : "";
+  const words = t.split(" ").filter(Boolean);
+  const looksLikeName =
+    words.length >= 1 && words.length <= 4 && words.every((w) => /^[\p{L}][\p{L}'.-]*$/u.test(w));
+  return looksLikeName && /\p{L}{2,}/u.test(t) ? t : "";
 }
 
 /** Free text as spoken, minus fillers and characters that have no place in speech (brackets, markup) */
@@ -163,34 +166,38 @@ type JsonSchema = Record<string, unknown>;
  */
 export function buildExtractionJsonSchema(fields: readonly QualificationField[]): JsonSchema {
   const properties: Record<string, JsonSchema> = {};
+  const nullable = (schema: JsonSchema, description: string): JsonSchema => ({
+    anyOf: [schema, { type: "null" }],
+    description,
+  });
   for (const f of fields) {
     const description = `${f.label}. Asked as: "${f.question}"`;
     properties[f.key] = (() => {
       switch (f.type) {
         case "number":
         case "currency":
-          return {
-            type: ["number", "null"],
-            description: `${description}. Plain number${f.type === "currency" ? ` in ${f.currency}, e.g. 80 lakh = 8000000` : ""}.`,
-          };
+          return nullable(
+            { type: "number" },
+            `${description}. Plain number${f.type === "currency" ? ` in ${f.currency}, e.g. 80 lakh = 8000000` : ""}.`,
+          );
         case "boolean":
-          return { type: ["boolean", "null"], description };
+          return nullable({ type: "boolean" }, description);
         case "select":
-          return { type: ["string", "null"], enum: [...f.options, null], description };
+          return nullable({ type: "string", enum: f.options }, description);
         case "multiselect":
-          return { type: ["array", "null"], items: { type: "string", enum: f.options }, description };
+          return nullable({ type: "array", items: { type: "string", enum: f.options } }, description);
         case "date":
-          return {
-            type: ["string", "null"],
-            description: `${description}. Exactly as the caller said it, e.g. "next Monday" or "12 October".`,
-          };
+          return nullable(
+            { type: "string" },
+            `${description}. Exactly as the caller said it, e.g. "next Monday" or "12 October".`,
+          );
         case "time":
-          return {
-            type: ["string", "null"],
-            description: `${description}. Exactly as the caller said it, e.g. "5:30 pm".`,
-          };
+          return nullable(
+            { type: "string" },
+            `${description}. Exactly as the caller said it, e.g. "5:30 pm".`,
+          );
         default:
-          return { type: ["string", "null"], description };
+          return nullable({ type: "string" }, description);
       }
     })();
   }
@@ -204,7 +211,10 @@ export function buildExtractionJsonSchema(fields: readonly QualificationField[])
         enum: ["answer", "question", "both", "affirm", "deny", "wants_human", "not_interested", "unclear"],
         description: "What the caller's latest utterance does",
       },
-      question: { type: ["string", "null"], description: "The caller's question, if they asked one" },
+      question: {
+        anyOf: [{ type: "string" }, { type: "null" }],
+        description: "The caller's question, if they asked one",
+      },
       fields: { type: "object", additionalProperties: false, properties },
       sentiment: { type: "string", enum: ["positive", "neutral", "negative"] },
     },

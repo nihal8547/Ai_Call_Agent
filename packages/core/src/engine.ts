@@ -156,7 +156,9 @@ export function handleTurn(
   }
   s.silentTurns = 0;
 
-  const understanding = input.understanding ?? understandWithRules(c, text);
+  const understanding = input.understanding
+    ? supplementWithRules(c, input.understanding, text)
+    : understandWithRules(c, text);
   const source = input.understanding ? "llm" : "rules";
   // Safety net: explicit requests for a person always win, whatever the model said
   const intent: Intent = detectWantsHuman(text) ? "wants_human" : understanding.intent;
@@ -523,6 +525,27 @@ function understandWithRules(c: Ctx, text: string): Understanding {
     fields,
     question: question ? text : null,
   };
+}
+
+/**
+ * The LLM sometimes misses what the rules can see (e.g. a bare name, a plain "yes").
+ * When it reports no value for the awaited field and no stronger intent, let the rules fill the gap.
+ */
+function supplementWithRules(c: Ctx, llm: Understanding, text: string): Understanding {
+  if (llm.intent !== "unclear" && llm.intent !== "answer") return llm;
+  const awaiting = c.s.awaiting;
+  if (awaiting?.kind === "field" && llm.fields[awaiting.fieldKey] == null) {
+    const rules = understandWithRules(c, text);
+    const value = rules.fields[awaiting.fieldKey];
+    if (value !== undefined && rules.intent !== "question" && rules.intent !== "both") {
+      return { ...llm, intent: "answer", fields: { ...llm.fields, [awaiting.fieldKey]: value } };
+    }
+  }
+  if (awaiting?.kind === "confirm" && llm.intent === "unclear" && !Object.keys(llm.fields).length) {
+    const rules = understandWithRules(c, text);
+    if (rules.intent === "affirm" || rules.intent === "deny" || rules.intent === "answer") return rules;
+  }
+  return llm;
 }
 
 function mergeFields(

@@ -1,8 +1,8 @@
 {
-  "name": "@platform/core",
+  "name": "@platform/ai",
   "version": "0.0.0",
   "private": true,
-  "description": "Business-agnostic conversation engine: dynamic fields, workflow decisions, fallbacks, guards (pure, no I/O)",
+  "description": "LLM and embedding provider adapters behind one interface",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -22,11 +22,6 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@platform/shared": "workspace:*",
     "zod": "^4.6.5"
-  },
-  "devDependencies": {
-    "@platform/templates": "workspace:*",
-    "fast-check": "^4.3.0"
   }
 }
