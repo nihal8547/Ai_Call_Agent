@@ -38,6 +38,9 @@ jobs:
       DATABASE_MIGRATION_URL: postgresql://voice_owner:voice_owner@localhost:5432/voice
       SHADOW_DATABASE_URL: postgresql://voice_owner:voice_owner@localhost:5432/voice_shadow
       TEST_DATABASE_URL: postgresql://voice_owner:voice_owner@localhost:5432/voice_test
+      TEST_APP_DATABASE_URL: postgresql://voice_app:voice_app@localhost:5432/voice_test
+      # CI-only throwaway key
+      MASTER_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
       REDIS_URL: redis://localhost:6379
 
     steps:

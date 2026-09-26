@@ -301,45 +301,50 @@ export function tenantClient(prisma: PrismaClient, tenantId: string) {
 
 ---
 
-## P1 — Database & tenant isolation
+## P1 — Database & tenant isolation ✅
 
 **Goal:** the complete data model with enforced tenant isolation.
 
-**Already done in this repository:**
+**Status: done.**
 
-- [x] `packages/db/prisma/schema.prisma`: all 24 models (tenancy, auth, agents, versions, phone numbers, knowledge, documents, chunks with `vector(768)` + generated `tsvector`, integrations, agent tools, calls, call events, leads, lead statuses, appointments, usage, audit), enums, indexes, snake_case mapping.
-- [x] Migration `…_init`: Prisma-generated SQL + HNSW index + CHECK constraints (time ranges, E.164, progress, sizes).
-- [x] Migration `…_rls`:
-  - `app_user` role
-  - `FORCE ROW LEVEL SECURITY` + `tenant_isolation` policy on all 22 tenant tables
-  - `app_current_tenant()`
-  - SECURITY DEFINER lookups `resolve_phone_number`, `user_memberships`, `resolve_api_key`, `resolve_invitation`
+- [x] **Schema:** `packages/db/prisma/schema.prisma` has 24 models, enums, indexes, snake_case mapping, a `vector(768)` embedding column, and a generated `tsvector` column.
+- [x] **Migration `…_init`:** Prisma-generated SQL + HNSW index + CHECK constraints.
+- [x] **Migration `…_rls`:**
+  - the `app_user` role
+  - `FORCE ROW LEVEL SECURITY` + a `tenant_isolation` policy on all 22 tenant tables
+  - SECURITY DEFINER lookups: `resolve_phone_number`, `user_memberships`, `resolve_api_key`, `resolve_invitation`
   - `_prisma_migrations` hidden from the app role
-- [x] `packages/db/scripts/check-migrations.sh`: drift check (allows only the known HNSW false-positive).
-- [x] Verified on PostgreSQL 16 + pgvector:
-  - migrations apply cleanly
-  - with no tenant set, 0 rows are visible
-  - tenant A sees only its own rows
-  - an insert for tenant B is rejected by RLS
-  - an update of B's rows affects 0 rows
-  - phone routing works before the tenant is known
-  - the app role cannot read `_prisma_migrations`
+- [x] **`scripts/check-migrations.sh`:** drift check, also run in CI.
+- [x] **`packages/db` code:**
+  - `createPrismaClient`
+  - **`tenantClient()`**: a Prisma extension that sets `app.tenant_id` inside each operation's transaction
+  - **`withTenant()`**: multi-statement tenant transactions
+  - `readJson` / `writeJson`: zod-validated JSONB
+  - typed wrappers for the SECURITY DEFINER lookups
+  - **`provisionTenant()`**: tenant + encrypted DEK + system roles + default lead statuses + owner membership, created atomically
+- [x] **`packages/crypto`:** AES-256-GCM envelope encryption (versioned format, AAD-bound to the tenant), argon2id password hashing, a timing-safe dummy verify, random tokens, SHA-256.
+- [x] **`packages/shared`:** permission catalogue (30 permissions), the default roles OWNER ⊇ ADMIN ⊇ MANAGER ⊇ STAFF, default lead statuses, `TenantLimits`, and the slug and E.164 validators.
+- [x] **Seed (`pnpm db:seed`):**
+  - idempotent, and runs through the RLS app connection
+  - a platform owner user
+  - **ABC Real Estate** (Sales Agent, +911140000001) and **XYZ Clinic** (Reception Agent, +911140000002)
+- [x] **`prisma.config.ts`**, and every entry point (api, worker, prisma CLI, seed, tests, drift check) loads the root `.env`.
+- [x] **Isolation test suite:** 101 tests, run as `voice_app` against a real Postgres.
+  - Every table with a `tenant_id` column must have forced RLS + a policy (new tables without RLS fail CI).
+  - For each of the 22 tables:
+    - the owning tenant sees its row
+    - another tenant sees nothing and cannot update or delete it
+    - a missing context sees nothing
+  - Insert-for-another-tenant and move-to-another-tenant are rejected.
+  - Prisma API checks (`findUnique`, `update`, `updateMany`, `deleteMany`) across tenants.
+  - 40 concurrent interleaved tenant queries show no leakage.
+  - A malformed tenant id is rejected.
+  - Phone routing, membership lookup, and the app role cannot read migrations.
+  - Provisioning is atomic, with rollback on failure.
 
-**Remaining:**
+Test setup note: the integration tests apply migrations with the non-destructive `migrate deploy` and create uniquely named tenants, so they never need to wipe a database.
 
-- [ ] `packages/db` package: `package.json` scripts (`generate`, `migrate:dev`, `migrate:deploy`, `seed`, `check`), `src/client.ts` (singleton), `src/tenant-client.ts` + `withTenant()`, `src/json.ts` (typed JSON parse helpers), `src/system.ts` (typed wrappers for the SECURITY DEFINER functions).
-- [ ] Seed script (`prisma/seed.ts`), idempotent:
-  - platform owner user
-  - two demo tenants: **ABC Real Estate** (Ava template) and **XYZ Clinic**
-  - system roles + default lead statuses per tenant
-  - one agent + published version each
-  - demo phone numbers
-- [ ] **Isolation test suite** (`packages/db/test/isolation.test.ts`, Testcontainers). For every tenant model, check that tenant B cannot select, update, delete, or insert tenant A's rows through `tenantClient`, and that a missing tenant context returns nothing.
-
-**Definition of Done**
-
-- `pnpm --filter @platform/db migrate:deploy && pnpm --filter @platform/db seed` works on a fresh database.
-- The isolation suite is green in CI.
+**Definition of Done:** ✅ `pnpm db:migrate && pnpm db:seed` works on a fresh database, and the isolation suite is green.
 
 ---
 

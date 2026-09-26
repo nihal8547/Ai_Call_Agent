@@ -10,6 +10,14 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# Load the monorepo root .env for local runs; variables already set take precedence
+if [[ -f ../../.env ]]; then
+  while IFS='=' read -r key value; do
+    [[ -z "$key" || "$key" == \#* ]] && continue
+    [[ -z "${!key:-}" ]] && export "$key=$value"
+  done < ../../.env
+fi
+
 : "${SHADOW_DATABASE_URL:?set SHADOW_DATABASE_URL to an empty scratch database}"
 
 ALLOWED='^DROP INDEX "document_chunks_embedding_hnsw_idx";$'

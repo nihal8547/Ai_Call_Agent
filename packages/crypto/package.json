@@ -1,0 +1,27 @@
+{
+  "name": "@platform/crypto",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Envelope encryption, password hashing and token utilities (server-only)",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src test",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "argon2": "^0.44.0"
+  }
+}
