@@ -88,6 +88,13 @@ export async function twilioPost(
   return { res, twiml: parseTwiml(res.statusCode, res.body) };
 }
 
+/**
+ * The caller's number for simulated calls: the same within a test file (repeat-caller behaviour),
+ * but different per file and per run, so files running in parallel don't share the inbound-call
+ * rate-limit bucket.
+ */
+export const DEFAULT_CALLER = `+9198${randomInt(10_000_000, 99_999_999)}`;
+
 /** Simulate a phone call: dial in, then speak each line; returns every agent reply */
 export async function phoneCall(
   app: NestFastifyApplication,
@@ -96,7 +103,7 @@ export async function phoneCall(
   callSid = `CA${randomInt(1e9, 9e9)}${Date.now()}`,
   overrides: Record<string, string> = {},
 ) {
-  const base = { CallSid: callSid, From: "+919812345678", To: to, CallStatus: "in-progress", ...overrides };
+  const base = { CallSid: callSid, From: DEFAULT_CALLER, To: to, CallStatus: "in-progress", ...overrides };
   const replies: TwimlResponse[] = [];
   let r = await twilioPost(app, "/telephony/twilio/voice", base);
   replies.push(r.twiml);

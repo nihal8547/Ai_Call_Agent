@@ -2,7 +2,13 @@ import { type GenerateParams, ScriptedLLM, type ScriptedReply } from "@platform/
 import type { EngineContext, ToolCall } from "@platform/core";
 import { instantiateTemplate } from "@platform/templates";
 import { describe, expect, it } from "vitest";
-import { checkPhrase, createRuntime, type ToolRunner } from "../src";
+import {
+  checkPhrase,
+  createRuntime,
+  type KnowledgeRetriever,
+  type KnowledgeSearchResult,
+  type ToolRunner,
+} from "../src";
 
 const ctx: EngineContext = {
   timezone: "Asia/Kolkata",
@@ -113,41 +119,165 @@ describe("runtime turn graph", () => {
     expect(t.output.session.collected.patient_name).toBe("Priya");
   });
 
-  it("answers questions from knowledge, and never speaks unsafe retrieved text", async () => {
-    const answers = [
-      {
-        text: "Yes, we offer dental implants. A consultation costs 500 rupees.",
-        sources: ["Implants: yes. Consultation fee 500."],
-      },
-      { text: "See https://clinic.example/prices for prices.", sources: ["x"] },
-    ];
-    const rt = createRuntime({
-      llm: null,
-      tools: okTools,
-      retriever: { answer: async () => answers.shift() ?? null },
+  /** A fake knowledge base: `search` returns one relevant passage; `answer` is scripted */
+  function fakeRetriever(opts: {
+    answers?: (string | null)[];
+    searchMs?: number;
+    hang?: "search" | "answer";
+    budgets?: number[];
+  }): KnowledgeRetriever & { searches: string[] } {
+    const answers = [...(opts.answers ?? [])];
+    const searches: string[] = [];
+    const found = (query: string): KnowledgeSearchResult => ({
+      query,
+      mode: "hybrid",
+      hits: [
+        {
+          chunkId: "c1",
+          documentId: "d1",
+          documentTitle: "Clinic FAQ",
+          score: 0.03,
+          vectorScore: 0.8,
+          textScore: 0.1,
+          relevant: true,
+        },
+      ],
+      passages: [{}],
+      latencyMs: opts.searchMs ?? 5,
     });
+    return {
+      searches,
+      search: async (query) => {
+        searches.push(query);
+        if (opts.hang === "search") return new Promise(() => undefined);
+        await new Promise((r) => setTimeout(r, opts.searchMs ?? 5));
+        return found(query);
+      },
+      answer: async (_q, _found, { timeoutMs }) => {
+        opts.budgets?.push(timeoutMs);
+        if (opts.hang === "answer") return new Promise(() => undefined);
+        const text = answers.shift() ?? null;
+        return {
+          answer: text
+            ? {
+                text,
+                sources: [{ chunkId: "c1", documentId: "d1", title: "Clinic FAQ", page: 2 }],
+                method: "generated",
+              }
+            : null,
+          ...(text ? {} : { failure: "not_in_sources" }),
+          usedChunkIds: ["c1"],
+        };
+      },
+    };
+  }
+
+  it("answers questions from knowledge, and never speaks unsafe retrieved text", async () => {
+    const retriever = fakeRetriever({
+      answers: [
+        "Yes, we offer dental implants. A consultation costs 500 rupees.",
+        "See https://clinic.example/prices for prices.",
+      ],
+    });
+    const rt = createRuntime({ llm: null, tools: okTools, retriever });
     const s = (await rt.start(config, ctx, "c1")).output.session;
     const good = await rt.turn(config, s, { transcript: "do you do implants?" }, ctx);
     expect(good.speech).toBe(
       "Yes, we offer dental implants. A consultation costs 500 rupees. May I have the patient's name?",
     );
+    expect(good.runtimeEvents).toContainEqual(
+      expect.objectContaining({
+        type: "retrieval",
+        answered: true,
+        speculative: true,
+        method: "generated",
+        query: "do you do implants?",
+        hits: [expect.objectContaining({ chunkId: "c1", used: true, relevant: true })],
+        used: [{ chunkId: "c1", documentId: "d1", title: "Clinic FAQ", page: 2 }],
+      }),
+    );
     const unsafe = await rt.turn(config, good.output.session, { transcript: "what are your prices?" }, ctx);
     expect(unsafe.speech).toContain("I'll have our team confirm it for you");
     expect(unsafe.runtimeEvents).toContainEqual(
-      expect.objectContaining({ type: "retrieval", answered: false, rejected: "guard:url" }),
+      expect.objectContaining({
+        type: "retrieval",
+        answered: false,
+        rejected: "guard:url",
+        reason: "rejected",
+      }),
+    );
+    expect(unsafe.output.session.pendingQuestions).toEqual(["what are your prices?"]);
+  });
+
+  it("searches in parallel with understanding, so a question costs the slower of the two", async () => {
+    const retriever = fakeRetriever({
+      answers: ["Free parking is available in the basement."],
+      searchMs: 300,
+    });
+    // Understanding really takes 300 ms of wall-clock time
+    const slowUnderstanding = {
+      name: "slow",
+      generate: async (p: GenerateParams) => {
+        if (isUnderstand(p)) await new Promise((r) => setTimeout(r, 300));
+        return isUnderstand(p)
+          ? {
+              ok: true as const,
+              text: "",
+              json: { intent: "question", fields: {}, question: "Is there parking?" },
+              usage: { inputTokens: 1, outputTokens: 1 },
+              latencyMs: 300,
+              model: "m",
+            }
+          : { ok: false as const, error: "timeout" as const, message: "skip", latencyMs: 0, model: "m" };
+      },
+    };
+    const rt = createRuntime({ llm: slowUnderstanding, tools: okTools, retriever });
+    const s = (await rt.start(config, ctx, "c1")).output.session;
+    const started = Date.now();
+    const t = await rt.turn(config, s, { transcript: "is there parking near you?" }, ctx);
+    expect(Date.now() - started).toBeLessThan(550); // not 300 + 300
+    expect(retriever.searches).toEqual(["is there parking near you?"]); // searched once, speculatively
+    expect(t.speech).toContain("Free parking is available in the basement.");
+    expect(t.metrics.understandMs).toBe(300);
+    expect(t.runtimeEvents).toContainEqual(
+      expect.objectContaining({ type: "retrieval", speculative: true, answered: true }),
     );
   });
 
-  it("survives a retriever that throws or hangs", async () => {
-    const rt = createRuntime({
-      llm: null,
-      tools: okTools,
-      retriever: { answer: () => new Promise(() => undefined) },
-    });
+  it("does not search for statements, and the answer gets only what is left of the turn budget", async () => {
+    const budgets: number[] = [];
+    const retriever = fakeRetriever({ answers: ["Yes."], budgets });
+    const rt = createRuntime({ llm: null, tools: okTools, retriever });
     const s = (await rt.start(config, ctx, "c1")).output.session;
-    const t = await rt.turn(config, s, { transcript: "what are your timings?" }, ctx);
-    expect(t.speech).toContain("I'll have our team confirm it for you");
-    expect(t.metrics.retrieveMs).toBeGreaterThanOrEqual(1500);
+    await rt.turn(config, s, { transcript: "Priya" }, ctx);
+    expect(retriever.searches).toEqual([]);
+
+    const slow = {
+      name: "slow",
+      generate: async () => ({
+        ok: true as const,
+        text: "",
+        json: { intent: "question", fields: {}, question: "Do you open on Sunday?" },
+        usage: { inputTokens: 1, outputTokens: 1 },
+        latencyMs: 2600,
+        model: "m",
+      }),
+    };
+    const rt2 = createRuntime({ llm: slow, tools: okTools, retriever });
+    await rt2.turn(config, s, { transcript: "do you open on sunday?" }, ctx);
+    expect(budgets).toEqual([400]); // 3000 ms budget − 2600 ms understanding: the retriever will quote, not generate
+  });
+
+  it("survives a retriever that hangs while searching or answering", async () => {
+    for (const hang of ["search", "answer"] as const) {
+      const rt = createRuntime({ llm: null, tools: okTools, retriever: fakeRetriever({ hang }) });
+      const s = (await rt.start(config, ctx, "c1")).output.session;
+      const started = Date.now();
+      const t = await rt.turn(config, s, { transcript: "what are your timings?" }, ctx);
+      expect(t.speech).toContain("I'll have our team confirm it for you");
+      expect(Date.now() - started).toBeLessThan(3500);
+      expect(t.runtimeEvents).toContainEqual(expect.objectContaining({ type: "retrieval", answered: false }));
+    }
   }, 10_000);
 
   it("runs blocking tools inside the turn and recovers from a hanging tool", async () => {

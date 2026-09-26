@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@platform/ai": "*",
+    "@platform/core": "*",
     "@platform/db": "*",
     "@platform/storage": "*",
     "exceljs": "^4.4.0",

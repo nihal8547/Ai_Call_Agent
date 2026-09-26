@@ -14,6 +14,7 @@ import { CallRecorder, timelineEvents } from "./call-recorder";
 import { type CallState, CallStateStore } from "./call-state.store";
 import { sendMail, type SmtpCredentials, type SmtpSettings, type ToolRunEvent } from "@platform/tools";
 import { IntegrationsService } from "../integrations/integrations.service";
+import { RetrieverFactory } from "../knowledge/retriever.factory";
 import { type CallTools, ToolService } from "../tools/tool.service";
 import { upsertLeadForCall } from "./lead-writer";
 
@@ -44,6 +45,7 @@ export class TelephonyService {
     private readonly recorder: CallRecorder,
     private readonly toolService: ToolService,
     private readonly integrations: IntegrationsService,
+    private readonly retrievers: RetrieverFactory,
   ) {
     this.twilio = env.TWILIO_AUTH_TOKEN ? new TwilioAdapter(env.TWILIO_AUTH_TOKEN) : null;
   }
@@ -92,7 +94,7 @@ export class TelephonyService {
       callerNumber: call.from,
     };
     const tools = this.tools(base, config);
-    const turn = await this.runtimeFor(config, tools).start(config, this.ctx(base), record.id);
+    const turn = await this.runtimeFor(base, config, tools).start(config, this.ctx(base), record.id);
     const state: CallState = {
       ...base,
       session: turn.output.session,
@@ -121,7 +123,12 @@ export class TelephonyService {
       const { config } = await this.configs.published(state.tenantId, state.agentVersionId);
       const speech = call.speech ?? { transcript: "" };
       const tools = this.tools(state, config);
-      const turn = await this.runtimeFor(config, tools).turn(config, state.session, speech, this.ctx(state));
+      const turn = await this.runtimeFor(state, config, tools).turn(
+        config,
+        state.session,
+        speech,
+        this.ctx(state),
+      );
       return this.complete(state, config, turn, [
         ...timelineEvents(turn, speech),
         ...executionEvents(tools.drain()),
@@ -323,9 +330,9 @@ export class TelephonyService {
     );
   }
 
-  private runtimeFor(config: AgentConfig, tools: CallTools) {
+  private runtimeFor(state: CallContext, config: AgentConfig, tools: CallTools) {
     const llm = createLLMProvider(config.llm.provider, { gemini: this.env.GEMINI_API_KEY });
-    return createRuntime({ llm, tools });
+    return createRuntime({ llm, tools, retriever: this.retrievers.forAgent(state, config, llm) });
   }
 
   private tools(state: CallContext, config: AgentConfig): CallTools {

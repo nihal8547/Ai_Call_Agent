@@ -28,12 +28,28 @@ export function timelineEvents(
         payload: { reason: `llm_${e.error}`, purpose: e.purpose },
         latencyMs: e.latencyMs,
       });
-    if (e.type === "retrieval")
+    if (e.type === "retrieval") {
+      // One row per question: the engine's verdict (grounded or safe answer) plus how it was found
+      const q = (turn.engineEvents as EngineEvent[]).find((x) => x.type === "question");
       rows.push({
         type: "RAG_RETRIEVAL",
-        payload: { answered: e.answered, sources: e.sources, rejected: e.rejected ?? null },
+        payload: {
+          question: q?.type === "question" ? q.question : (e.query ?? null),
+          answered: q?.type === "question" ? q.answered : e.answered ? "grounded" : "safe",
+          method: e.method ?? null,
+          reason: e.reason ?? null,
+          detail: e.detail ?? null,
+          mode: e.mode ?? null,
+          speculative: e.speculative ?? false,
+          searchMs: e.searchMs ?? null,
+          answerMs: e.answerMs ?? null,
+          rejected: e.rejected ?? null,
+          hits: (e.hits ?? []).slice(0, 5),
+          used: e.used ?? [],
+        },
         latencyMs: e.latencyMs,
       });
+    }
     if (e.type === "phrase_rejected")
       rows.push({ type: "FALLBACK", payload: { reason: "phrase_rejected", reasons: e.reasons } });
     if (e.type === "guard_blocked")
@@ -59,7 +75,9 @@ export function timelineEvents(
         rows.push({ type: "FALLBACK", payload: { reason: "field_skipped", field: e.field } });
         break;
       case "question":
-        rows.push({ type: "RAG_RETRIEVAL", payload: { question: e.question, answered: e.answered } });
+        // Already recorded with the retrieval details when a knowledge search ran
+        if (!(turn.runtimeEvents as RuntimeEvent[]).some((r) => r.type === "retrieval"))
+          rows.push({ type: "RAG_RETRIEVAL", payload: { question: e.question, answered: e.answered } });
         break;
       case "tool_call":
         rows.push({

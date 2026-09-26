@@ -5,3 +5,6 @@ export * from "./extract";
 export * from "./types";
 export * from "./ingest";
 export * from "./retrieve";
+export * from "./answer";
+export * from "./retriever";
+export * from "./lexicon";

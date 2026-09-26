@@ -8,6 +8,7 @@ import { StatusPill } from "@/components/ui/status-pill";
 import { api } from "@/lib/api/client";
 import { errorMessage } from "@/lib/api/errors";
 import { cn } from "@/lib/cn";
+import { isAnswered, KnowledgeEvent, type RagPayload, SourceLinks } from "./knowledge-events";
 import { fmtDateTime, fmtDuration, fmtValue, humanize } from "@/lib/format";
 import type { CallDetail, CallEvent } from "@/lib/types";
 
@@ -20,6 +21,18 @@ export function CallDetailPage({ id }: { id: string }) {
     queryFn: () => api<{ items: CallEvent[] }>(`/calls/${id}/events`),
     enabled: canTranscript,
   });
+  const knowledge = (() => {
+    const rag = (events.data?.items ?? [])
+      .filter((e) => e.type === "RAG_RETRIEVAL")
+      .map((e) => e.payload as RagPayload);
+    const seen = new Map<string, NonNullable<RagPayload["used"]>[number]>();
+    for (const p of rag) for (const src of p.used ?? []) seen.set(src.chunkId, src);
+    return {
+      asked: rag,
+      sources: [...seen.values()],
+      unanswered: rag.filter((p) => !isAnswered(p) && p.question).map((p) => p.question!),
+    };
+  })();
 
   if (call.error) return <Alert>{errorMessage(call.error)}</Alert>;
   const c = call.data;
@@ -45,9 +58,13 @@ export function CallDetailPage({ id }: { id: string }) {
           ) : null}
           {events.error ? <Alert>{errorMessage(events.error)}</Alert> : null}
           <ol className="mt-4 space-y-3">
-            {events.data?.items.map((e) => (
-              <TimelineItem key={e.id} event={e} />
-            ))}
+            {events.data?.items.map((e) =>
+              e.type === "RAG_RETRIEVAL" ? (
+                <KnowledgeEvent key={e.id} event={e} slug={me.tenant.slug} />
+              ) : (
+                <TimelineItem key={e.id} event={e} />
+              ),
+            )}
           </ol>
         </Card>
         <div className="space-y-6">
@@ -81,6 +98,34 @@ export function CallDetailPage({ id }: { id: string }) {
               <p className="mt-2 text-sm text-slate-500">Nothing collected.</p>
             )}
           </Card>
+          {knowledge.asked.length ? (
+            <Card>
+              <h2 className="font-semibold">Knowledge used</h2>
+              {knowledge.sources.length ? (
+                <div className="mt-2 text-sm">
+                  <SourceLinks sources={knowledge.sources} slug={me.tenant.slug} />
+                </div>
+              ) : (
+                <p className="mt-2 text-sm text-slate-500">No documents were used.</p>
+              )}
+              {knowledge.unanswered.length ? (
+                <>
+                  <h3 className="mt-4 text-sm font-medium">Couldn't answer</h3>
+                  <ul className="mt-1 list-disc space-y-1 pl-5 text-sm">
+                    {knowledge.unanswered.map((q, i) => (
+                      <li key={i}>{q}</li>
+                    ))}
+                  </ul>
+                  <Link
+                    href={`/t/${me.tenant.slug}/knowledge/gaps`}
+                    className="mt-2 inline-block text-sm text-brand-600 hover:underline"
+                  >
+                    Add answers in Knowledge gaps
+                  </Link>
+                </>
+              ) : null}
+            </Card>
+          ) : null}
           <Card>
             <h2 className="font-semibold">Result</h2>
             {c.summary ? <p className="mt-2 text-sm">{c.summary}</p> : null}

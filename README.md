@@ -81,6 +81,9 @@ docker compose up -d --build
 - Search is hybrid: meaning (pgvector) plus keywords (Postgres full-text). Meaning search needs embeddings: set `GEMINI_API_KEY` (or `EMBEDDINGS_PROVIDER=hashing` for an offline stand-in). Without either, documents are searchable by keywords only. After changing the provider, **Reprocess** existing documents.
 - Scanned PDFs and images need `GEMINI_API_KEY` for text recognition; without it they fail with a clear message.
 - Try questions in **Knowledge Base → Search playground**, then pick collections per agent in the agent editor's **Knowledge** tab.
+- On calls and in the test console, agents answer questions from their collections only. Each answer cites its sources; any number it speaks must appear in them. When nothing relevant is found, the agent says the team will confirm and records a follow-up. The call page shows which documents were used.
+- **Knowledge Base → Knowledge gaps** groups the questions agents could not answer. **Add answer** saves an FAQ into a collection, and agents use it on the next call.
+- Retrieval quality: `npm test -w @platform/api -- rag-eval` (offline). Add `EVAL_EMBEDDINGS=gemini REPORT=1` with `GEMINI_API_KEY` set to measure with real embeddings (about 4 minutes, paced for the free tier).
 
 ### Integrations and tools
 

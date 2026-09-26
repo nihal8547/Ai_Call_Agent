@@ -1,0 +1,55 @@
+{
+  "answerable": [
+    { "q": "What projects do you have in Baner?", "expect": "Green Meadows is a gated community in Baner" },
+    {
+      "q": "What's the price of a 2 BHK at Green Meadows?",
+      "expect": "2 BHK apartments of 1,050 square feet start at 85 lakh"
+    },
+    {
+      "q": "How much is a 3BHK in Baner?",
+      "expect": "3 BHK apartments of 1,450 square feet start at 1.2 crore"
+    },
+    { "q": "When is possession for Green Meadows?", "expect": "Possession is in December 2026" },
+    { "q": "Is Green Meadows RERA registered?", "expect": "P52100045678" },
+    { "q": "Do you have anything in Wakad?", "expect": "Skyline Towers in Wakad" },
+    { "q": "What is the price of a one BHK in Wakad?", "expect": "1 BHK apartments from 48 lakh" },
+    { "q": "Is Skyline Towers ready to move in?", "expect": "ready to move in" },
+    { "q": "Do you have villas?", "expect": "Riverside Villas in Kharadi" },
+    { "q": "How much do the Kharadi villas cost?", "expect": "starting at 3.5 crore" },
+    { "q": "When will the villas be ready?", "expect": "Possession is in March 2027" },
+    { "q": "Do you sell office space?", "expect": "office spaces in Hinjewadi Phase 1" },
+    { "q": "What's the cheapest commercial space?", "expect": "starting at 42 lakh" },
+    { "q": "Is there a swimming pool?", "expect": "swimming pool" },
+    { "q": "What amenities do you provide?", "expect": "children's play area" },
+    { "q": "Is there power backup?", "expect": "power backup for common areas" },
+    { "q": "Which banks give home loans for your projects?", "expect": "SBI, HDFC Bank and ICICI Bank" },
+    { "q": "How much loan can I get?", "expect": "up to 80 percent" },
+    { "q": "Do you charge for help with the loan paperwork?", "expect": "no charge" },
+    { "q": "What is the booking amount?", "expect": "booking amount of 2 lakh" },
+    { "q": "How do the payments work after booking?", "expect": "construction-linked instalments" },
+    {
+      "q": "Is stamp duty included in the price?",
+      "expect": "Stamp duty and registration are charged separately"
+    },
+    { "q": "When can I visit the site?", "expect": "Site visits are available every day from 10 AM to 6 PM" },
+    { "q": "Do you provide pickup for site visits?", "expect": "free pickup from Baner and Wakad" },
+    { "q": "Are pets allowed?", "expect": "Pets are allowed" },
+    { "q": "How many parking spaces come with a flat?", "expect": "one covered parking space" },
+    { "q": "Can I buy a second parking space?", "expect": "second space can be bought for 3 lakh" },
+    { "q": "Are there any offers right now?", "expect": "waiving the club membership fee" },
+    { "q": "Where is your sales office?", "expect": "Baner Road, near Balewadi High Street" },
+    { "q": "What are your office timings?", "expect": "open every day from 10 AM to 7 PM" },
+    { "q": "How many projects have you completed?", "expect": "14 residential projects" },
+    { "q": "How big is the 2 BHK at Green Meadows?", "expect": "1,050 square feet" }
+  ],
+  "unanswerable": [
+    "Do you have projects in Mumbai?",
+    "Can I rent an apartment instead of buying?",
+    "What is the maintenance charge per month?",
+    "Is there a metro station nearby?",
+    "Do you offer interior design packages?",
+    "Can NRIs pay in dollars?",
+    "What is the carpet area of the villas?",
+    "Do you buy back apartments?"
+  ]
+}

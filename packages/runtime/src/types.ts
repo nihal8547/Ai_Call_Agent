@@ -6,11 +6,56 @@ export interface ToolRunner {
   run(call: ToolCall, ctx: EngineContext): Promise<ToolResult>;
 }
 
-export type KnowledgeAnswer = { text: string; sources: string[] };
+/** Where a spoken answer came from (shown on the call timeline) */
+export type KnowledgeSource = {
+  chunkId: string;
+  documentId: string;
+  title: string;
+  page?: number;
+  headingPath?: string[];
+};
 
-/** Answers caller questions from the business's own knowledge (RAG, phase P10) */
+export type KnowledgeAnswer = {
+  text: string;
+  sources: KnowledgeSource[];
+  method: "generated" | "extractive";
+};
+
+export type RetrievalHit = {
+  chunkId: string;
+  documentId: string;
+  documentTitle: string;
+  score: number;
+  vectorScore: number | null;
+  textScore: number | null;
+  /** Passed the relevance gate */
+  relevant: boolean;
+};
+
+/** Result of searching the agent's knowledge; passed back unchanged to `answer` */
+export type KnowledgeSearchResult = {
+  query: string;
+  mode: string;
+  hits: RetrievalHit[];
+  passages: unknown[];
+  latencyMs: number;
+  reason?: string;
+};
+
+/** Answers caller questions from the business's own knowledge (implemented by @platform/rag) */
 export interface KnowledgeRetriever {
-  answer(question: string, opts: { timeoutMs: number }): Promise<KnowledgeAnswer | null>;
+  search(query: string, opts: { timeoutMs: number }): Promise<KnowledgeSearchResult>;
+  answer(
+    question: string,
+    found: KnowledgeSearchResult,
+    opts: { timeoutMs: number },
+  ): Promise<{
+    answer: KnowledgeAnswer | null;
+    failure?: string;
+    detail?: string;
+    llmMs?: number;
+    usedChunkIds: string[];
+  }>;
 }
 
 export type RuntimeDeps = {
@@ -39,6 +84,21 @@ export type RuntimeEvent =
       latencyMs: number;
       sources: number;
       rejected?: string;
+      query?: string;
+      mode?: string;
+      /** Search started in parallel with understanding (the caller's words looked like a question) */
+      speculative?: boolean;
+      method?: KnowledgeAnswer["method"];
+      /** Why no knowledge answer was given (no collections, nothing relevant, not in sources, …) */
+      reason?: string;
+      detail?: string;
+      searchMs?: number;
+      answerMs?: number;
+      hits?: (Pick<RetrievalHit, "chunkId" | "documentId" | "documentTitle" | "vectorScore" | "relevant"> & {
+        score: number;
+        used: boolean;
+      })[];
+      used?: KnowledgeSource[];
     }
   | { type: "phrase_rejected"; reasons: string[] }
   /** Understanding/tools used most of the turn's latency budget, so the reply was not rephrased */

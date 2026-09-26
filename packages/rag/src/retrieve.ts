@@ -1,5 +1,6 @@
 import type { EmbeddingProvider } from "@platform/ai";
 import { Prisma, type PrismaClient, withTenant } from "@platform/db";
+import { contentWords, variants } from "./lexicon";
 
 export type SearchHit = {
   chunkId: string;
@@ -23,28 +24,36 @@ export type SearchParams = {
   /** Respect documents restricted to specific agents */
   agentId?: string;
   topK?: number;
+  /** Time allowed for embedding the query; on timeout the search continues with keywords only */
+  embedTimeoutMs?: number;
 };
 
-const STOPWORDS = new Set(
-  "a an and are as at be by can could do does for from have has how i if in is it its me my of on or our please should tell that the their them there these they this to was we what when where which who why will with would you your".split(
-    " ",
-  ),
-);
 const CANDIDATES = 30;
+const EF_SEARCH = 100;
+
+let iterativeScan: Promise<boolean> | null = null;
+/** hnsw.iterative_scan exists from pgvector 0.8.0 (checked once per process) */
+function supportsIterativeScan(prisma: PrismaClient): Promise<boolean> {
+  iterativeScan ??= prisma.$queryRaw<
+    { v: string }[]
+  >`SELECT extversion AS v FROM pg_extension WHERE extname = 'vector'`
+    .then((rows) => {
+      const [major = 0, minor = 0] = (rows[0]?.v ?? "0").split(".").map(Number);
+      return major > 0 || minor >= 8;
+    })
+    .catch(() => false);
+  return iterativeScan;
+}
 const RRF_K = 60;
 
-/** Prefix-matching OR query of the meaningful words ("villas in Baner?" → villa:* | baner:*) */
+/** Prefix-matching OR query of the meaningful words and their synonyms ("villas in Baner?" → villa:* | baner:*) */
 export function toTsQuery(query: string): string | null {
-  const words = (
-    query
-      .toLowerCase()
-      .normalize("NFKC")
-      .match(/[\p{L}\p{N}]+/gu) ?? []
-  )
-    .filter((w) => !STOPWORDS.has(w) && (w.length > 1 || /\d/.test(w)))
-    .map((w) => (w.length > 4 ? w.replace(/(es|s)$/, "") : w));
-  const unique = [...new Set(words)].slice(0, 12);
-  return unique.length ? unique.map((w) => `${w}:*`).join(" | ") : null;
+  const words = contentWords(query).slice(0, 12);
+  const terms = [...new Set(words.flatMap(variants))]
+    .map((w) => w.replace(/[^\p{L}\p{N}]+/gu, ""))
+    .filter(Boolean)
+    .slice(0, 40);
+  return terms.length ? terms.map((w) => `${w}:*`).join(" | ") : null;
 }
 
 /**
@@ -60,7 +69,7 @@ export async function searchKnowledge(
   const topK = p.topK ?? 5;
   let queryVector: number[] | null = null;
   if (embeddings) {
-    const r = await embeddings.embed([p.query], { kind: "query", timeoutMs: 1500 });
+    const r = await embeddings.embed([p.query], { kind: "query", timeoutMs: p.embedTimeoutMs ?? 1500 });
     if (r.ok) queryVector = r.vectors[0] ?? null;
   }
   const tsq = toTsQuery(p.query);
@@ -84,7 +93,14 @@ export async function searchKnowledge(
     score: number;
   };
 
+  const iterative = queryVector ? await supportsIterativeScan(prisma) : false;
   const [vectorRows, textRows] = await withTenant(prisma, p.tenantId, async (tx) => {
+    if (queryVector) {
+      // Filters are applied after the HNSW scan: search wider, and (pgvector ≥ 0.8) keep scanning
+      // until enough rows pass the tenant/collection/agent filters
+      await tx.$executeRawUnsafe(`SET LOCAL hnsw.ef_search = ${EF_SEARCH}`);
+      if (iterative) await tx.$executeRawUnsafe(`SET LOCAL hnsw.iterative_scan = relaxed_order`);
+    }
     const vec = queryVector
       ? await tx.$queryRaw<Row[]>`
           SELECT c.id, c.document_id, d.title, c.content, c.metadata, (1 - (c.embedding <=> ${`[${queryVector.join(",")}]`}::vector))::float AS score

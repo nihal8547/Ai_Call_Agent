@@ -170,3 +170,18 @@ export const KnowledgeSearchBody = z.object({
   agentId: z.uuid().optional(),
   topK: z.number().int().min(1).max(20).default(5),
 });
+
+// ── Knowledge gaps ──────────────────────────────────────────────────────────
+export const KnowledgeGapsQuery = z.object({
+  days: z.coerce.number().int().min(1).max(365).default(30),
+  agentId: z.uuid().optional(),
+});
+
+/** Answer an unanswered question: becomes a small document in the chosen collection */
+export const CreateFaqBody = z.object({
+  collectionId: z.uuid(),
+  question: z.string().trim().min(3).max(300),
+  answer: z.string().trim().min(2).max(2000),
+  /** The gap this answers, so it disappears from the report */
+  gapKey: z.string().max(300).optional(),
+});

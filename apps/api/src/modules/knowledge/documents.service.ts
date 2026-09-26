@@ -12,7 +12,14 @@ import { StorageService } from "../../infra/storage.service";
 import { TenantDbService } from "../../infra/tenant-db.service";
 import { AuditService } from "../audit/audit.service";
 
-export type UploadInput = { collectionId: string; title?: string; fileName: string; buffer: Buffer };
+export type UploadInput = {
+  collectionId: string;
+  title?: string;
+  fileName: string;
+  buffer: Buffer;
+  /** Extra, non-secret facts kept with the document (e.g. which knowledge gap an FAQ answers) */
+  metadata?: Record<string, string>;
+};
 
 const MB = 1024 * 1024;
 
@@ -79,7 +86,7 @@ export class DocumentsService {
           version,
           replacesId: replaces?.id ?? null,
           uploadedById: auth.kind === "user" ? auth.userId : null,
-          metadata: { kind },
+          metadata: { ...(input.metadata ?? {}), kind },
         },
       });
       if (replaces) {

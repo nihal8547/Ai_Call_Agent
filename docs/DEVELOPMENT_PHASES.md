@@ -541,13 +541,13 @@ understand ─┬─(question & knowledge configured)→ retrieve ─┐
             └──────────────────────────────────────────── decide → phrase → guard → END
 ```
 
-| Node       | Does                                                                                                                                          | Degrades to                                                                                                          |
-| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| understand | LLM structured extraction with the schema generated from the agent's fields. The prompt forbids following instructions in the caller's words. | Rules (no LLM, error, invalid schema); circuit breaker after N failures                                              |
-| retrieve   | `KnowledgeRetriever` (implemented in P10), 1.5 s budget; the answer passes the output guard                                                   | Safe answer + follow-up                                                                                              |
-| decide     | Core engine + blocking tools (timeout per tool, up to 5 in a turn)                                                                            | Tool timeout/error → spoken apology + `onError`                                                                      |
-| phrase     | LLM rewrites the deterministic reply in the agent's persona (`llm.rephrase`)                                                                  | The deterministic draft if the rewrite adds or drops numbers, drops the question, grows too long, or fails the guard |
-| guard      | Final `guardOutput`                                                                                                                           | Deterministic text → `technicalIssue`                                                                                |
+| Node       | Does                                                                                                                                             | Degrades to                                                                                                          |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| understand | LLM structured extraction with the schema generated from the agent's fields. The prompt forbids following instructions in the caller's words.    | Rules (no LLM, error, invalid schema); circuit breaker after N failures                                              |
+| retrieve   | `KnowledgeRetriever` (P10): search starts in parallel with understanding; the answer gets what is left of the turn budget, then the output guard | Safe answer + follow-up                                                                                              |
+| decide     | Core engine + blocking tools (timeout per tool, up to 5 in a turn)                                                                               | Tool timeout/error → spoken apology + `onError`                                                                      |
+| phrase     | LLM rewrites the deterministic reply in the agent's persona (`llm.rephrase`)                                                                     | The deterministic draft if the rewrite adds or drops numbers, drops the question, grows too long, or fails the guard |
+| guard      | Final `guardOutput`                                                                                                                              | Deterministic text → `technicalIssue`                                                                                |
 
 - **Rules supplement the LLM:** when the model misses the awaited field (or a plain yes/no), the deterministic rules fill the gap. They never override a question.
 - **Per-turn metrics:** total/understand/retrieve/decide/tool/phrase ms, LLM calls, tokens, and a deterministic-or-not flag. Typed runtime events (`llm_call`, `retrieval`, `phrase_rejected`, `guard_blocked`, `tool_timeout`) go to the call timeline in P5.
@@ -1012,22 +1012,106 @@ A new business onboards entirely from the UI, without an engineer:
 
 ---
 
-## P10 — Live-call RAG
+## P10 — Live-call RAG ✅
 
-- `retrieve` node:
-  - Runs only when `intent ∈ {question, both}`, in parallel with extraction.
-  - Timeout of about 400 ms.
-  - Tenant, collection, enabled, and agent-restriction filters (the SQL in plan §7.2).
-  - pgvector `hnsw.ef_search` tuned, with iterative scan enabled.
-- Grounding:
-  - Context packing (top-k within a token budget).
-  - The answer prompt requires chunk-id citations.
-  - The guard verifies the citations and checks that numbers, prices, and dates appear in the sources.
-  - Below `minScore`, or on a timeout or error, the agent uses the **safe response** and adds the question to `pendingQuestions` → follow-up task/handoff according to the escalation rules.
-- Voice-friendly answers: 1–2 sentences, no tables read aloud, and "Would you like me to send the details on WhatsApp?" when the answer is long.
-- Events: `RAG_RETRIEVAL` with the query, chunk ids, scores, and used flags. The call detail page shows "RAG sources used" with links to the document and page.
-- Knowledge gaps report: unanswered questions grouped by similarity, with an "Add to FAQ" action.
-- **Tests:** a RAG eval set per template (30+ Q&A pairs): retrieval hit-rate ≥ 90%, and **zero** invented business facts on out-of-knowledge questions. Latency budget test.
+**Status: done.**
+
+**`@platform/rag`: answering**
+
+- **Retriever** (`createKnowledgeRetriever`): `search(question, {timeoutMs})` then `answer(question, search, {timeoutMs})`.
+  - Search uses the same hybrid SQL as P8, restricted to the tenant, the agent's collections, enabled documents, and documents not restricted to other agents.
+  - The embedding gets 60% of the search budget; when it runs out, search continues by keywords alone (`mode: "keyword"`).
+- **HNSW:** `SET LOCAL hnsw.ef_search = 100` inside the tenant transaction, plus `hnsw.iterative_scan = relaxed_order` when pgvector ≥ 0.8 (detected once), so filters don't starve the result list.
+- **Relevance gate:** a passage is used only if it is close in meaning (`vectorScore ≥ minScore`) or contains ≥ 60% of the question's content words.
+- **Lexicon:** stopwords, caller → business synonyms (parking/car, price/cost, timings/open, …), and "3BHK" → "3 bhk". Both full-text search and the relevance check use it.
+- **Grounded answer (LLM):**
+  - The top passages are packed as `[S1]…[Sn]` with title, heading path and page.
+  - The model returns `{found, answer, citations}` as JSON.
+  - **Verification** runs before anything is spoken:
+    - citations must exist;
+    - every number, price or date in the answer must appear in the cited passages;
+    - the output guard must pass.
+  - When the model says the sources don't answer, it is believed.
+- **Extractive fallback:** when the LLM is absent, slow (less than 600 ms left), rate-limited, or its answer fails verification, the agent quotes the best sentence of a passage that covers the question. Table rows become speakable ("Room Deluxe, Price per night 4,500").
+- **Voice-friendly:** 1–2 short sentences; no lists, tables, URLs or source ids.
+
+**Runtime**
+
+- `understand` starts a **speculative search** in parallel with LLM understanding whenever the words look like a question (900 ms search budget). `retrieve` reuses it, or searches then if understanding found a question the heuristic missed.
+- The answer gets `min(2 s, 3 s turn budget − time spent)`.
+- A miss, timeout or error leads to the **safe answer**, and the question is added to `pendingQuestions` (follow-up, as before).
+- The `retrieval` event carries:
+  - query, mode, speculative, method (`generated` or `extractive`), reason and detail
+  - search and answer latency
+  - the hits (with `used` flags) and the sources used
+
+**API and web**
+
+- Live calls and the test console build a retriever per agent (`RetrieverFactory`). There is none when the agent has no collections or has answering switched off.
+- **`RAG_RETRIEVAL` call events** (one per question) record `answered: grounded | safe`, method, reason, latencies, the top-5 hits with scores and `used` flags, and the sources used.
+- **Call page:** each question shows its outcome and source links (document › heading, page); a **Knowledge used** card lists them for the whole call.
+- **Knowledge gaps** (`GET /knowledge/gaps`, needs `knowledge:read` and `calls:read_transcript`):
+  - Unanswered questions from the last 7/30/90 days, grouped by similarity (Jaccard ≥ 0.5 on word prefixes).
+  - Ranked by count, with example calls and the reasons.
+- **Add answer** (`POST /knowledge/faq`, `knowledge:write`): saves `# question / answer` as a document in a collection, tagged with the gap's key so the gap disappears. It is ingested like any upload.
+
+**Evaluation** (`packages/rag/eval`, run by `apps/api/test/rag-eval.test.ts` on the real stack)
+
+- Every template has a realistic document plus 32–35 answerable and 8 unanswerable questions.
+
+| Template           | Hit rate, Gemini embeddings | Hit rate, offline (keywords) | Unanswerable answered |
+| ------------------ | --------------------------- | ---------------------------- | --------------------- |
+| clinic-reception   | 100%                        | 89%                          | 0/8                   |
+| real-estate-ava    | 91%                         | 94%                          | 0/8                   |
+| hotel-reservations | 94%                         | 72%                          | 0/8                   |
+| restaurant-booking | 94%                         | 84%                          | 0/8                   |
+
+- The test asserts:
+  - ≥ 90% with Gemini embeddings, and a 70% regression floor offline;
+  - no answer to an unanswerable question;
+  - every number spoken appears in the business's document;
+  - a lying LLM (it invents a price in every answer) is never spoken, and only verified quotes remain.
+- Search p95 in the Gemini run was about 850 ms, but that includes the 700 ms pacing added for the free-tier quota, so it is not a production latency.
+
+**Tests**
+
+- rag (+15):
+  - relevance and verification (invented numbers, missing or unknown citations, prompt-injection text)
+  - extractive quoting
+  - LLM fallbacks
+- runtime (4 new or rewritten, 15 total):
+  - search running in parallel with understanding (proved by timing)
+  - the budget left for answering
+  - a hanging retriever
+  - the safe answer
+- API (+11; 85 total):
+  - a phone call answered from a document with its source recorded
+  - the safe answer and follow-up
+  - agent collections and document restrictions
+  - the test console
+  - gaps grouping, and an FAQ closing the gap for the next caller
+  - permissions
+  - the eval
+
+**Browser E2E (manual Playwright run, real API, worker, web and Gemini):**
+
+1. Upload an FAQ (embedded with Gemini), then publish a clinic agent with the collection and a number.
+2. Signed calls:
+   - "Is there parking for patients?" gets the document's answer.
+   - Two wheelchair questions get the safe answer.
+3. The call page shows the question, "Answered from knowledge (quoted)" and a **Knowledge used** link to _clinic faq › Parking_.
+4. **Knowledge gaps** shows the two wheelchair questions grouped as one ("Asked 2 times"). **Add answer** saves an FAQ, and the next caller hears "Yes, the clinic has a ramp and a wheelchair accessible lift."
+5. Mobile dark mode has no horizontal overflow.
+
+With the free-tier key, Gemini timed out or returned 429 during these calls, so the answers were quoted rather than generated. The fallbacks are working as designed, and the gap shows the honest reason ("the AI was unavailable").
+
+**Changed from the original plan and known limits**
+
+- **Budgets:** search has 900 ms (not 400 ms). It overlaps LLM understanding (1.3–1.8 s), so it adds no wait on its own. The answer shares the ~3 s turn budget.
+- **Not built:** the "send the details on WhatsApp?" offer for long answers. It waits for a messaging channel (P11+).
+- **English only:** synonyms and stopwords are English. Other languages rely on embeddings.
+- **Generated answers:** they were not measured at eval scale, because the free-tier quota allows only a few LLM calls per minute. Verification guarantees they add no numbers, but wording quality needs a paid-key run.
+- **Gaps:** grouping is lexical, so paraphrases with no shared words stay separate.
 
 ---
 

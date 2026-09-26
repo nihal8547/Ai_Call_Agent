@@ -1,0 +1,52 @@
+{
+  "answerable": [
+    { "q": "How much is a deluxe room per night?", "expect": "Room: Deluxe; Price per night: 4,500" },
+    { "q": "What is the cheapest room?", "expect": "Room: Standard; Price per night: 3,200" },
+    { "q": "How much does a suite cost?", "expect": "Room: Suite; Price per night: 9,000" },
+    { "q": "How many people can stay in a suite?", "expect": "Max guests: 4" },
+    { "q": "Is there free Wi-Fi?", "expect": "free Wi-Fi" },
+    { "q": "What time is check-in?", "expect": "Check-in is from 2 PM" },
+    { "q": "When do I have to check out?", "expect": "check-out is until 11 AM" },
+    {
+      "q": "Can I check in early?",
+      "expect": "Early check-in and late check-out are subject to availability"
+    },
+    { "q": "Is breakfast included?", "expect": "included in all room rates" },
+    { "q": "What time is breakfast served?", "expect": "from 7 AM to 10:30 AM" },
+    { "q": "Do you offer airport pickup?", "expect": "Airport pickup and drop is available for 1,800" },
+    {
+      "q": "How far is the hotel from the airport?",
+      "expect": "50 minutes from Kempegowda International Airport"
+    },
+    { "q": "Is parking free?", "expect": "Free valet parking" },
+    { "q": "Do you have a swimming pool?", "expect": "rooftop swimming pool" },
+    { "q": "What are the pool timings?", "expect": "open from 6 AM to 9 PM" },
+    { "q": "Is the gym open all night?", "expect": "24-hour gym" },
+    { "q": "Do you have a conference hall?", "expect": "conference hall seats up to 80" },
+    { "q": "How much does the meeting room cost?", "expect": "25,000 rupees per day" },
+    { "q": "What is your cancellation policy?", "expect": "Free cancellation is available up to 48 hours" },
+    { "q": "Can I bring my dog?", "expect": "Pets are not allowed" },
+    { "q": "Is smoking allowed?", "expect": "Smoking is not permitted" },
+    { "q": "What ID do I need at check-in?", "expect": "government photo ID" },
+    { "q": "Do children stay free?", "expect": "Children under 6 stay free" },
+    { "q": "How much is an extra bed?", "expect": "extra bed costs 1,200" },
+    { "q": "Is there laundry service?", "expect": "Same-day laundry" },
+    { "q": "Can I pay by UPI?", "expect": "UPI" },
+    { "q": "Can my company pay the bill?", "expect": "company invoice" },
+    { "q": "Where is the hotel?", "expect": "Indiranagar, Bangalore" },
+    { "q": "How many rooms does the hotel have?", "expect": "60-room" },
+    { "q": "Is there a restaurant?", "expect": "Terrace Café serves all-day dining" },
+    { "q": "Do rooms have a TV?", "expect": "43-inch smart TV" },
+    { "q": "Is there a business centre?", "expect": "business centre" }
+  ],
+  "unanswerable": [
+    "Do you have a spa?",
+    "Is there a bar in the hotel?",
+    "Do you offer city tours?",
+    "Can I book a room by the hour?",
+    "Is there an EV charging point?",
+    "Do rooms have a bathtub?",
+    "Do you have connecting rooms?",
+    "Is there a shuttle to the railway station?"
+  ]
+}

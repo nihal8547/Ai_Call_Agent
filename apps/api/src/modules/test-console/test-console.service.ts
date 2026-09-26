@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import type { AuthContext } from "../../common/auth/auth.types";
 import { AppException } from "../../common/filters/problem-details.filter";
 import { API_ENV, type ApiEnv } from "../../config/env";
+import { RetrieverFactory } from "../knowledge/retriever.factory";
 import { RedisService } from "../../infra/redis.service";
 import { TenantDbService } from "../../infra/tenant-db.service";
 
@@ -38,6 +39,7 @@ export class TestConsoleService {
     @Inject(API_ENV) private readonly env: ApiEnv,
     private readonly tenantDb: TenantDbService,
     private readonly redis: RedisService,
+    private readonly retrievers: RetrieverFactory,
   ) {}
 
   async start(
@@ -105,8 +107,11 @@ export class TestConsoleService {
   }
 
   private runtime(state: Omit<TestState, "session">, toolLog: ToolCall[]) {
+    const llm = createLLMProvider(state.config.llm.provider, { gemini: this.env.GEMINI_API_KEY });
     return createRuntime({
-      llm: createLLMProvider(state.config.llm.provider, { gemini: this.env.GEMINI_API_KEY }),
+      llm,
+      // Real knowledge answers (read-only), so the console shows what callers would hear
+      retriever: this.retrievers.forAgent(state, state.config, llm),
       tools: {
         run: async (call) => {
           toolLog.push(call);

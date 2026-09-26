@@ -2,7 +2,7 @@ import { type NestFastifyApplication } from "@nestjs/platform-fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { TenantDbService } from "../src/infra/tenant-db.service";
 import { Client, createTestApp, hasTestDb, registerOwner, STRONG_PASSWORD, uniqueEmail } from "./support/app";
-import { phoneCall, provisionAgent, twilioPost } from "./support/telephony";
+import { DEFAULT_CALLER, phoneCall, provisionAgent, twilioPost } from "./support/telephony";
 
 describe.skipIf(!hasTestDb)("telephony: real phone calls through Twilio webhooks", () => {
   let app: NestFastifyApplication;
@@ -69,7 +69,7 @@ describe.skipIf(!hasTestDb)("telephony: real phone calls through Twilio webhooks
       hour12: false,
     }).format(record.appointments[0]!.startsAt);
     expect(hourInIndia).toBe("10");
-    expect(record.leads[0]).toMatchObject({ customerName: "Priya", phone: "+919812345678" });
+    expect(record.leads[0]).toMatchObject({ customerName: "Priya", phone: DEFAULT_CALLER });
     expect(record.leads[0]!.data).toMatchObject({ service_required: "Dental cleaning", urgency: "Flexible" });
 
     const events = await db().callEvent.findMany({ where: { callId: record.id }, orderBy: { seq: "asc" } });

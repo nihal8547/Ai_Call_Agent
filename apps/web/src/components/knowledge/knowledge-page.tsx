@@ -21,6 +21,7 @@ export function KnowledgePage() {
   const router = useRouter();
   const params = useSearchParams();
   const canWrite = useCan("knowledge:write");
+  const canSeeGaps = useCan("knowledge:read", "calls:read_transcript");
   const collections = useQuery({
     queryKey: ["collections"],
     queryFn: () => api<{ items: KnowledgeCollection[] }>("/knowledge/collections"),
@@ -34,12 +35,22 @@ export function KnowledgePage() {
         title="Knowledge Base"
         description="Documents your agents answer questions from. Group them into collections and pick collections per agent."
         actions={
-          <Link
-            href={`/t/${me.tenant.slug}/knowledge/search`}
-            className="inline-flex h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800"
-          >
-            Search playground
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            {canSeeGaps ? (
+              <Link
+                href={`/t/${me.tenant.slug}/knowledge/gaps`}
+                className="inline-flex h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800"
+              >
+                Knowledge gaps
+              </Link>
+            ) : null}
+            <Link
+              href={`/t/${me.tenant.slug}/knowledge/search`}
+              className="inline-flex h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800"
+            >
+              Search playground
+            </Link>
+          </div>
         }
       />
       {collections.error ? <Alert>{errorMessage(collections.error)}</Alert> : null}

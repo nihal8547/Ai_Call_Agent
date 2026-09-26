@@ -16,9 +16,17 @@ import {
 import type { AgentConfig } from "@platform/shared";
 import { checkPhrase } from "./phrase-check";
 import { LlmPhrase, LlmUnderstanding, PHRASE_SCHEMA, phrasePrompt, understandPrompt } from "./prompts";
-import type { RuntimeDeps, RuntimeEvent, RuntimeTurn, TurnMetrics } from "./types";
+import type {
+  KnowledgeRetriever,
+  KnowledgeSearchResult,
+  RuntimeDeps,
+  RuntimeEvent,
+  RuntimeTurn,
+  TurnMetrics,
+} from "./types";
 
-const RETRIEVAL_TIMEOUT_MS = 1500;
+/** Searching the knowledge base (query embedding + SQL); slow embeddings fall back to keywords */
+const SEARCH_TIMEOUT_MS = 900;
 const PHRASE_TIMEOUT_MS = 2000;
 /**
  * A caller hears silence while the turn runs. Rephrasing is polish, so it only gets what is left
@@ -26,6 +34,8 @@ const PHRASE_TIMEOUT_MS = 2000;
  */
 const TURN_BUDGET_MS = 3000;
 const MIN_PHRASE_MS = 700;
+/** Upper bound for writing a knowledge answer with the LLM */
+const ANSWER_TIMEOUT_MS = 2000;
 
 const State = Annotation.Root({
   // inputs
@@ -38,6 +48,8 @@ const State = Annotation.Root({
   understanding: Annotation<Understanding | null>,
   llmError: Annotation<boolean>,
   question: Annotation<string | null>,
+  /** Knowledge search started alongside understanding (the transcript looked like a question) */
+  search: Annotation<KnowledgeSearchResult | null>,
   answer: Annotation<string | null>,
   output: Annotation<TurnOutput | null>,
   speech: Annotation<string>,
@@ -71,7 +83,34 @@ type S = typeof State.State;
 export function createRuntime(deps: RuntimeDeps) {
   const toolTimeoutMs = deps.toolTimeoutMs ?? 8000;
 
+  /**
+   * Understanding, plus a speculative knowledge search when the caller's words already look like a
+   * question: both run at once, so a question costs max(understand, search) rather than the sum.
+   */
   const understand = async (s: S): Promise<Partial<S>> => {
+    const speculative =
+      deps.retriever &&
+      s.config.workflow.answerQuestions &&
+      s.transcript.trim() &&
+      detectQuestion(s.transcript)
+        ? searchSafely(s.transcript)
+        : null;
+    const understood = await understandWithLlm(s);
+    return { ...understood, search: speculative ? await speculative : null };
+  };
+
+  const searchSafely = async (query: string): Promise<KnowledgeSearchResult | null> => {
+    try {
+      return await withTimeout(
+        deps.retriever!.search(query, { timeoutMs: SEARCH_TIMEOUT_MS }),
+        SEARCH_TIMEOUT_MS + 200,
+      );
+    } catch {
+      return null;
+    }
+  };
+
+  const understandWithLlm = async (s: S): Promise<Partial<S>> => {
     const llm = deps.llm;
     if (!llm || s.session.fallbackOnly || !s.transcript.trim())
       return { understanding: null, llmError: false };
@@ -128,18 +167,31 @@ export function createRuntime(deps: RuntimeDeps) {
   const retrieve = async (s: S): Promise<Partial<S>> => {
     const question = s.understanding?.question || s.transcript;
     const started = Date.now();
-    let result: Awaited<ReturnType<NonNullable<RuntimeDeps["retriever"]>["answer"]>> = null;
-    let failed = false;
-    try {
-      result = await withTimeout(
-        deps.retriever!.answer(question, { timeoutMs: RETRIEVAL_TIMEOUT_MS }),
-        RETRIEVAL_TIMEOUT_MS + 200,
-      );
-    } catch {
-      failed = true;
+    const speculative = Boolean(s.search);
+    const found = s.search ?? (await searchSafely(question));
+    const searchMs = speculative ? (s.search?.latencyMs ?? 0) : Date.now() - started;
+
+    // Whatever is left of the turn's budget goes to writing the answer (quoting needs no LLM time)
+    const m = s.metrics;
+    const spent = (m.understandMs ?? 0) + (speculative ? 0 : searchMs);
+    const answerBudget = Math.max(0, Math.min(ANSWER_TIMEOUT_MS, TURN_BUDGET_MS - spent));
+
+    let result: Awaited<ReturnType<KnowledgeRetriever["answer"]>> | null = null;
+    let failed = !found;
+    const answerStarted = Date.now();
+    if (found) {
+      try {
+        result = await withTimeout(
+          deps.retriever!.answer(question, found, { timeoutMs: answerBudget }),
+          answerBudget + 500,
+        );
+      } catch {
+        failed = true;
+      }
     }
-    const latencyMs = Date.now() - started;
-    let answer = result?.text?.trim() || null;
+    const answerMs = Date.now() - answerStarted;
+
+    let answer = result?.answer?.text?.trim() || null;
     let rejected: string | undefined;
     if (answer) {
       const guarded = guardOutput(answer, { maxChars: 350 });
@@ -148,6 +200,13 @@ export function createRuntime(deps: RuntimeDeps) {
         answer = null;
       } else answer = guarded.text;
     }
+    const used = new Set(result?.usedChunkIds ?? []);
+    const reason = answer
+      ? undefined
+      : rejected
+        ? "rejected"
+        : (result?.failure ?? found?.reason ?? (failed ? "error" : "no_answer"));
+    const latencyMs = speculative ? searchMs + answerMs : Date.now() - started;
     return {
       question,
       answer,
@@ -157,8 +216,26 @@ export function createRuntime(deps: RuntimeDeps) {
           ok: !failed,
           answered: Boolean(answer),
           latencyMs,
-          sources: result?.sources.length ?? 0,
+          sources: answer ? (result?.answer?.sources.length ?? 0) : 0,
           ...(rejected ? { rejected } : {}),
+          query: question,
+          ...(found ? { mode: found.mode } : {}),
+          speculative,
+          ...(answer && result?.answer ? { method: result.answer.method } : {}),
+          ...(reason ? { reason } : {}),
+          ...(result?.detail ? { detail: result.detail } : {}),
+          searchMs,
+          answerMs,
+          hits: (found?.hits ?? []).slice(0, 8).map((h) => ({
+            chunkId: h.chunkId,
+            documentId: h.documentId,
+            documentTitle: h.documentTitle,
+            score: h.score,
+            vectorScore: h.vectorScore,
+            relevant: h.relevant,
+            used: used.has(h.chunkId),
+          })),
+          ...(answer && result?.answer ? { used: result.answer.sources } : {}),
         },
       ],
       metrics: { retrieveMs: latencyMs },
@@ -348,6 +425,7 @@ export function createRuntime(deps: RuntimeDeps) {
         understanding: null,
         llmError: false,
         question: null,
+        search: null,
         answer: null,
         output: null,
         speech: "",

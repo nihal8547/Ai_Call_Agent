@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { PrismaService } from "../src/infra/prisma.service";
 import { TenantDbService } from "../src/infra/tenant-db.service";
 import { addMember, createTestApp, hasTestDb, registerOwner } from "./support/app";
-import { phoneCall, provisionAgent, twilioPost } from "./support/telephony";
+import { DEFAULT_CALLER, phoneCall, provisionAgent, twilioPost } from "./support/telephony";
 
 type Owner = Awaited<ReturnType<typeof registerOwner>>;
 
@@ -521,7 +521,7 @@ describe.skipIf(!hasTestDb)("P9: integrations, tools, appointments and handoff",
       expect(record.outcome).toBe("FOLLOW_UP_REQUIRED");
       // Same caller and name earlier today: their existing lead is updated rather than duplicated
       const lead = await db().lead.findFirstOrThrow({
-        where: { phone: "+919812345678", customerName: "Priya" },
+        where: { phone: DEFAULT_CALLER, customerName: "Priya" },
         orderBy: { updatedAt: "desc" },
       });
       expect(lead.data).toMatchObject({ urgency: "Emergency", service_required: "Root canal" });
@@ -531,7 +531,7 @@ describe.skipIf(!hasTestDb)("P9: integrations, tools, appointments and handoff",
       ]);
       await vi.waitFor(() => expect(mails).toHaveLength(1));
       expect(mails[0]!.to).toEqual(["owner@clinic.test"]);
-      expect(mails[0]!.data).toContain("Missed transfer: please call back +919812345678");
+      expect(mails[0]!.data).toContain(`Missed transfer: please call back ${DEFAULT_CALLER}`);
       expect(mails[0]!.data).toContain("Patient name: Priya");
     });
 
