@@ -1,4 +1,16 @@
-import { Body, Controller, Get, HttpStatus, Param, Patch, Post, Query, Req } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+} from "@nestjs/common";
 import { validateFieldValue } from "@platform/core";
 import { readJson } from "@platform/db";
 import {
@@ -11,7 +23,7 @@ import {
   UpdateLeadStatusBody,
 } from "@platform/shared";
 import type { FastifyRequest } from "fastify";
-import { type z } from "zod";
+import { z } from "zod";
 import type { AuthContext } from "../../common/auth/auth.types";
 import { CurrentAuth, RequirePermissions } from "../../common/auth/decorators";
 import { AppException } from "../../common/filters/problem-details.filter";
@@ -20,6 +32,8 @@ import { requestMeta } from "../../common/http/request-meta";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import { TenantDbService } from "../../infra/tenant-db.service";
 import { AuditService } from "../audit/audit.service";
+
+const DeleteLeadStatusQuery = z.object({ moveTo: z.uuid().optional() });
 
 const leadView = {
   id: true,
@@ -201,6 +215,54 @@ export class LeadsController {
         ...requestMeta(req),
       });
       return status;
+    });
+  }
+
+  /** Remove a status; its leads move to `moveTo` (required when it has leads) */
+  @RequirePermissions("leads:write")
+  @Delete("lead-statuses/:id")
+  @HttpCode(204)
+  async deleteStatus(
+    @CurrentAuth() auth: AuthContext,
+    @Param(new ZodValidationPipe(IdParam)) { id }: { id: string },
+    @Query(new ZodValidationPipe(DeleteLeadStatusQuery)) q: z.output<typeof DeleteLeadStatusQuery>,
+    @Req() req: FastifyRequest,
+  ): Promise<void> {
+    await this.tenantDb.tx(auth.tenantId, async (tx) => {
+      const status = await tx.leadStatus.findUnique({
+        where: { id },
+        include: { _count: { select: { leads: true } } },
+      });
+      if (!status) throw new AppException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Status not found");
+      if (status.isDefault)
+        throw new AppException(
+          HttpStatus.CONFLICT,
+          "CONFLICT",
+          "Make another status the default for new leads first",
+        );
+      if (status._count.leads) {
+        if (!q.moveTo || q.moveTo === id)
+          throw new AppException(
+            HttpStatus.CONFLICT,
+            "CONFLICT",
+            `Choose where its ${status._count.leads} leads should move`,
+            [{ path: "moveTo", message: "Required" }],
+          );
+        if (!(await tx.leadStatus.count({ where: { id: q.moveTo } })))
+          throw new AppException(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "Unknown status", [
+            { path: "moveTo", message: "Unknown status" },
+          ]);
+        await tx.lead.updateMany({ where: { statusId: id }, data: { statusId: q.moveTo } });
+      }
+      await tx.leadStatus.delete({ where: { id } });
+      await this.audit.record(tx, auth, {
+        action: "lead_status.deleted",
+        entityType: "lead_status",
+        entityId: id,
+        before: { key: status.key, label: status.label },
+        after: { movedLeadsTo: q.moveTo ?? null, count: status._count.leads },
+        ...requestMeta(req),
+      });
     });
   }
 

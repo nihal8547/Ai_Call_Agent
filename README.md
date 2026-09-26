@@ -19,6 +19,7 @@ TypeScript monorepo (pnpm + Turborepo):
 | `packages/core`, `packages/runtime`, `packages/ai`, `packages/telephony` | Conversation engine, LangGraph turn graph, Gemini adapters, Twilio                            |
 | `packages/rag`                                                           | Document extraction (PDF, Word, Excel, CSV, text, images), chunking, ingestion, hybrid search |
 | `packages/storage`                                                       | Uploaded files on local disk or S3-compatible storage                                         |
+| `packages/tools`                                                         | Tool executor: Google Calendar/Sheets, SMTP email, signed webhooks, platform bookings         |
 
 PostgreSQL 16 + pgvector, Redis.
 
@@ -64,6 +65,14 @@ pnpm dev                                           # api :4000, web :3000, worke
 - Search is hybrid: meaning (pgvector) plus keywords (Postgres full-text). Meaning search needs embeddings: set `GEMINI_API_KEY` (or `EMBEDDINGS_PROVIDER=hashing` for an offline stand-in). Without either, documents are searchable by keywords only. After changing the provider, **Reprocess** existing documents.
 - Scanned PDFs and images need `GEMINI_API_KEY` for text recognition; without it they fail with a clear message.
 - Try questions in **Knowledge Base → Search playground**, then pick collections per agent in the agent editor's **Knowledge** tab.
+
+### Integrations and tools
+
+- Connect services under **Integrations**: Google Calendar and Google Sheets (a service-account key, or "Connect with Google" when `GOOGLE_OAUTH_CLIENT_ID`/`SECRET` are set), email over SMTP, and signed webhooks.
+- Credentials are encrypted with the business's own key (envelope encryption with `MASTER_ENCRYPTION_KEY`). They are never returned by the API, and a webhook's signing secret is shown once.
+- In an agent's **Workflow & tools** tab, tick the tools it may use and pick the integration each one runs through. Publishing is refused until every ticked tool has one.
+- Webhooks and SMTP cannot reach private or loopback addresses. `ALLOW_PRIVATE_NETWORK_TOOLS=true` lifts this for local development only.
+- Webhook requests carry `x-platform-signature: t=<unix>,v1=<hex HMAC-SHA256 of "t.body">` and an `idempotency-key`.
 
 ### Database rules
 

@@ -1,6 +1,6 @@
 import { HttpStatus, Inject, Injectable, Logger } from "@nestjs/common";
 import { createLLMProvider } from "@platform/ai";
-import { type EngineContext, endCall, type ToolCall } from "@platform/core";
+import { type EngineContext, endCall, renderTemplate, type ToolCall } from "@platform/core";
 import { resolvePhoneNumber } from "@platform/db";
 import { createRuntime, type RuntimeTurn } from "@platform/runtime";
 import type { AgentConfig } from "@platform/shared";
@@ -12,7 +12,10 @@ import { TenantDbService } from "../../infra/tenant-db.service";
 import { AgentConfigService } from "./agent-config.service";
 import { CallRecorder, timelineEvents } from "./call-recorder";
 import { type CallState, CallStateStore } from "./call-state.store";
-import { InternalTools } from "./internal-tools";
+import { sendMail, type SmtpCredentials, type SmtpSettings, type ToolRunEvent } from "@platform/tools";
+import { IntegrationsService } from "../integrations/integrations.service";
+import { type CallTools, ToolService } from "../tools/tool.service";
+import { upsertLeadForCall } from "./lead-writer";
 
 type CallContext = Pick<CallState, "tenantId" | "callId" | "agentId" | "callerNumber" | "timezone">;
 
@@ -39,6 +42,8 @@ export class TelephonyService {
     private readonly configs: AgentConfigService,
     private readonly store: CallStateStore,
     private readonly recorder: CallRecorder,
+    private readonly toolService: ToolService,
+    private readonly integrations: IntegrationsService,
   ) {
     this.twilio = env.TWILIO_AUTH_TOKEN ? new TwilioAdapter(env.TWILIO_AUTH_TOKEN) : null;
   }
@@ -86,7 +91,8 @@ export class TelephonyService {
       timezone: config.workingHours?.timezone ?? timezone,
       callerNumber: call.from,
     };
-    const turn = await this.runtimeFor(base, config).start(config, this.ctx(base), record.id);
+    const tools = this.tools(base, config);
+    const turn = await this.runtimeFor(config, tools).start(config, this.ctx(base), record.id);
     const state: CallState = {
       ...base,
       session: turn.output.session,
@@ -101,6 +107,7 @@ export class TelephonyService {
         payload: { from: call.from, to: call.to, agentVersionId: route.agentVersionId },
       },
       ...timelineEvents(turn),
+      ...executionEvents(tools.drain()),
     ];
     return this.complete(state, config, turn, rows);
   }
@@ -113,8 +120,12 @@ export class TelephonyService {
       if (seq !== state.seq || state.finalized) return state.lastReply; // retry or stale request
       const { config } = await this.configs.published(state.tenantId, state.agentVersionId);
       const speech = call.speech ?? { transcript: "" };
-      const turn = await this.runtimeFor(state, config).turn(config, state.session, speech, this.ctx(state));
-      return this.complete(state, config, turn, timelineEvents(turn, speech));
+      const tools = this.tools(state, config);
+      const turn = await this.runtimeFor(config, tools).turn(config, state.session, speech, this.ctx(state));
+      return this.complete(state, config, turn, [
+        ...timelineEvents(turn, speech),
+        ...executionEvents(tools.drain()),
+      ]);
     });
     // Another instance is still working on this call's previous request
     return (
@@ -177,6 +188,8 @@ export class TelephonyService {
         transfer: {
           to: out.transferTo,
           statusCallback: `${this.env.PUBLIC_BASE_URL}/telephony/twilio/dial-status`,
+          // The staff member hears who is calling and why before being connected
+          whisperUrl: `${this.env.PUBLIC_BASE_URL}/telephony/twilio/whisper?sid=${encodeURIComponent(state.callSid)}`,
         },
       } as VoiceReply;
     } else if (out.control === "listen") {
@@ -222,13 +235,101 @@ export class TelephonyService {
     return [...new Set([awaited, ...rest].flatMap((f) => (f ? [...f.hints, ...f.options] : [])))];
   }
 
-  private runtimeFor(state: CallContext, config: AgentConfig) {
-    const llm = createLLMProvider(config.llm.provider, { gemini: this.env.GEMINI_API_KEY });
-    return createRuntime({ llm, tools: this.tools(state, config) });
+  /** Played to the staff member who answers a transfer, before the caller is connected */
+  async whisper(callSid: string): Promise<string> {
+    const state = await this.store.get(callSid);
+    if (!state) return this.render({ say: "Incoming call transfer.", hangup: false });
+    const { config } = await this.configs.published(state.tenantId, state.agentVersionId);
+    return this.render({ say: transferSummary(state, config), hangup: false }, config);
   }
 
-  private tools(state: CallContext, config: AgentConfig): InternalTools {
-    return new InternalTools(this.tenantDb, { ...state, config });
+  /**
+   * The transfer ended. If nobody answered, the caller hears the "team unavailable" message,
+   * the call becomes a follow-up with a lead, and staff are emailed a summary.
+   */
+  async dialStatus(call: InboundCall): Promise<string> {
+    const answered = call.dialStatus === "completed" || call.dialStatus === "answered";
+    const result = await this.store.withLock(call.callSid, async () => {
+      const state = await this.store.get(call.callSid);
+      if (!state) return this.render({ say: "", hangup: true });
+      const { config } = await this.configs.published(state.tenantId, state.agentVersionId);
+      if (answered) return this.render({ say: "", hangup: true }, config);
+      if (!state.missedTransfer) {
+        state.missedTransfer = true;
+        await this.recordMissedTransfer(state, config, call.dialStatus ?? "unknown");
+        await this.store.set(state.callSid, state);
+        void this.notifyStaff(state, config).catch((err: unknown) =>
+          this.logger.warn({ err, callId: state.callId }, "missed-transfer notification failed"),
+        );
+      }
+      const say = renderTemplate(
+        config.handoff.unavailableMessage,
+        config,
+        state.session.collected,
+        this.ctx(state),
+      );
+      return this.render({ say, hangup: true }, config);
+    });
+    return result ?? this.render({ say: "", hangup: true });
+  }
+
+  private async recordMissedTransfer(
+    state: CallState,
+    config: AgentConfig,
+    dialStatus: string,
+  ): Promise<void> {
+    await this.tenantDb.tx(state.tenantId, async (tx) => {
+      await tx.callEvent.create({
+        data: {
+          tenantId: state.tenantId,
+          callId: state.callId,
+          seq: state.eventSeq++,
+          type: "HANDOFF",
+          payload: { transferred: false, dialStatus, reason: "no_answer" },
+        },
+      });
+      await tx.call.update({ where: { id: state.callId }, data: { outcome: "FOLLOW_UP_REQUIRED" } });
+      await upsertLeadForCall(tx, { ...state, collected: state.session.collected, config });
+    });
+  }
+
+  private async notifyStaff(state: CallState, config: AgentConfig): Promise<void> {
+    if (!config.handoff.notifyEmails.length) return;
+    const mail = await this.integrations.firstOfType(state.tenantId, "EMAIL_SMTP");
+    if (!mail) {
+      this.logger.warn({ callId: state.callId }, "no email integration for missed-transfer notifications");
+      return;
+    }
+    await sendMail(
+      mail.credentials as unknown as SmtpCredentials,
+      mail.config as unknown as SmtpSettings,
+      {
+        to: config.handoff.notifyEmails,
+        subject: `Missed transfer: please call back ${state.callerNumber || "the caller"}`,
+        text: [
+          `A caller asked to speak to someone at ${config.businessName}, but the transfer was not answered.`,
+          "",
+          `Caller: ${state.callerNumber || "unknown number"}`,
+          transferSummary(state, config),
+          "",
+          `Call reference: ${state.callId}`,
+        ].join("\n"),
+      },
+      {
+        allowPrivateNetwork: this.env.ALLOW_PRIVATE_NETWORK_TOOLS,
+        timeoutMs: 8000,
+        idempotencyKey: `missed:${state.callId}`,
+      },
+    );
+  }
+
+  private runtimeFor(config: AgentConfig, tools: CallTools) {
+    const llm = createLLMProvider(config.llm.provider, { gemini: this.env.GEMINI_API_KEY });
+    return createRuntime({ llm, tools });
+  }
+
+  private tools(state: CallContext, config: AgentConfig): CallTools {
+    return this.toolService.forCall({ ...state, config });
   }
 
   /** Non-blocking tools (exports, notifications) run after the reply; they move to BullMQ in P11 */
@@ -254,4 +355,36 @@ export class TelephonyService {
       defaultCountryCode: this.env.DEFAULT_COUNTRY_CODE,
     };
   }
+}
+
+/** Tool executions (after grant, binding and retries) on the call timeline */
+function executionEvents(events: ToolRunEvent[]) {
+  return events.map((e) => ({
+    type: "TOOL_CALL" as const,
+    payload: {
+      phase: "executed",
+      tool: e.tool,
+      stepId: e.stepId,
+      ok: e.ok,
+      error: e.error ?? null,
+      detail: e.detail ?? null,
+      attempts: e.attempts,
+      cached: e.cached,
+      integrationId: e.integrationId,
+    },
+    latencyMs: e.latencyMs,
+  }));
+}
+
+/** "Call from +91…. Priya, Service: Root canal, Urgency: Emergency." */
+function transferSummary(state: Pick<CallState, "callerNumber" | "session">, config: AgentConfig): string {
+  const parts = config.qualificationFields
+    .filter((f) => state.session.collected[f.key] !== undefined && state.session.collected[f.key] !== null)
+    .map((f) => `${f.label}: ${renderTemplate(`{{${f.key}}}`, config, state.session.collected)}`);
+  const reason = state.session.handoff.reason ? ` Reason: ${state.session.handoff.reason}.` : "";
+  const details = parts.length ? ` ${parts.join(". ")}.` : "";
+  return `Transferred call from ${config.agentName}, the ${config.businessName} assistant.${reason}${details}`.slice(
+    0,
+    600,
+  );
 }

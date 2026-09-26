@@ -17,8 +17,8 @@ const NAV: { section?: string; items: NavItem[] }[] = [
       { label: "Knowledge Base", href: "knowledge", permission: "knowledge:read" },
       { label: "Calls", href: "calls", permission: "calls:read" },
       { label: "Leads", href: "leads", permission: "leads:read" },
-      { label: "Appointments", href: "appointments", permission: "appointments:read", soon: true },
-      { label: "Integrations", href: "integrations", permission: "integrations:read", soon: true },
+      { label: "Appointments", href: "appointments", permission: "appointments:read" },
+      { label: "Integrations", href: "integrations", permission: "integrations:read" },
       { label: "Analytics", href: "analytics", permission: "analytics:read", soon: true },
     ],
   },
@@ -27,6 +27,7 @@ const NAV: { section?: string; items: NavItem[] }[] = [
     items: [
       { label: "Members", href: "settings/members", permission: "users:read" },
       { label: "Phone numbers", href: "settings/phone-numbers", permission: "phone_numbers:read" },
+      { label: "Lead statuses", href: "settings/lead-statuses", permission: "leads:read" },
       { label: "API keys", href: "settings/api-keys", permission: "api_keys:read" },
       { label: "Audit log", href: "settings/audit-log", permission: "audit:read" },
     ],

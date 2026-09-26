@@ -194,3 +194,44 @@ export type SearchHit = {
   textScore: number | null;
   score: number;
 };
+
+export type IntegrationStatus = "CONNECTED" | "ERROR" | "EXPIRED" | "DISCONNECTED";
+
+export type Integration = {
+  id: string;
+  type: string;
+  name: string;
+  status: IntegrationStatus;
+  config: Record<string, unknown>;
+  lastError: string | null;
+  lastCheckedAt: string | null;
+  createdAt: string;
+  usedBy: { tool: string; agent: { id: string; name: string } }[];
+  /** Only in the response that created it (webhooks) */
+  signingSecret?: string;
+};
+
+export type ToolBinding = {
+  toolName: string;
+  enabled: boolean;
+  integration: { id: string; name: string; type: string; status: IntegrationStatus } | null;
+};
+
+export type AppointmentStatus = "UPCOMING" | "COMPLETED" | "CANCELLED" | "RESCHEDULED" | "NO_SHOW";
+
+export type Appointment = {
+  id: string;
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  timezone: string;
+  status: AppointmentStatus;
+  notes: string | null;
+  externalRef: string | null;
+  rescheduledFromId: string | null;
+  callId: string | null;
+  createdAt: string;
+  agent: { id: string; name: string } | null;
+  lead: { id: string; customerName: string | null; phone: string | null } | null;
+  integration: { id: string; name: string; type: string } | null;
+};

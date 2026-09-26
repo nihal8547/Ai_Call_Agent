@@ -5,7 +5,8 @@ export type VoiceReply = {
   language: string;
   /** Listen for the caller's answer and post it to `action` */
   listen?: { action: string; hints: string[]; timeoutSeconds?: number };
-  transfer?: { to: string; callerId?: string; statusCallback?: string };
+  /** `whisperUrl`: TwiML played to the person answering before they are connected (a call summary) */
+  transfer?: { to: string; callerId?: string; statusCallback?: string; whisperUrl?: string };
   hangup?: boolean;
 };
 
@@ -17,6 +18,8 @@ export type InboundCall = {
   /** Present on speech results */
   speech?: { transcript: string; confidence?: number };
   durationSeconds?: number;
+  /** Outcome of a <Dial> transfer: completed, answered, busy, no-answer, failed, canceled */
+  dialStatus?: string;
 };
 
 export interface TelephonyAdapter {

@@ -48,6 +48,17 @@ export const ApiEnvSchema = z
       .default("91"),
     /** "auto" uses Gemini when GEMINI_API_KEY is set, otherwise keyword search only */
     EMBEDDINGS_PROVIDER: z.enum(["auto", "gemini", "hashing", "none"]).default("auto"),
+    /** Google OAuth client (web application) for "Connect with Google"; service-account keys work without it */
+    GOOGLE_OAUTH_CLIENT_ID: z.string().min(10).optional(),
+    GOOGLE_OAUTH_CLIENT_SECRET: z.string().min(10).optional(),
+    /**
+     * Let webhooks and SMTP reach private/loopback addresses. Development and tests only:
+     * in production it would let tenants probe the internal network.
+     */
+    ALLOW_PRIVATE_NETWORK_TOOLS: z
+      .enum(["true", "false"])
+      .default("false")
+      .transform((v) => v === "true"),
     /** Largest accepted document upload */
     MAX_UPLOAD_MB: z.coerce.number().int().min(1).max(200).default(50),
   })
@@ -59,5 +70,7 @@ export const API_ENV = Symbol("API_ENV");
 
 export function loadApiEnv(source: Record<string, string | undefined> = process.env): ApiEnv {
   const env = parseEnv(ApiEnvSchema, source);
+  if (env.NODE_ENV === "production" && env.ALLOW_PRIVATE_NETWORK_TOOLS)
+    throw new Error("ALLOW_PRIVATE_NETWORK_TOOLS must not be enabled in production");
   return { ...env, COOKIE_SECURE: env.COOKIE_SECURE ?? env.NODE_ENV === "production" };
 }

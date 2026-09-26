@@ -496,8 +496,9 @@ model Integration {
   createdAt            DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt            DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  agentTools AgentTool[]
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agentTools   AgentTool[]
+  appointments Appointment[]
 
   @@unique([tenantId, name])
   @@index([tenantId, type])
@@ -648,15 +649,18 @@ model Appointment {
   timezone          String            @db.VarChar(64)
   status            AppointmentStatus @default(UPCOMING)
   externalRef       String?           @map("external_ref") @db.VarChar(200)
+  /// Calendar integration holding the external event (for reschedule/cancel sync)
+  integrationId     String?           @map("integration_id") @db.Uuid
   rescheduledFromId String?           @map("rescheduled_from_id") @db.Uuid
   notes             String?
   createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  agent  Agent? @relation(fields: [agentId], references: [id], onDelete: SetNull)
-  lead   Lead?  @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  call   Call?  @relation(fields: [callId], references: [id], onDelete: SetNull)
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agent       Agent?       @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  lead        Lead?        @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  call        Call?        @relation(fields: [callId], references: [id], onDelete: SetNull)
+  integration Integration? @relation(fields: [integrationId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, startsAt])
   @@index([tenantId, status])

@@ -29,6 +29,8 @@ export async function toApiError(res: Response): Promise<ApiError> {
 export function errorMessage(err: unknown): string {
   if (err instanceof ApiError) {
     if (err.status === 429) return "Too many attempts. Please wait a moment and try again.";
+    // A connected service failed: its message says which and why (e.g. "Google Calendar could not be updated")
+    if (err.problem.code === "INTEGRATION_ERROR") return err.message;
     if (err.status >= 500) return "Something went wrong on our side. Please try again.";
     return err.message;
   }

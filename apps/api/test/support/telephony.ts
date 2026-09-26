@@ -59,7 +59,7 @@ export function parseTwiml(status: number, xml: string): TwimlResponse {
     xml,
     say: unescape(/<Say[^>]*>([\s\S]*?)<\/Say>/.exec(xml)?.[1] ?? ""),
     next: action ? unescape(action).replace(PUBLIC_URL, "") : null,
-    dial: /<Number>([^<]+)<\/Number>/.exec(xml)?.[1] ?? null,
+    dial: /<Number[^>]*>([^<]+)<\/Number>/.exec(xml)?.[1] ?? null,
     hangup: xml.includes("<Hangup/>"),
   };
 }

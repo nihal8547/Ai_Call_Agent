@@ -116,8 +116,12 @@ describe.skipIf(!hasTestDb)("telephony: real phone calls through Twilio webhooks
       "4 pm",
       "yes",
     ]);
-    expect(call.last.say).toContain("I couldn't complete that just now");
+    // The caller hears why, and is asked for another day (instead of a generic failure)
+    expect(call.last.say).toMatch(
+      /^We're closed at 4 PM on Sunday, \d+ \w+\. I don't have any free times that day\. Which day/,
+    );
     expect(call.last.say).not.toContain("confirmed");
+    expect(call.last.hangup).toBe(false);
     const record = await db().call.findUniqueOrThrow({
       where: { providerCallSid: call.callSid },
       include: { appointments: true },

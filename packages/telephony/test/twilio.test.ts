@@ -68,6 +68,15 @@ describe("TwiML", () => {
       '<Dial timeout="20" action="https://api.example.com/dial" method="POST"><Number>+911140000099</Number></Dial>',
     );
     expect(renderTwiml({ ...base, hangup: true })).toMatch(/<\/Say><Hangup\/><\/Response>$/);
+    expect(renderTwiml({ ...base, hangup: false })).toMatch(/<\/Say><\/Response>$/);
+    expect(
+      renderTwiml({
+        ...base,
+        transfer: { to: "+911140000099", whisperUrl: "https://api.example.com/whisper?sid=CA1&x=1" },
+      }),
+    ).toContain(
+      '<Number url="https://api.example.com/whisper?sid=CA1&amp;x=1" method="POST">+911140000099</Number>',
+    );
   });
 
   it("the adapter parses speech results and durations", () => {

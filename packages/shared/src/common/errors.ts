@@ -19,6 +19,8 @@ export const ErrorCode = z.enum([
   "TENANT_SUSPENDED",
   "INTERNAL_ERROR",
   "SERVICE_UNAVAILABLE",
+  /** A connected service (calendar, CRM, …) refused or failed the request */
+  "INTEGRATION_ERROR",
 ]);
 export type ErrorCode = z.infer<typeof ErrorCode>;
 

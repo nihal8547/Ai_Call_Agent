@@ -268,6 +268,73 @@ describe("resilience", () => {
     expect(c.last.session.outcome).not.toBe("APPOINTMENT_BOOKED");
   });
 
+  it("a taken time: the tool's message is spoken and only the time is asked again", () => {
+    let bookings = 0;
+    const c = converse(
+      clinic(),
+      ["Priya", "cleaning", "flexible", "tomorrow", "10 am", "yes", "3 pm", "yes"],
+      {
+        toolResult: (call) => {
+          if (call.tool !== "appointments.create") return { ok: true };
+          bookings++;
+          return call.input.time === "10:00"
+            ? {
+                ok: false,
+                error: "slot_unavailable",
+                message: "10 AM is taken. I have 11 AM or 3 PM free.",
+                retryFields: ["preferred_time"],
+              }
+            : { ok: true, data: { appointmentId: "a1" } };
+        },
+      },
+    );
+    const text = c.transcript.join("\n");
+    expect(text).toContain("AGENT: 10 AM is taken. I have 11 AM or 3 PM free. What time suits you?");
+    expect(text).not.toContain("May I have the patient's name?\nCALLER: 3 pm");
+    expect(c.last.session.collected).toMatchObject({ preferred_date: "2026-09-29", preferred_time: "15:00" });
+    expect(bookings).toBe(2);
+    expect(c.last.session.outcome).toBe("APPOINTMENT_BOOKED");
+  });
+
+  it("gives up re-asking after repeated taken slots and follows the failure path", () => {
+    const c = converse(
+      clinic(),
+      ["Priya", "cleaning", "flexible", "tomorrow", "10 am", "yes", "11 am", "yes", "12 pm", "yes"],
+      {
+        toolResult: (call) =>
+          call.tool === "appointments.create"
+            ? {
+                ok: false,
+                error: "slot_unavailable",
+                message: "That time is taken.",
+                retryFields: ["preferred_time"],
+              }
+            : { ok: true },
+      },
+    );
+    expect(c.toolCalls.filter((t) => t.tool === "appointments.create")).toHaveLength(3);
+    expect(c.last.control).toBe("hangup");
+    expect(c.last.session.outcome).not.toBe("APPOINTMENT_BOOKED");
+  });
+
+  it("a successful tool message is spoken (e.g. the free times found)", () => {
+    const config = clinic();
+    const steps = config.workflow.steps;
+    config.tools.push("calendar.find_slots");
+    steps.splice(
+      steps.findIndex((s) => s.id === "schedule"),
+      0,
+      { id: "slots", type: "tool", tool: "calendar.find_slots", input: {}, background: false },
+    );
+    const c = converse(config, ["Priya", "cleaning", "flexible"], {
+      toolResult: (call) =>
+        call.tool === "calendar.find_slots"
+          ? { ok: true, message: "Tomorrow I have 10 AM or 4 PM." }
+          : { ok: true },
+    });
+    expect(c.last.speech).toContain("Tomorrow I have 10 AM or 4 PM.");
+  });
+
   it("caller asks for a person: transfer when available, take a message when not", () => {
     const transfer = converse(clinic(), ["can I speak to a real person"]);
     expect(transfer.last.control).toBe("transfer");

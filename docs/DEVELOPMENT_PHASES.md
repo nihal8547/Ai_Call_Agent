@@ -72,7 +72,7 @@ Ai_Call_Agent/
 │   ├── rag/                         # extractors, cleaner, chunker, retriever, grounding
 │   ├── storage/                     # uploaded files: local disk or S3-compatible
 │   ├── telephony/                   # TelephonyProvider interface + Twilio adapter
-│   ├── tools/                       # tool registry, executor, built-in tools
+│   ├── tools/                       # tool executor, Google Calendar/Sheets, SMTP, webhooks, slots
 │   └── crypto/                      # envelope encryption, hashing, token utils
 ├── docs/
 ├── infra/                           # docker-compose, Dockerfiles, deploy manifests
@@ -852,30 +852,132 @@ understand ─┬─(question & knowledge configured)→ retrieve ─┐
 
 ---
 
-## P9 — Tools, integrations, appointments, handoff
+## P9 — Tools, integrations, appointments, handoff ✅
 
-- **`packages/crypto`:** envelope encryption (per-tenant DEK stored in `tenants.encrypted_dek`, master key from env/KMS, AES-256-GCM). Credentials are decrypted only inside the tool executor.
-- **`packages/tools`:**
-  - Registry of tools: name, zod input/output, `sideEffect`, `critical|background`, and the required integration type.
-  - Executor steps:
-    1. Check the agent version's `agent_tools` grant.
-    2. Validate input.
-    3. Decrypt credentials.
-    4. Apply a timeout and retries.
-    5. Use an idempotency key (`callId:stepId`).
-    6. Emit a `TOOL_CALL` event + audit entry.
-- **Built-in tools (v1):** `sheets.append_row`, `calendar.find_slots`, `calendar.book`, `calendar.cancel` (Google Calendar), `email.send` (SMTP/Resend), `webhook.post` (HMAC-SHA256 signed), `leads.create` (internal), `appointments.create` (internal).
-- **Integrations API:** `GET /integrations`, `POST /integrations` (API-key types), `GET /integrations/oauth/:type/start` and `/callback` (Google), `POST /integrations/:id/test`, `PATCH`, `DELETE`. **Responses never include credentials**, only `status`, `lastError`, and `expiresAt`.
+**Status: done.**
+
+**`@platform/tools` (new package)**
+
+- **Executor** (`createToolExecutor`), in this order:
+  1. **Grant:** the tool must be enabled in the published config.
+  2. **Availability:** the tool must be implemented.
+  3. **Idempotency cache:** a Redis key per tenant, tool and idempotency key, so a retried turn never repeats a side effect.
+  4. **Input validation.**
+  5. **Integration binding:** the right type, credentials decrypted for this one run.
+  6. **Timeout.**
+  7. **Retries:** only tools that are safe to repeat (reads, the deterministic-id calendar booking, the platform booking, the lead upsert). Webhooks and email are never retried blindly.
+  8. **Execution event:** latency, attempts, integration and error detail.
+
+  Rejected credentials or settings mark the integration `ERROR` with the reason, so staff see it on the Integrations page.
+
+- **Providers:**
+  - **Google Calendar:** read events (counted individually so capacity works; free and cancelled events ignored; all-day events block their local day), create, move and delete events. Event ids are derived from the call's idempotency key, so a retry can't double-book.
+  - **Google Sheets:** append a row with `valueInputOption=RAW`, so caller answers can never become formulas.
+  - **SMTP email** (nodemailer): header-injection-safe subjects; STARTTLS required unless in local development.
+  - **Signed webhooks:** `x-platform-signature: t=…,v1=HMAC-SHA256("t.body")` plus an `idempotency-key`; redirects are not followed; the response body is capped.
+  - **Google auth:** a service-account JWT (RS256, signed in-process) or an OAuth refresh token; access tokens are cached in memory only.
+- **SSRF protection:** webhook and SMTP connections resolve and check addresses themselves (loopback, private, link-local/metadata, CGNAT, IPv6 ULA and mapped addresses are refused) and connect to the checked address, so DNS rebinding can't slip through. IP-literal URLs are checked too; tests found that Node skips the custom lookup for them.
+- **Slots** (`checkSlot`, `freeSlots`, `nearestSlots`): opening hours (the whole visit must fit), lead time, how far ahead, buffers and **capacity** (e.g. tables).
+- **Taken or closed times:** the tool returns a spoken reason with the nearest free times, e.g. "10 AM on Monday, 28 September is already booked. On Monday, 28 September I have 9:30 AM or 10:30 AM free." The engine then asks only for the time again (or the day, when nothing is free).
+- **Built-in tools:**
+  - `leads.create`
+  - `appointments.create` (platform book, with capacity)
+  - `calendar.find_slots`, `calendar.book`, `calendar.cancel` (the caller's next appointment)
+  - `sheets.append_row`
+  - `email.send`
+  - `webhook.post`
+
+  SMS, WhatsApp and CRM tools are catalogued as "coming soon" and cannot be published.
+
+**Engine & shared**
+
+- `ToolResult` can carry `message` (spoken as-is) and `retryFields`: clear those answers, go back to the step that asks them, and run the step again. This happens at most twice, then the normal failure path runs.
+- `TOOL_SPECS` catalogue (label, integration, available, side effect).
+- Integration schemas per type; credentials are write-only.
+- `AppointmentConfig.capacity` and `slotStepMinutes`; `HandoffConfig.notifyEmails`.
+
+**Database:** `appointments.integration_id`, the calendar holding the event, used for reschedule and cancel sync.
+
+**API**
+
+- **Integrations:**
+  - `GET/POST/PATCH/DELETE /integrations`, `POST /integrations/:id/test` (a real check: open the calendar or sheet, log in to SMTP, a signed `ping` to the webhook).
+  - Credentials are sealed with the tenant's key (AES-256-GCM, bound to the integration id) and never returned. A webhook signing secret is shown once.
+  - Google OAuth: `GET /integrations/oauth/google/start` and `/callback`. The state is one-time, in Redis, and bound to the browser with an httpOnly cookie, to prevent login-CSRF (connecting someone else's Google account to your tenant).
+- **Tool bindings:** `GET/PUT /agents/:id/tool-bindings` (validated per tool type; applied immediately, like phone numbers). Publishing checks that every enabled tool is available and bound to a connected integration of the right type.
+- **Live calls:** a per-call `ToolService` replaces the old internal tools. The platform booking is an advisory-lock transaction per agent, so concurrent callers can't take the last place. Executions are written to the call timeline (`TOOL_CALL`, phase `executed`).
 - **Appointments:**
-  - `GET /appointments` (range, status), `PATCH /appointments/:id` (reschedule/cancel → synced to the calendar tool).
-  - Validation: within working hours, lead time, no overlaps (DB CHECK + service check).
-- **Human handoff:** a `handoff` step → Twilio `<Dial>` to the configured number/SIP with a whisper summary; if the transfer is not answered → take a message + create a follow-up lead; an SMS/email summary goes to staff.
-- **Frontend:**
-  - Integrations page: cards per type, connect wizard, test button, status.
-  - Agent editor → Tools tab: enable the tools that have a connected integration.
-  - Appointments page: calendar (week/month) + list, with reschedule/cancel dialogs.
-  - Lead statuses editor (Kanban columns).
-- **Tests:** permission denial (tool not granted → fallback, never executed); a calendar tool timeout → the `on_error` step; credentials never appear in any API response (a snapshot test over all integration endpoints).
+  - `GET /appointments` (range, status, agent), `GET /appointments/:id`.
+  - `PATCH` to reschedule (a new row, the old one marked `RESCHEDULED`), cancel, mark completed or no-show, and edit notes.
+  - The calendar is changed **first**. If Google fails, the API answers 502 `INTEGRATION_ERROR` and nothing changes, so the calendar and the platform never disagree.
+- **Handoff:**
+  - A Twilio `<Number url>` whisper tells the staff member who is calling and why before connecting.
+  - An unanswered transfer (`DialCallStatus` ≠ completed): the caller hears the configured "unavailable" message, the call becomes `FOLLOW_UP_REQUIRED` with a lead, a `HANDOFF` event is recorded, and `notifyEmails` get a summary through the email integration. This happens once, even if Twilio retries the callback.
+- **Lead statuses:** `DELETE /lead-statuses/:id?moveTo=`. The default status can't be deleted, and leads must move somewhere first.
+
+**Frontend**
+
+- **Integrations page:** connected cards (status, what it points at, which agents use it, last error, test result) with Test, Edit and Remove. A catalogue with connect dialogs:
+  - Google via "Connect with Google" or a service-account key (paste or file)
+  - SMTP
+  - Webhook (the secret is revealed once, with copy)
+- **Agent editor:**
+  - The tools list uses friendly labels and descriptions, with a per-tool integration picker, status and a "Connect one" link.
+  - The Hours tab gains **Bookings** (length, gap, capacity, lead time, days ahead, grid, offers) and the staff alert emails for missed transfers.
+  - New workflow steps are inserted before the closing end/handoff steps (they used to land after "End call" and never run; the E2E run caught it).
+- **Appointments:** a week view (today highlighted) and a list. Times are shown in each booking's own time zone. A detail dialog lets you reschedule, mark attended or no-show, cancel (the calendar follows) and edit notes.
+- **Leads:** a **Board** view with one column per status; move a lead with its dropdown.
+- **Settings → Lead statuses:** rename, colour, the default for new leads, closed stages, reorder, add, and delete with "move leads to".
+
+**Tests**
+
+- **tools (37):**
+  - slot maths
+  - the network guard (every private range; `localhost`; the metadata IP)
+  - executor grant, validation, not-connected and caching
+  - a platform booking with alternatives, a closed day, capacity 2
+  - a service-account JWT verified against the public key
+  - `find_slots` spreading its offers
+  - booking with a deterministic id; a busy slot; a Google 503 undoing the reservation; 401 flagging the integration; a hanging calendar timing out
+  - cancel; Sheets RAW with a formula payload
+  - webhook HMAC, idempotency, no redirects, 500 not retried, private and IPv6 destinations blocked
+  - SMTP send with header injection stripped; a wrong password
+- **core (+3):** the re-ask flow, giving up after retries, a tool message spoken.
+- **API (13 new, 74 total):**
+  - credentials never in any response or audit row (and ciphertext in the database)
+  - per-type validation; real connection tests (webhook, SMTP, Google) with the failure recorded
+  - tenant isolation and MANAGER read-only
+  - OAuth refused without a client; a forged callback redirects to login
+  - binding type checks; publish blocked until bound
+  - a phone call booking into Google Calendar with a taken slot (the alternatives are spoken, then the booking succeeds and is recorded with the event id)
+  - reschedule and cancel syncing the calendar; a revoked calendar giving 502 with nothing changed and the integration flagged
+  - **two concurrent callers, one slot:** exactly one booking
+  - an unanswered transfer (whisper, message, follow-up lead, one staff email); an answered transfer; deleting lead statuses
+- **web:** time-zone helpers (including a DST change).
+
+**Browser E2E (manual Playwright run, real API, worker and web):**
+
+1. Connect a webhook (secret shown once) and SMTP (both tests pass) against local receivers.
+2. Connect Google Calendar with a key. Google itself answered `invalid_grant` for the made-up key, and the card shows the error.
+3. Create an agent: enable "Call a webhook" and bind it, add a background webhook step, set a staff alert email, publish, and assign a number.
+4. Three signed phone calls:
+   - Priya books 10 AM.
+   - Arjun asks for 10 AM, hears "already booked … 9:30 AM or 10:30 AM free", and books 11 AM.
+   - Kiran's emergency at night gets the "team unavailable" message (outside hours).
+5. The whisper and missed-transfer paths run, the staff email arrives, and signed webhooks arrive for the calls.
+6. The Appointments week shows the bookings. Reschedule to 3 PM, then cancel; the list shows Rescheduled, Upcoming and Cancelled.
+7. Add and reorder a lead status, then move a lead on the board.
+8. Mobile dark mode has no horizontal overflow.
+
+**Changed from the original plan and known limits**
+
+- **Tool permissions:** `config.tools` (versioned) plus `agent_tools` bindings (not versioned, because credentials aren't config) replace a per-version grant.
+- **Transfers:** to phone numbers (SIP later). Staff alerts go by email; SMS waits for an SMS provider.
+- **No audit rows for tool runs:** the call timeline is their record. Background tools still run in-process and their outcome is only logged; they move to BullMQ in P11.
+- **Calendar races:** two platforms or people booking the same calendar at the same moment can still collide. Our own agents are serialised by the platform reservation.
+- **`calendar.cancel`** matches the caller by phone number (caller ID can be spoofed). Put it behind a confirm step.
+- **Staff reschedules** skip the capacity and working-hours checks (staff decide).
+- **Not verified here:** a real Google account end to end (the tests use a fake Google behind `fetch`, and the live check only confirmed Google rejects a fake key) and a real Twilio `<Dial>`.
 
 ### ✅ M2 — Level 2 milestone
 

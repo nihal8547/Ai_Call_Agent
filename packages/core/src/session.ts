@@ -11,7 +11,13 @@ export type ToolCall = {
   /** Stable across retries of the same turn, so a tool never runs twice for one decision */
   idempotencyKey: string;
 };
-export type ToolResult = { ok: true; data?: unknown } | { ok: false; error: string };
+/**
+ * `message` is spoken to the caller as-is (built by the tool from real data, e.g. free slots).
+ * `retryFields` asks the caller for those answers again (e.g. a taken time) and re-runs the step.
+ */
+export type ToolResult =
+  | { ok: true; data?: unknown; message?: string }
+  | { ok: false; error: string; message?: string; retryFields?: string[] };
 
 export type Awaiting =
   | { kind: "field"; fieldKey: string; prompt: string }
@@ -51,6 +57,8 @@ export type CallSession = {
   pendingQuestions: string[];
   answeredQuestions: number;
   toolResults: Record<string, ToolResult>;
+  /** Re-asks triggered by tool results, per step (absent in sessions from older versions) */
+  toolRetries?: Record<string, number>;
   backgroundTools: string[];
   handoff: { requested: boolean; target: string | null; reason: string | null };
   ended: boolean;

@@ -20,6 +20,7 @@ const attrs = (a: Record<string, string | number | undefined>) =>
  *   actionOnEmptyResult makes silence post back too, so the agent can re-prompt.
  * - transfer: <Say> then <Dial>.
  * - hangup: <Say> then <Hangup/>.
+ * - hangup: false (without listen/transfer): <Say> only; the call carries on.
  */
 export function renderTwiml(reply: VoiceReply): string {
   const say = reply.say.trim()
@@ -27,7 +28,7 @@ export function renderTwiml(reply: VoiceReply): string {
     : "";
   let body: string;
   if (reply.transfer) {
-    body = `${say}<Dial${attrs({ callerId: reply.transfer.callerId, timeout: 20, action: reply.transfer.statusCallback, method: "POST" })}><Number>${escapeXml(reply.transfer.to)}</Number></Dial>`;
+    body = `${say}<Dial${attrs({ callerId: reply.transfer.callerId, timeout: 20, action: reply.transfer.statusCallback, method: "POST" })}><Number${attrs({ url: reply.transfer.whisperUrl, method: reply.transfer.whisperUrl ? "POST" : undefined })}>${escapeXml(reply.transfer.to)}</Number></Dial>`;
   } else if (reply.listen && !reply.hangup) {
     const hints = reply.listen.hints.slice(0, 100).join(",").slice(0, 1000);
     body = `<Gather${attrs({
@@ -40,6 +41,9 @@ export function renderTwiml(reply: VoiceReply): string {
       hints: hints || undefined,
       actionOnEmptyResult: "true",
     })}>${say}</Gather>`;
+  } else if (reply.hangup === false) {
+    // Say only, then let the call continue (e.g. a whisper before a transfer connects)
+    body = say;
   } else {
     body = `${say}<Hangup/>`;
   }

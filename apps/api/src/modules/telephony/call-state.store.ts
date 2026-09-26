@@ -19,6 +19,8 @@ export type CallState = {
   lastReply: string;
   eventSeq: number;
   finalized: boolean;
+  /** A transfer went unanswered and the follow-up was recorded */
+  missedTransfer?: boolean;
 };
 
 const TTL_SECONDS = 3 * 60 * 60;

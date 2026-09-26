@@ -50,6 +50,8 @@ export const HandoffConfig = z.object({
   unavailableMessage: Template.default(
     "Our team is not available right now. I have noted your details and someone will call you back.",
   ),
+  /** Staff emailed a summary when a transfer is not answered (sent through the email integration) */
+  notifyEmails: z.array(z.email().max(254)).max(5).default([]),
 });
 
 export const KnowledgeConfig = z.object({
@@ -66,6 +68,10 @@ export const AppointmentConfig = z.object({
   leadTimeMinutes: z.number().int().min(0).max(10080).default(60),
   maxDaysAhead: z.number().int().min(1).max(365).default(30),
   slotsToOffer: z.number().int().min(1).max(5).default(2),
+  /** Bookings allowed at the same time (tables, chairs, rooms); 1 = no overlaps */
+  capacity: z.number().int().min(1).max(500).default(1),
+  /** Start times are offered on this grid (e.g. every 30 minutes) */
+  slotStepMinutes: z.number().int().min(5).max(240).default(30),
 });
 
 export const LLMConfig = z.object({

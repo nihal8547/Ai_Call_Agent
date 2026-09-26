@@ -67,6 +67,8 @@ export type TurnOutput = {
 };
 
 const MAX_HISTORY = 30;
+/** Times one tool step may send the caller back to re-answer (a taken slot) before giving up */
+const MAX_TOOL_RETRIES = 2;
 const MAX_PENDING_QUESTIONS = 10;
 const BOOKING_TOOLS = new Set(["appointments.create", "calendar.book"]);
 const LEAD_TOOLS = new Set(["leads.create", "crm.create_lead"]);
@@ -245,11 +247,24 @@ export function resumeAfterTool(
     ...(result.ok ? {} : { error: result.error }),
   });
 
+  const retries = (s.toolRetries ??= {});
+  const retryFields = result.ok ? [] : (result.retryFields ?? []).filter((k) => fieldByKey(c, k));
   if (result.ok) {
+    if (result.message) t.say("say", result.message);
     if (step.type === "confirm_and_act" && step.successMessage) t.say("say", render(c, step.successMessage));
     advance(c, step.id);
+  } else if (retryFields.length && (retries[step.id] ?? 0) < MAX_TOOL_RETRIES) {
+    // e.g. the time is taken: say which times are free and ask again, then run the step again
+    retries[step.id] = (retries[step.id] ?? 0) + 1;
+    t.say("notice", result.message ?? render(c, config.messages.declined));
+    for (const key of retryFields) {
+      delete s.collected[key];
+      delete s.attempts[key];
+    }
+    delete s.toolResults[step.id];
+    s.stepId = collectStepFor(c, retryFields[0]!) ?? previousCollectStep(c, step.id) ?? step.id;
   } else {
-    t.say("notice", render(c, config.messages.actionFailed));
+    t.say("notice", result.message ?? render(c, config.messages.actionFailed));
     if (step.onError) s.stepId = step.onError;
     else advance(c, step.id);
   }
@@ -716,6 +731,10 @@ function stepById(c: Ctx, id: string): WorkflowStep | undefined {
 
 function fieldByKey(c: Ctx, key: string): QualificationField | undefined {
   return c.config.qualificationFields.find((f) => f.key === key);
+}
+
+function collectStepFor(c: Ctx, fieldKey: string): string | undefined {
+  return c.config.workflow.steps.find((s) => s.type === "collect_fields" && s.fields.includes(fieldKey))?.id;
 }
 
 function previousCollectStep(c: Ctx, stepId: string): string | undefined {

@@ -30,6 +30,7 @@ export class TwilioAdapter implements TelephonyAdapter {
         ? { speech: { transcript: p.SpeechResult, ...(Number.isFinite(confidence) ? { confidence } : {}) } }
         : {}),
       ...(p.CallDuration !== undefined ? { durationSeconds: Number(p.CallDuration) } : {}),
+      ...(p.DialCallStatus !== undefined ? { dialStatus: p.DialCallStatus } : {}),
     };
   }
 

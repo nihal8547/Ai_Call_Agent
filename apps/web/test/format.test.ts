@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fmtBytes, fmtDateTime, fmtDuration, fmtSource, fmtValue, humanize, plural } from "../src/lib/format";
+import { addDays, localDate, localTime, weekStart, zonedToUtc } from "../src/lib/tz";
 
 describe("format helpers", () => {
   it("humanises enum values and pluralises counts", () => {
@@ -30,5 +31,21 @@ describe("format helpers", () => {
     expect(fmtSource({ page: 3, headingPath: ["Pricing", "Implants"] })).toBe("Page 3 · Pricing › Implants");
     expect(fmtSource({ pages: [2, 3] })).toBe("Pages 2–3");
     expect(fmtSource({ sheet: "Rooms", rows: [2, 9] })).toBe("Sheet Rooms · Rows 2–9");
+  });
+});
+
+describe("business time zone helpers", () => {
+  it("finds weeks and converts wall-clock times", () => {
+    expect(weekStart("2026-10-04")).toBe("2026-09-28"); // Sunday → Monday before
+    expect(weekStart("2026-09-28")).toBe("2026-09-28");
+    expect(addDays("2026-12-30", 3)).toBe("2027-01-02");
+    expect(zonedToUtc("2026-09-29", "10:00", "Asia/Kolkata").toISOString()).toBe("2026-09-29T04:30:00.000Z");
+    // Across a DST change (New York, 1 Nov 2026)
+    expect(zonedToUtc("2026-11-01", "12:00", "America/New_York").toISOString()).toBe(
+      "2026-11-01T17:00:00.000Z",
+    );
+    const at = new Date("2026-09-28T20:00:00Z");
+    expect(localDate(at, "Asia/Kolkata")).toBe("2026-09-29");
+    expect(localTime(at, "Asia/Kolkata")).toBe("01:30");
   });
 });

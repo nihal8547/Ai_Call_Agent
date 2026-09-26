@@ -33,6 +33,8 @@ export async function createTestApp(): Promise<NestFastifyApplication> {
     EMBEDDINGS_PROVIDER: "hashing",
     // Keep test jobs away from a development worker using the same Redis
     QUEUE_PREFIX: "test",
+    // Tools talk to local test servers (webhook receiver, SMTP)
+    ALLOW_PRIVATE_NETWORK_TOOLS: "true",
     STORAGE_DRIVER: "local",
     STORAGE_LOCAL_DIR: TEST_STORAGE_DIR,
   });

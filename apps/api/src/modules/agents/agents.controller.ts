@@ -5,13 +5,14 @@ import {
   AgentConfig,
   CreateAgentBody,
   IdParam,
+  SaveToolBindingsBody,
   SaveDraftBody,
   SetAgentStatusBody,
+  TOOL_SPECS,
   UpdateAgentBody,
   zodIssuesToFieldErrors,
 } from "@platform/shared";
 import { getTemplate, instantiateTemplate, TEMPLATES } from "@platform/templates";
-import { INTERNAL_TOOLS } from "../telephony/internal-tools";
 import type { FastifyRequest } from "fastify";
 import { z } from "zod";
 import type { AuthContext } from "../../common/auth/auth.types";
@@ -54,15 +55,39 @@ function parseConfig(raw: unknown): AgentConfig {
   return r.data;
 }
 
-/** Only publish configs whose tools can actually run; drafts may reference anything */
-function assertToolsAvailable(config: AgentConfig): void {
-  const errors = config.tools
-    .map((tool, i) => ({ tool, i }))
-    .filter(({ tool }) => !(INTERNAL_TOOLS as readonly string[]).includes(tool))
-    .map(({ tool, i }) => ({
-      path: `config.tools.${i}`,
-      message: `"${tool}" needs an integration that is not connected yet`,
-    }));
+const INTEGRATION_LABEL: Record<string, string> = {
+  GOOGLE_CALENDAR: "Google Calendar",
+  GOOGLE_SHEETS: "Google Sheets",
+  EMAIL_SMTP: "an email account",
+  WEBHOOK: "a webhook",
+};
+
+/**
+ * Only publish configs whose tools can actually run: implemented, and bound to a connected
+ * integration of the right kind. Drafts may reference anything.
+ */
+async function assertToolsReady(tx: TenantTx, agentId: string, config: AgentConfig): Promise<void> {
+  const grants = await tx.agentTool.findMany({
+    where: { agentId, enabled: true },
+    include: { integration: { select: { type: true, status: true, name: true } } },
+  });
+  const errors = config.tools.flatMap((tool, i) => {
+    const spec = TOOL_SPECS[tool];
+    const path = `config.tools.${i}`;
+    if (!spec.available) return [{ path, message: `"${spec.label}" is not available yet` }];
+    if (!spec.integration) return [];
+    const integration = grants.find((g) => g.toolName === tool)?.integration;
+    if (!integration || integration.type !== spec.integration)
+      return [
+        {
+          path,
+          message: `Connect ${INTEGRATION_LABEL[spec.integration] ?? spec.integration} and choose it for "${spec.label}"`,
+        },
+      ];
+    if (integration.status === "DISCONNECTED")
+      return [{ path, message: `"${integration.name}" is disconnected` }];
+    return [];
+  });
   if (errors.length)
     throw new AppException(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "Some tools cannot run yet", errors);
 }
@@ -273,7 +298,7 @@ export class AgentsController {
       });
       if (!draft) throw new AppException(HttpStatus.CONFLICT, "CONFLICT", "There is no draft to publish");
       const config = parseConfig(readJson(AgentConfig, draft.config, "agent_versions.config"));
-      assertToolsAvailable(config);
+      await assertToolsReady(tx, id, config);
       const known = new Set(
         (
           await tx.knowledgeCollection.findMany({
@@ -346,6 +371,90 @@ export class AgentsController {
         ...requestMeta(req),
       });
       return updated;
+    });
+  }
+
+  /** Which integration each tool uses for this agent (applies immediately, like phone numbers) */
+  @RequirePermissions("agents:read")
+  @Get("agents/:id/tool-bindings")
+  async toolBindings(
+    @CurrentAuth() auth: AuthContext,
+    @Param(new ZodValidationPipe(IdParam)) { id }: { id: string },
+  ) {
+    return this.tenantDb.tx(auth.tenantId, async (tx) => {
+      await this.findAgent(tx, id);
+      const rows = await tx.agentTool.findMany({
+        where: { agentId: id },
+        include: { integration: { select: { id: true, name: true, type: true, status: true } } },
+        orderBy: { toolName: "asc" },
+      });
+      return {
+        items: rows.map((r) => ({ toolName: r.toolName, enabled: r.enabled, integration: r.integration })),
+      };
+    });
+  }
+
+  @RequirePermissions("agents:write")
+  @Put("agents/:id/tool-bindings")
+  saveToolBindings(
+    @CurrentAuth() auth: AuthContext,
+    @Param(new ZodValidationPipe(IdParam)) { id }: { id: string },
+    @Body(new ZodValidationPipe(SaveToolBindingsBody)) body: z.output<typeof SaveToolBindingsBody>,
+    @Req() req: FastifyRequest,
+  ) {
+    return this.tenantDb.tx(auth.tenantId, async (tx) => {
+      await this.findAgent(tx, id);
+      const ids = body.bindings.map((b) => b.integrationId).filter((x): x is string => Boolean(x));
+      const integrations = new Map(
+        (await tx.integration.findMany({ where: { id: { in: ids } } })).map((i) => [i.id, i]),
+      );
+      const errors = body.bindings.flatMap((b, i) => {
+        if (!b.integrationId) return [];
+        const integration = integrations.get(b.integrationId);
+        const wanted = TOOL_SPECS[b.toolName].integration;
+        if (!integration) return [{ path: `bindings.${i}.integrationId`, message: "Unknown integration" }];
+        if (!wanted || integration.type !== wanted)
+          return [
+            {
+              path: `bindings.${i}.integrationId`,
+              message: `"${integration.name}" can't run ${TOOL_SPECS[b.toolName].label}`,
+            },
+          ];
+        return [];
+      });
+      if (errors.length)
+        throw new AppException(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "Invalid tool bindings", errors);
+      for (const b of body.bindings) {
+        if (b.integrationId) {
+          await tx.agentTool.upsert({
+            where: { agentId_toolName: { agentId: id, toolName: b.toolName } },
+            create: {
+              tenantId: auth.tenantId,
+              agentId: id,
+              toolName: b.toolName,
+              integrationId: b.integrationId,
+            },
+            update: { integrationId: b.integrationId, enabled: true },
+          });
+        } else {
+          await tx.agentTool.deleteMany({ where: { agentId: id, toolName: b.toolName } });
+        }
+      }
+      await this.audit.record(tx, auth, {
+        action: "agent.tool_bindings_updated",
+        entityType: "agent",
+        entityId: id,
+        after: body,
+        ...requestMeta(req),
+      });
+      const rows = await tx.agentTool.findMany({
+        where: { agentId: id },
+        include: { integration: { select: { id: true, name: true, type: true, status: true } } },
+        orderBy: { toolName: "asc" },
+      });
+      return {
+        items: rows.map((r) => ({ toolName: r.toolName, enabled: r.enabled, integration: r.integration })),
+      };
     });
   }
 

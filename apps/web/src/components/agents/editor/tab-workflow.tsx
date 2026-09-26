@@ -1,11 +1,12 @@
 "use client";
 
-import { type AgentConfig, type Condition, TOOL_NAMES, type WorkflowStep } from "@platform/shared";
+import { type AgentConfig, type Condition, TOOL_SPECS, type WorkflowStep } from "@platform/shared";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { SelectField, TextField } from "@/components/ui/field";
 import { Check, Section } from "@/components/ui/inputs";
 import { useDraft } from "./draft-context";
+import { ToolsSection } from "./tools-section";
 
 type StepType = WorkflowStep["type"];
 
@@ -26,8 +27,6 @@ const STEP_INFO: Record<StepType, { label: string; help: string }> = {
   end: { label: "End call", help: "Says goodbye and hangs up." },
 };
 
-/** Tools the platform can run today; others need an integration (next phase) */
-const AVAILABLE_NOW = new Set(["leads.create", "appointments.create"]);
 const OPS: Condition["op"][] = ["eq", "neq", "in", "gt", "gte", "lt", "lte", "exists", "not_exists"];
 const OP_LABEL: Record<Condition["op"], string> = {
   eq: "is",
@@ -81,40 +80,16 @@ export function WorkflowTab() {
       const ids = new Set(c.workflow.steps.map((s) => s.id));
       let id: string = adding;
       for (let n = 2; ids.has(id); n++) id = `${adding}_${n}`;
-      // Insert before the final end/handoff step so the workflow still finishes properly
-      const at = Math.max(0, c.workflow.steps.length - 1);
+      // Insert before the closing end/handoff steps, so the new step is actually reached
+      let at = c.workflow.steps.length;
+      while (at > 0 && ["end", "handoff"].includes(c.workflow.steps[at - 1]!.type)) at--;
+      if (at === 0) at = Math.max(0, c.workflow.steps.length - 1);
       c.workflow.steps.splice(at, 0, newStep(adding, id, c));
     });
 
   return (
     <div className="space-y-6">
-      <Section
-        title="Tools"
-        description="Actions this agent may perform. Anything not ticked can never run, whatever the conversation."
-      >
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {TOOL_NAMES.map((t) => (
-            <Check
-              key={t}
-              label={
-                <>
-                  <code className="text-xs">{t}</code>
-                  {!AVAILABLE_NOW.has(t) ? (
-                    <span className="ml-1 text-xs text-amber-700 dark:text-amber-300">
-                      needs an integration
-                    </span>
-                  ) : null}
-                </>
-              }
-              checked={config.tools.includes(t)}
-              onChange={(v) =>
-                update((c) => void (c.tools = v ? [...c.tools, t] : c.tools.filter((x) => x !== t)))
-              }
-            />
-          ))}
-        </div>
-        {errorFor("tools") ? <p className="mt-2 text-sm text-red-600">{errorFor("tools")}</p> : null}
-      </Section>
+      <ToolsSection />
 
       <Section
         title="Workflow"
@@ -170,7 +145,7 @@ function StepCard({ step, index: i }: { step: WorkflowStep; index: number }) {
   ];
   const toolOptions = config.tools.map((t) => (
     <option key={t} value={t}>
-      {t}
+      {TOOL_SPECS[t].label}
     </option>
   ));
 

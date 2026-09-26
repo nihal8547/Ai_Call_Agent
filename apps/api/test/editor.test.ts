@@ -57,12 +57,16 @@ describe.skipIf(!hasTestDb)("agent editor: versions, restore, publish checks and
   it("refuses to publish tools that cannot run yet, but lets drafts reference them", async () => {
     const id = await newAgent("clinic-reception");
     const config = await draftOf(id);
-    config.tools = [...config.tools, "calendar.book"];
+    config.tools = [...config.tools, "calendar.book", "sms.send"];
     expect((await saveDraft(id, config)).statusCode).toBe(200);
     const res = await owner.client.post(`/api/v1/agents/${id}/publish`);
     expect(res.statusCode).toBe(400);
     expect(res.json().errors).toEqual([
-      { path: "config.tools.2", message: '"calendar.book" needs an integration that is not connected yet' },
+      {
+        path: "config.tools.2",
+        message: 'Connect Google Calendar and choose it for "Book in Google Calendar"',
+      },
+      { path: "config.tools.3", message: '"Send SMS" is not available yet' },
     ]);
   });
 

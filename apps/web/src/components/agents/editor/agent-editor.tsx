@@ -41,8 +41,8 @@ const TABS = [
   { key: "knowledge", label: "Knowledge", prefixes: ["knowledge"] },
   {
     key: "hours",
-    label: "Hours & handoff",
-    prefixes: ["workingHours", "handoff", "escalation", "limits", "messages"],
+    label: "Hours, bookings & handoff",
+    prefixes: ["workingHours", "handoff", "appointment", "escalation", "limits", "messages"],
   },
   { key: "versions", label: "Versions", prefixes: [] },
   { key: "test", label: "Test", prefixes: [] },

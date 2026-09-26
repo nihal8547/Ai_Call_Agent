@@ -1,6 +1,6 @@
 "use client";
 
-import type { AgentConfig, Day } from "@platform/shared";
+import { type AgentConfig, AppointmentConfig, type Day } from "@platform/shared";
 import { useMe } from "@/components/app/me-context";
 import { SelectField, TextField } from "@/components/ui/field";
 import { Check, Section } from "@/components/ui/inputs";
@@ -27,6 +27,17 @@ const MESSAGE_LABELS: Record<keyof AgentConfig["messages"], string> = {
   actionFailed: "When a booking or action fails",
   declined: "When the caller says “no” to a confirmation",
 };
+
+const BOOKING_DEFAULTS = AppointmentConfig.parse({});
+const BOOKING_FIELDS: [keyof typeof BOOKING_DEFAULTS, string, string][] = [
+  ["durationMinutes", "Length of a visit (minutes)", ""],
+  ["bufferMinutes", "Gap between visits (minutes)", ""],
+  ["capacity", "Bookings at the same time", "1 = no overlaps; e.g. tables or chairs"],
+  ["leadTimeMinutes", "Earliest booking (minutes ahead)", ""],
+  ["maxDaysAhead", "Book up to (days ahead)", ""],
+  ["slotStepMinutes", "Offer times every (minutes)", ""],
+  ["slotsToOffer", "Free times offered at once", "When the asked time is taken"],
+];
 
 export function HoursTab() {
   const me = useMe();
@@ -188,6 +199,17 @@ export function HoursTab() {
             error={errorFor("handoff.unavailableMessage")}
             onChange={(e) => update((c) => void (c.handoff.unavailableMessage = e.target.value))}
           />
+          <TextField
+            key={config.handoff.notifyEmails.join(",")}
+            label="Email staff when a transfer isn't answered"
+            placeholder="frontdesk@example.com, owner@example.com"
+            defaultValue={config.handoff.notifyEmails.join(", ")}
+            error={errorFor("handoff.notifyEmails")}
+            hint="Sent through your email integration. Up to 5, separated by commas."
+            onBlur={(e) =>
+              update((c) => void (c.handoff.notifyEmails = e.target.value.split(/[,;\s]+/).filter(Boolean)))
+            }
+          />
           <SelectField
             label="When the caller asks for a person"
             value={config.escalation.onWantsHuman}
@@ -198,6 +220,30 @@ export function HoursTab() {
             <option value="handoff">Transfer (during working hours)</option>
             <option value="take_message">Take a message</option>
           </SelectField>
+        </div>
+      </Section>
+
+      <Section
+        title="Bookings"
+        description="Rules for appointments booked by the agent (platform calendar or Google Calendar)."
+      >
+        <div className="grid gap-4 md:grid-cols-3">
+          {BOOKING_FIELDS.map(([key, label, hint]) => (
+            <TextField
+              key={key}
+              label={label}
+              hint={hint}
+              type="number"
+              min={key === "bufferMinutes" || key === "leadTimeMinutes" ? 0 : 1}
+              value={(config.appointment ?? BOOKING_DEFAULTS)[key]}
+              error={errorFor(`appointment.${key}`)}
+              onChange={(e) =>
+                update((c) => {
+                  c.appointment = { ...(c.appointment ?? BOOKING_DEFAULTS), [key]: Number(e.target.value) };
+                })
+              }
+            />
+          ))}
         </div>
       </Section>
 
