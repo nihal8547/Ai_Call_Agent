@@ -100,6 +100,32 @@ describe.skipIf(!hasTestDb)("telephony: real phone calls through Twilio webhooks
     expect(minutes.quantity).toBe(2n);
   });
 
+  it("never confirms an appointment outside working hours", async () => {
+    const hours = {
+      timezone: "Asia/Kolkata",
+      days: { mon: [{ start: "09:00", end: "10:00" }] },
+      offHours: "normal" as const,
+    };
+    const narrow = await provisionAgent(app, owner.me.tenant.id, "clinic-reception", { workingHours: hours });
+    // Any date that is not a Monday, or a Monday at 4 pm, is closed
+    const call = await phoneCall(app, narrow.e164, [
+      "Priya",
+      "cleaning",
+      "flexible",
+      "next sunday",
+      "4 pm",
+      "yes",
+    ]);
+    expect(call.last.say).toContain("I couldn't complete that just now");
+    expect(call.last.say).not.toContain("confirmed");
+    const record = await db().call.findUniqueOrThrow({
+      where: { providerCallSid: call.callSid },
+      include: { appointments: true },
+    });
+    expect(record.appointments).toHaveLength(0);
+    expect(record.outcome).not.toBe("APPOINTMENT_BOOKED");
+  });
+
   it("replays the same reply when Twilio retries a webhook", async () => {
     const call = await phoneCall(app, clinic.e164, ["Priya"]);
     const next = call.last.next!;

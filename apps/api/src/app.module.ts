@@ -10,6 +10,8 @@ import { InfraModule } from "./infra/infra.module";
 import { ApiKeysModule } from "./modules/api-keys/api-keys.module";
 import { AuditModule } from "./modules/audit/audit.module";
 import { AuthModule } from "./modules/auth/auth.module";
+import { AgentsModule } from "./modules/agents/agents.module";
+import { AnalyticsModule } from "./modules/analytics/analytics.module";
 import { CallsModule } from "./modules/calls/calls.module";
 import { HealthModule } from "./modules/health/health.module";
 import { LeadsModule } from "./modules/leads/leads.module";
@@ -47,6 +49,8 @@ export class AppModule {
         CallsModule,
         LeadsModule,
         PhoneNumbersModule,
+        AgentsModule,
+        AnalyticsModule,
       ],
       providers: [
         { provide: API_ENV, useValue: env },

@@ -8,8 +8,8 @@
     "dev": "next dev --port 3000",
     "start": "next start --port 3000",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src",
-    "test": "vitest run --passWithNoTests"
+    "lint": "eslint src test",
+    "test": "vitest run"
   },
   "dependencies": {
     "@platform/shared": "workspace:*",

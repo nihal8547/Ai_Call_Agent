@@ -33,14 +33,14 @@
     "@platform/core": "workspace:*",
     "@platform/runtime": "workspace:*",
     "@platform/ai": "workspace:*",
-    "@platform/telephony": "workspace:*"
+    "@platform/telephony": "workspace:*",
+    "@platform/templates": "workspace:*"
   },
   "devDependencies": {
     "@nestjs/testing": "~11.2.6",
     "@swc/core": "^1.13.0",
     "pino-pretty": "^13.0.0",
     "tsc-watch": "^7.1.0",
-    "unplugin-swc": "^1.5.5",
-    "@platform/templates": "workspace:*"
+    "unplugin-swc": "^1.5.5"
   }
 }

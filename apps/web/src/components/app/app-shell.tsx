@@ -13,10 +13,10 @@ const NAV: { section?: string; items: NavItem[] }[] = [
   {
     items: [
       { label: "Dashboard", href: "dashboard" },
-      { label: "AI Agents", href: "agents", permission: "agents:read", soon: true },
+      { label: "AI Agents", href: "agents", permission: "agents:read" },
       { label: "Knowledge Base", href: "knowledge", permission: "knowledge:read", soon: true },
-      { label: "Calls", href: "calls", permission: "calls:read", soon: true },
-      { label: "Leads", href: "leads", permission: "leads:read", soon: true },
+      { label: "Calls", href: "calls", permission: "calls:read" },
+      { label: "Leads", href: "leads", permission: "leads:read" },
       { label: "Appointments", href: "appointments", permission: "appointments:read", soon: true },
       { label: "Integrations", href: "integrations", permission: "integrations:read", soon: true },
       { label: "Analytics", href: "analytics", permission: "analytics:read", soon: true },
@@ -26,6 +26,7 @@ const NAV: { section?: string; items: NavItem[] }[] = [
     section: "Settings",
     items: [
       { label: "Members", href: "settings/members", permission: "users:read" },
+      { label: "Phone numbers", href: "settings/phone-numbers", permission: "phone_numbers:read" },
       { label: "API keys", href: "settings/api-keys", permission: "api_keys:read" },
       { label: "Audit log", href: "settings/audit-log", permission: "audit:read" },
     ],

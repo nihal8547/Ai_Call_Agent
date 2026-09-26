@@ -28,7 +28,7 @@ export function refreshSession(): Promise<boolean> {
   return refreshing;
 }
 
-type Options = { method?: "GET" | "POST" | "PATCH" | "DELETE"; body?: unknown; retry?: boolean };
+type Options = { method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"; body?: unknown; retry?: boolean };
 
 /**
  * Browser API client: same-origin (proxied to the API), sends the CSRF header on writes,

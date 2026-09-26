@@ -637,30 +637,67 @@ understand ─┬─(question & knowledge configured)→ retrieve ─┐
 
 ---
 
-## P6 — Frontend foundation & Level 1 screens
+## P6 — Frontend foundation & Level 1 screens ✅
 
 **Goal:** a usable control centre for Level 1 features.
 
-- **App shell:** responsive sidebar layout, tenant switcher, user menu, dark/light theme, breadcrumb, toast system, error boundary, empty states, and skeletons. Menu items are filtered by permissions.
-- **Routes (`/t/[tenant]/…`):**
-  - `dashboard`: KPI tiles (calls, answered, completed, qualified leads, transfers, failed, avg duration) + a 30-day calls chart (`/analytics/summary` endpoint).
-  - `agents`: list with status toggle. `agents/[id]` is a basic edit form for greeting, persona, and instructions, plus a simple field list editor. It saves a new draft version, and a Publish button publishes it.
-  - `calls`: data table (server-side pagination, filters, URL-synced state). `calls/[id]` shows call info → transcript → timeline → extracted data → outcome.
-  - `leads`: table with **dynamic columns** from the agent's fields, a status dropdown, and notes.
-  - `settings/phone-numbers`: list and assign to an agent.
-- **Data layer:** generated OpenAPI client, TanStack Query hooks per resource, Server Components for the first render, and zod form schemas imported from `@platform/shared`.
-- **Accessibility:** keyboard navigation, labelled inputs, contrast AA, and a responsive table → cards layout on mobile.
+**Status: done.**
 
-**Tests**
+**Backend additions**
 
-- Component tests (Vitest + Testing Library) and a Playwright E2E test: register → edit agent → publish → simulated call via webhooks → lead appears.
+- **Agents:**
+  - `GET /agent-templates`
+  - `GET/POST /agents` (a new agent starts as a **draft** from a template, personalised with the business name)
+  - `GET/PATCH /agents/:id`
+  - `PUT /agents/:id/draft`: full `AgentConfig` validation; errors come back as `config.<path>`
+  - `POST /agents/:id/publish`: `agents:publish`; the old version becomes `RETIRED`; first publish activates
+  - `POST /agents/:id/status`: activation requires a published version
+- **Analytics:** `GET /analytics/summary?days=` returns KPIs (calls, answered, completed, failed, qualified, booked, transfers, follow-ups, leads, average duration, fallback rate) and a per-day series bucketed in the **business time zone**, with empty days filled.
+- **Appointments are never confirmed outside working hours.** The internal tool rejects the slot and the agent says it will follow up. Found during the E2E run: the clinic was booked on a Sunday when closed.
+- `parseEnv` treats empty values (`KEY=`) as unset.
 
-### ✅ M1 — Level 1 milestone
+**Frontend (`apps/web`)**
 
-- Two businesses on one deployment, configured purely by data.
-- Real phone calls qualify leads that are visible in the UI.
-- The fallback-only mode works.
-- The isolation suite and RBAC matrix are green.
+- **Dashboard:**
+  - 8 KPI stat tiles and a 7/30/90-day range switch.
+  - "Calls per day" bar chart (validated colours for light and dark, ≤24 px bars, hairline grid, hover and keyboard-focus tooltip, a screen-reader table).
+  - An empty-state onboarding hint.
+- **AI agents:**
+  - Cards with live version, numbers, calls, and activate/deactivate.
+  - "New agent" from a template.
+  - **Editor:** identity and greeting; persona, instructions and business rules; qualification questions (add, remove, reorder, type, required, options, auto key); read-only workflow view.
+  - Save draft / Publish. Server validation errors are listed by path.
+  - A banner when no number routes to the agent.
+- **Calls:**
+  - Filterable list (URL-synced status/outcome, cursor "load more").
+  - **Call detail**: chat-style transcript with latency and "AI phrased" markers; timeline of extractions, questions, tools, fallbacks and outcome; collected data; result (lead, appointment in business time).
+  - The transcript is hidden without `calls:read_transcript`.
+- **Leads:** search, status filter, inline status change, collected details, link to the call.
+- **Settings → Phone numbers:** add (E.164), route to an agent, activate/deactivate, remove.
+- The navigation now enables Agents, Calls, Leads and Phone numbers (still permission-filtered).
+
+**Tests:**
+
+- API: 46, including 5 new agent tests. Template drafts, precise config error paths, publish/activate ordering, **version pinning** (a call in progress keeps v1 after v2 is published; the next call gets v2), analytics series consistency, working-hours booking guard.
+- Web: format helpers.
+
+**Browser E2E (Playwright against the running apps, manual):**
+
+1. Register → empty dashboard hint.
+2. Create an agent from the clinic template.
+3. An invalid `{{placeholder}}` is rejected with a message; fix it → save → publish v1.
+4. Add a phone number routed to the agent.
+5. **A signed 8-turn phone call**: greeting → answers → a question gets a safe answer → booking confirmed.
+6. The call detail shows the transcript and "follow-up needed".
+7. The lead status changes to Qualified and survives a reload.
+8. Dashboard KPIs (1 call / 1 qualified / 1 booked) and the chart tooltip reached by keyboard focus.
+
+### ✅ M1 — Level 1 milestone: reached
+
+- **Two businesses on one deployment, configured purely by data:** the seed plus tests run real estate, clinic, and restaurant agents side by side.
+- **Real phone calls qualify leads visible in the UI:** proven with signed Twilio webhooks; a live Twilio number only needs the README steps.
+- **Fallback-only mode works:** every call in this environment runs without an LLM.
+- **Isolation suite and RBAC matrix are green:** 101 DB isolation tests + the API RBAC suite.
 
 ---
 

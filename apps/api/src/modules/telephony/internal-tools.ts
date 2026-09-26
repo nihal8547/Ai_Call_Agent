@@ -1,5 +1,11 @@
 import { Logger } from "@nestjs/common";
-import { type EngineContext, type ToolCall, type ToolResult, zonedDateTimeToUtc } from "@platform/core";
+import {
+  type EngineContext,
+  isOpen,
+  type ToolCall,
+  type ToolResult,
+  zonedDateTimeToUtc,
+} from "@platform/core";
 import type { AgentConfig } from "@platform/shared";
 import type { ToolRunner } from "@platform/runtime";
 import { z } from "zod";
@@ -73,6 +79,11 @@ export class InternalTools implements ToolRunner {
     if (startsAt.getTime() < Date.now()) return { ok: false, error: "in_the_past" };
     const minutes = this.t.config.appointment?.durationMinutes ?? 30;
     const endsAt = new Date(startsAt.getTime() + minutes * 60_000);
+    // Never confirm a visit when the business is closed (the whole slot must be inside opening hours)
+    const hours = this.t.config.workingHours;
+    if (hours && (!isOpen(hours, startsAt) || !isOpen(hours, new Date(endsAt.getTime() - 60_000)))) {
+      return { ok: false, error: "outside_working_hours" };
+    }
 
     const appointment = await this.tenantDb.tx(this.t.tenantId, async (tx) => {
       // Idempotent: a retried booking for the same call and time returns the existing appointment

@@ -20,6 +20,11 @@ describe("parseEnv", () => {
     );
   });
 
+  it("treats empty values as unset", () => {
+    const opt = z.object({ KEY: z.string().min(10).optional(), PORT: envPrimitives.port.default(4000) });
+    expect(parseEnv(opt, { KEY: "", PORT: "" })).toEqual({ PORT: 4000 });
+  });
+
   it("validates 32-byte base64 keys", () => {
     const key = z.object({ K: envPrimitives.key32 });
     expect(() => parseEnv(key, { K: Buffer.alloc(16).toString("base64") })).toThrow(/32 bytes/);

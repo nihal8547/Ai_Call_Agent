@@ -14,3 +14,17 @@
 body {
   @apply bg-slate-50 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100;
 }
+
+/* Chart tokens: single-series bar colour validated against each mode's card surface */
+:root {
+  --chart-bar: #2563eb;
+  --chart-grid: #e2e8f0;
+  --chart-axis: #64748b;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --chart-bar: #3b82f6;
+    --chart-grid: #1e293b;
+    --chart-axis: #94a3b8;
+  }
+}

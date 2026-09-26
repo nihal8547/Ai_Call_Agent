@@ -82,3 +82,27 @@ export const UpdatePhoneNumberBody = z
   })
   .partial()
   .refine((b) => Object.keys(b).length > 0, "Nothing to update");
+
+// ── Agents ──────────────────────────────────────────────────────────────────
+export const CreateAgentBody = z.object({
+  name: z.string().trim().min(2).max(80),
+  templateKey: z.string().min(1).max(60),
+  description: z.string().trim().max(500).optional(),
+  /** Name the agent introduces itself with; defaults to the template's */
+  agentName: z.string().trim().min(1).max(60).optional(),
+});
+
+export const UpdateAgentBody = z
+  .object({ name: z.string().trim().min(2).max(80), description: z.string().trim().max(500).nullable() })
+  .partial()
+  .refine((b) => Object.keys(b).length > 0, "Nothing to update");
+
+/** The config is validated with AgentConfig on the server; the envelope only carries it */
+export const SaveDraftBody = z.object({
+  config: z.record(z.string(), z.unknown()),
+  changeNote: z.string().trim().max(500).optional(),
+});
+
+export const SetAgentStatusBody = z.object({ status: z.enum(["ACTIVE", "INACTIVE"]) });
+
+export const AnalyticsSummaryQuery = z.object({ days: z.coerce.number().int().min(1).max(365).default(30) });
