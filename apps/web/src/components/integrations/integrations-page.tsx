@@ -1,9 +1,10 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { useCan } from "@/components/app/me-context";
+import { useCan, useMe } from "@/components/app/me-context";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Alert, Card, PageHeader } from "@/components/ui/misc";
@@ -13,16 +14,26 @@ import { errorMessage } from "@/lib/api/errors";
 import { fmtDateTime } from "@/lib/format";
 import type { Integration } from "@/lib/types";
 import { IntegrationForm } from "./integration-form";
-import { CATALOG, type ConnectableType, describeConfig } from "./catalog";
+import { CATALOG, type ConnectableType, describeConfig, isCrm } from "./catalog";
 
-type ListResponse = { items: Integration[]; googleOAuth: boolean };
+type ListResponse = { items: Integration[]; googleOAuth: boolean; hubspotOAuth: boolean; zohoOAuth: boolean };
 
 export function IntegrationsPage() {
+  const me = useMe();
   const canWrite = useCan("integrations:write");
   const qc = useQueryClient();
   const router = useRouter();
   const params = useSearchParams();
   const list = useQuery({ queryKey: ["integrations"], queryFn: () => api<ListResponse>("/integrations") });
+  const failed = useQuery({
+    queryKey: ["failed-jobs-count"],
+    queryFn: () => api<{ open: number }>("/jobs/failed?status=FAILED&limit=1"),
+  });
+  const oauth = {
+    google: list.data?.googleOAuth ?? false,
+    hubspot: list.data?.hubspotOAuth ?? false,
+    zoho: list.data?.zohoOAuth ?? false,
+  };
   const [connecting, setConnecting] = useState<ConnectableType | null>(null);
   const [editing, setEditing] = useState<Integration | null>(null);
   const [revealed, setRevealed] = useState<{ name: string; secret: string } | null>(null);
@@ -42,7 +53,7 @@ export function IntegrationsPage() {
     onSuccess: refresh,
   });
 
-  // Back from "Connect with Google"
+  // Back from "Connect with Google/HubSpot/Zoho"
   const oauthError = params.get("error");
   const oauthConnected = params.get("connected");
   const clearOAuth = () => router.replace("?");
@@ -59,7 +70,15 @@ export function IntegrationsPage() {
     <>
       <PageHeader
         title="Integrations"
-        description="Connect the calendars, sheets, email and systems your agents use. Credentials are encrypted and never shown again."
+        description="Connect the calendars, sheets, email, CRMs and systems your agents use. Credentials are encrypted and never shown again."
+        actions={
+          <Link
+            href={`/t/${me.tenant.slug}/integrations/failed`}
+            className="text-sm whitespace-nowrap text-slate-600 hover:underline dark:text-slate-300"
+          >
+            Failed deliveries{failed.data?.open ? ` (${failed.data.open})` : ""}
+          </Link>
+        }
       />
       <div className="space-y-4">
         {oauthError ? (
@@ -72,13 +91,23 @@ export function IntegrationsPage() {
         ) : null}
         {oauthConnected ? (
           <Alert tone="success">
-            Google is connected. Test it below, then choose it for your agents&apos; tools.{" "}
+            Connected. Test it below, then choose it for your agents&apos; tools or map its fields.{" "}
             <button type="button" className="underline" onClick={clearOAuth}>
               Dismiss
             </button>
           </Alert>
         ) : null}
         {list.error ? <Alert>{errorMessage(list.error)}</Alert> : null}
+        {failed.data?.open ? (
+          <Alert tone="info">
+            {failed.data.open === 1
+              ? "1 delivery (webhook, email or CRM sync) failed after every retry."
+              : `${failed.data.open} deliveries (webhooks, emails or CRM syncs) failed after every retry.`}{" "}
+            <Link href={`/t/${me.tenant.slug}/integrations/failed`} className="font-medium underline">
+              Review failed deliveries
+            </Link>
+          </Alert>
+        ) : null}
         {(test.error ?? remove.error) ? <Alert>{errorMessage(test.error ?? remove.error)}</Alert> : null}
 
         <section aria-labelledby="connected-heading">
@@ -140,6 +169,14 @@ export function IntegrationsPage() {
                         <Button variant="secondary" onClick={() => setEditing(i)}>
                           Edit
                         </Button>
+                        {isCrm(i.type) ? (
+                          <Link
+                            href={`/t/${me.tenant.slug}/integrations/${i.id}/mapping`}
+                            className="inline-flex h-10 items-center rounded-lg border border-slate-300 px-4 text-sm font-medium hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                          >
+                            Field mapping
+                          </Link>
+                        ) : null}
                         <Button
                           variant="ghost"
                           className="text-red-600"
@@ -199,20 +236,14 @@ export function IntegrationsPage() {
         onClose={() => setConnecting(null)}
         title={`Connect ${CATALOG.find((c) => c.type === connecting)?.label ?? ""}`}
       >
-        {connecting ? (
-          <IntegrationForm
-            type={connecting}
-            googleOAuth={list.data?.googleOAuth ?? false}
-            onSaved={onSaved}
-          />
-        ) : null}
+        {connecting ? <IntegrationForm type={connecting} oauth={oauth} onSaved={onSaved} /> : null}
       </Dialog>
       <Dialog open={Boolean(editing)} onClose={() => setEditing(null)} title={`Edit ${editing?.name ?? ""}`}>
         {editing ? (
           <IntegrationForm
             type={editing.type as ConnectableType}
             existing={editing}
-            googleOAuth={list.data?.googleOAuth ?? false}
+            oauth={oauth}
             onSaved={onSaved}
           />
         ) : null}

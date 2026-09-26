@@ -1,4 +1,5 @@
 import { type NestFastifyApplication } from "@nestjs/platform-fastify";
+import { randomBytes } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { createApp } from "../../src/bootstrap";
@@ -19,7 +20,7 @@ export const TEST_STORAGE_DIR = path.join(os.tmpdir(), "platform-api-test-storag
 export const hasTestDb = Boolean(process.env.TEST_APP_DATABASE_URL && process.env.REDIS_URL);
 
 /** The real application wired to the integration-test database (RLS app role) */
-export async function createTestApp(): Promise<NestFastifyApplication> {
+export async function createTestApp(overrides: Record<string, string> = {}): Promise<NestFastifyApplication> {
   const env = loadApiEnv({
     ...process.env,
     NODE_ENV: "test",
@@ -31,12 +32,15 @@ export async function createTestApp(): Promise<NestFastifyApplication> {
     PUBLIC_BASE_URL: PUBLIC_URL,
     GEMINI_API_KEY: undefined,
     EMBEDDINGS_PROVIDER: "hashing",
-    // Keep test jobs away from a development worker using the same Redis
-    QUEUE_PREFIX: "test",
+    // Each test app its own queues: away from a development worker and from other test files
+    QUEUE_PREFIX: `test-${randomBytes(4).toString("hex")}`,
+    // Retries within milliseconds instead of seconds
+    QUEUE_BACKOFF_SCALE: "0.002",
     // Tools talk to local test servers (webhook receiver, SMTP)
     ALLOW_PRIVATE_NETWORK_TOOLS: "true",
     STORAGE_DRIVER: "local",
     STORAGE_LOCAL_DIR: TEST_STORAGE_DIR,
+    ...overrides,
   });
   const app = await createApp(env, { logger: false });
   await app.init();

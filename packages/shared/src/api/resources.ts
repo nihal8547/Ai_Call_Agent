@@ -107,6 +107,21 @@ export const SetAgentStatusBody = z.object({ status: z.enum(["ACTIVE", "INACTIVE
 
 export const AnalyticsSummaryQuery = z.object({ days: z.coerce.number().int().min(1).max(365).default(30) });
 
+const dayMs = (d: string) => Date.parse(`${d}T00:00:00Z`);
+/** Whole days in the business's time zone, both inclusive (YYYY-MM-DD), at most a year */
+export const AnalyticsRangeQuery = z
+  .object({
+    from: z.iso.date(),
+    to: z.iso.date(),
+    agentId: z.uuid().optional(),
+  })
+  .refine((q) => q.from <= q.to, { message: "from must not be after to", path: ["to"] })
+  .refine((q) => (dayMs(q.to) - dayMs(q.from)) / 86_400_000 < 366, {
+    message: "At most a year at a time",
+    path: ["from"],
+  });
+export const UsageSummaryQuery = AnalyticsRangeQuery;
+
 // ── Test console ────────────────────────────────────────────────────────────
 export const StartTestSessionBody = z.object({
   /** Which version to talk to; defaults to the draft, else the published version */
@@ -184,4 +199,10 @@ export const CreateFaqBody = z.object({
   answer: z.string().trim().min(2).max(2000),
   /** The gap this answers, so it disappears from the report */
   gapKey: z.string().max(300).optional(),
+});
+
+export const FAILED_JOB_STATUSES = ["FAILED", "RETRIED", "DISMISSED"] as const;
+export const FailedJobsQuery = z.object({
+  status: z.enum(FAILED_JOB_STATUSES).optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
 });

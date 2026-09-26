@@ -13,7 +13,10 @@ import { AuthModule } from "./modules/auth/auth.module";
 import { AgentsModule } from "./modules/agents/agents.module";
 import { AnalyticsModule } from "./modules/analytics/analytics.module";
 import { CallsModule } from "./modules/calls/calls.module";
+import { CrmModule } from "./modules/crm/crm.module";
 import { HealthModule } from "./modules/health/health.module";
+import { UsageModule } from "./modules/usage/usage.module";
+import { JobsModule } from "./modules/jobs/jobs.module";
 import { AppointmentsModule } from "./modules/appointments/appointments.module";
 import { KnowledgeModule } from "./modules/knowledge/knowledge.module";
 import { ToolsModule } from "./modules/tools/tools.module";
@@ -51,6 +54,9 @@ export class AppModule {
         UsersModule,
         ApiKeysModule,
         TelephonyModule,
+        UsageModule,
+        JobsModule,
+        CrmModule,
         CallsModule,
         LeadsModule,
         PhoneNumbersModule,

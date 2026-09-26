@@ -19,7 +19,7 @@ const NAV: { section?: string; items: NavItem[] }[] = [
       { label: "Leads", href: "leads", permission: "leads:read" },
       { label: "Appointments", href: "appointments", permission: "appointments:read" },
       { label: "Integrations", href: "integrations", permission: "integrations:read" },
-      { label: "Analytics", href: "analytics", permission: "analytics:read", soon: true },
+      { label: "Analytics", href: "analytics", permission: "analytics:read" },
     ],
   },
   {

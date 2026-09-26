@@ -34,6 +34,8 @@ export const TENANT_TABLES: { table: string; column: string }[] = [
     "appointments",
     "usage_records",
     "audit_logs",
+    "failed_jobs",
+    "analytics_hourly",
   ].map((table) => ({ table, column: "tenant_id" })),
 ];
 
@@ -123,6 +125,21 @@ export async function createPopulatedTenant(prisma: ReturnType<typeof appClient>
     });
     await tx.auditLog.create({
       data: { tenantId, actorType: "system", action: "test", entityType: "agent" },
+    });
+    await tx.failedJob.create({
+      data: {
+        tenantId,
+        queue: "webhooks",
+        name: "tool",
+        jobId: `j-${randomUUID()}`,
+        label: "Call a webhook",
+        payload: {},
+        error: "rejected",
+        attempts: 1,
+      },
+    });
+    await tx.analyticsHourly.create({
+      data: { tenantId, agentId: agent.id, hour: new Date("2026-09-28T10:00:00Z"), calls: 1 },
     });
     await tx.apiKey.create({
       data: { tenantId, name: "key", prefix: "vk_test", keyHash: randomUUID(), scopes: ["calls:read"] },

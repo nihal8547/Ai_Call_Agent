@@ -70,6 +70,11 @@ function storedCredentials(
     }
     case "EMAIL_SMTP":
       return { credentials: input, publicConfig: { host: input.host, port: input.port } };
+    case "HUBSPOT":
+      return { credentials: input, publicConfig: { auth: "private_app" } };
+    case "ZOHO":
+      // The data center is not secret; it tells staff which Zoho account this is
+      return { credentials: input, publicConfig: { auth: "self_client", dataCenter: input.accountsServer } };
   }
 }
 
@@ -109,10 +114,24 @@ export class IntegrationsService {
       : undefined;
   }
 
+  get hubspotOAuth() {
+    return this.env.HUBSPOT_CLIENT_ID && this.env.HUBSPOT_CLIENT_SECRET
+      ? { clientId: this.env.HUBSPOT_CLIENT_ID, clientSecret: this.env.HUBSPOT_CLIENT_SECRET }
+      : undefined;
+  }
+
+  get zohoOAuth() {
+    return this.env.ZOHO_CLIENT_ID && this.env.ZOHO_CLIENT_SECRET
+      ? { clientId: this.env.ZOHO_CLIENT_ID, clientSecret: this.env.ZOHO_CLIENT_SECRET }
+      : undefined;
+  }
+
   get toolNetwork() {
     return {
       allowPrivateNetwork: this.env.ALLOW_PRIVATE_NETWORK_TOOLS,
       ...(this.googleOAuth ? { googleOAuth: this.googleOAuth } : {}),
+      ...(this.hubspotOAuth ? { hubspotOAuth: this.hubspotOAuth } : {}),
+      ...(this.zohoOAuth ? { zohoOAuth: this.zohoOAuth } : {}),
     };
   }
 
@@ -136,7 +155,7 @@ export class IntegrationsService {
     input:
       | CreateIntegrationBody
       | {
-          type: "GOOGLE_CALENDAR" | "GOOGLE_SHEETS";
+          type: "GOOGLE_CALENDAR" | "GOOGLE_SHEETS" | "HUBSPOT" | "ZOHO";
           name: string;
           config: Record<string, unknown>;
           stored: Record<string, unknown>;
@@ -146,7 +165,11 @@ export class IntegrationsService {
     const id = randomUUID();
     const normalised =
       "stored" in input
-        ? { credentials: input.stored, publicConfig: {} as Record<string, unknown>, revealOnce: undefined }
+        ? {
+            credentials: input.stored,
+            publicConfig: { auth: "oauth" } as Record<string, unknown>,
+            revealOnce: undefined,
+          }
         : storedCredentials(input.type, input.credentials as Record<string, unknown>);
     const sealed = await this.keys.seal(actor.tenantId, purpose(id), normalised.credentials);
     const created = await this.tenantDb.tx(actor.tenantId, async (tx) => {

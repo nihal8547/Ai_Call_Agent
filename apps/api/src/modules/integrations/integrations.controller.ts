@@ -73,6 +73,8 @@ export class IntegrationsController {
     return {
       items: await this.integrations.list(auth.tenantId),
       googleOAuth: Boolean(this.integrations.googleOAuth),
+      hubspotOAuth: Boolean(this.integrations.hubspotOAuth),
+      zohoOAuth: Boolean(this.integrations.zohoOAuth),
     };
   }
 

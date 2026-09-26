@@ -1,7 +1,10 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import type { CallSession } from "@platform/core";
+import { Prisma, resolveCallSnapshot } from "@platform/db";
 import { randomUUID } from "node:crypto";
+import { PrismaService } from "../../infra/prisma.service";
 import { RedisService } from "../../infra/redis.service";
+import { TenantDbService } from "../../infra/tenant-db.service";
 
 /** Live state of one phone call, keyed by the provider's call id */
 export type CallState = {
@@ -28,12 +31,19 @@ const LOCK_MS = 15_000;
 const RELEASE = `if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) else return 0 end`;
 
 /**
- * Call state lives in Redis so any API instance can serve the next webhook of a call,
- * and a restart does not lose calls in progress.
+ * Call state lives in Redis so any API instance can serve the next webhook of a call, and is
+ * mirrored to the call's row on every turn: if Redis loses it (restart, eviction, failover),
+ * the conversation continues from the last completed turn instead of dropping the caller.
  */
 @Injectable()
 export class CallStateStore {
-  constructor(private readonly redis: RedisService) {}
+  private readonly logger = new Logger(CallStateStore.name);
+
+  constructor(
+    private readonly redis: RedisService,
+    private readonly prisma: PrismaService,
+    private readonly tenantDb: TenantDbService,
+  ) {}
 
   private async client() {
     if (this.redis.client.status === "wait") await this.redis.client.connect();
@@ -42,15 +52,37 @@ export class CallStateStore {
 
   async get(callSid: string): Promise<CallState | null> {
     const raw = await (await this.client()).get(`callstate:${callSid}`);
-    return raw ? (JSON.parse(raw) as CallState) : null;
+    return raw ? (JSON.parse(raw) as CallState) : this.recover(callSid);
   }
 
   async set(callSid: string, state: CallState): Promise<void> {
-    await (await this.client()).set(`callstate:${callSid}`, JSON.stringify(state), "EX", TTL_SECONDS);
+    await Promise.all([
+      (await this.client()).set(`callstate:${callSid}`, JSON.stringify(state), "EX", TTL_SECONDS),
+      this.tenantDb.db(state.tenantId).call.update({
+        where: { id: state.callId },
+        data: { sessionSnapshot: state as unknown as Prisma.InputJsonValue },
+      }),
+    ]);
   }
 
-  async delete(callSid: string): Promise<void> {
+  /** The call is over: forget its live state everywhere */
+  async delete(callSid: string, state?: Pick<CallState, "tenantId" | "callId">): Promise<void> {
     await (await this.client()).del(`callstate:${callSid}`);
+    if (state)
+      await this.tenantDb.db(state.tenantId).call.update({
+        where: { id: state.callId },
+        data: { sessionSnapshot: Prisma.DbNull },
+      });
+  }
+
+  /** Rebuild a live call's state from its last mirrored turn */
+  private async recover(callSid: string): Promise<CallState | null> {
+    const found = await resolveCallSnapshot(this.prisma.client, callSid);
+    const state = found?.snapshot as CallState | undefined;
+    if (!found || !state || state.callSid !== callSid || state.tenantId !== found.tenantId) return null;
+    await (await this.client()).set(`callstate:${callSid}`, JSON.stringify(state), "EX", TTL_SECONDS, "NX");
+    this.logger.warn({ callId: state.callId }, "call state recovered from the database");
+    return state;
   }
 
   /** Serialise work on one call across instances; returns null if the lock stays busy */

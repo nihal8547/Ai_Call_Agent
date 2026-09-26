@@ -43,7 +43,15 @@ const TONE_OF: Record<string, keyof typeof TONES> = {
 };
 
 /** Status label with a text label always present (color is never the only signal) */
-export function StatusPill({ value, className }: { value: string; className?: string }) {
+export function StatusPill({
+  value,
+  label,
+  className,
+}: {
+  value: string;
+  label?: string;
+  className?: string;
+}) {
   return (
     <span
       className={cn(
@@ -52,7 +60,7 @@ export function StatusPill({ value, className }: { value: string; className?: st
         className,
       )}
     >
-      {humanize(value)}
+      {label ?? humanize(value)}
     </span>
   );
 }

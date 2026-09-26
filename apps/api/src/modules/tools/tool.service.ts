@@ -1,7 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import type { ToolCall, ToolResult } from "@platform/core";
 import type { TenantTx } from "@platform/db";
-import type { AgentConfig } from "@platform/shared";
+import { type AgentConfig, TOOL_BUSINESS_OUTCOMES } from "@platform/shared";
 import type { ToolRunner } from "@platform/runtime";
 import { type BookingStore, createToolExecutor, type ResultCache, type ToolRunEvent } from "@platform/tools";
 import { RedisService } from "../../infra/redis.service";
@@ -20,15 +20,7 @@ export type CallToolContext = {
 };
 
 const CACHE_TTL_SECONDS = 24 * 3600;
-const BUSINESS_OUTCOMES = new Set([
-  "slot_unavailable",
-  "closed",
-  "too_soon",
-  "too_far",
-  "in_the_past",
-  "no_slots",
-  "no_appointment",
-]);
+const BUSINESS_OUTCOMES = new Set<string>(TOOL_BUSINESS_OUTCOMES);
 
 /** A ToolRunner for one call, plus the executions it performed (for the call timeline) */
 export type CallTools = ToolRunner & { drain(): ToolRunEvent[] };

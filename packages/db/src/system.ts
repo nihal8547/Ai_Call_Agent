@@ -62,3 +62,21 @@ export async function resolveInvitation(
     ? { invitationId: r.invitation_id, tenantId: r.tenant_id, email: r.email, roleId: r.role_id }
     : null;
 }
+
+/** A live call's mirrored state by the provider's call id (Redis lost it); null when the call is over */
+export async function resolveCallSnapshot(
+  prisma: PrismaClient,
+  callSid: string,
+): Promise<{ tenantId: string; snapshot: unknown } | null> {
+  const rows = await prisma.$queryRaw<{ tenant_id: string; snapshot: unknown }[]>`
+    SELECT tenant_id, snapshot FROM resolve_call_snapshot(${callSid})`;
+  const r = rows[0];
+  return r ? { tenantId: r.tenant_id, snapshot: r.snapshot } : null;
+}
+
+/** Tenants with calls started or ended since a moment (analytics sweeps work per tenant) */
+export async function tenantsWithCallsSince(prisma: PrismaClient, since: Date): Promise<string[]> {
+  const rows = await prisma.$queryRaw<{ tenant_id: string }[]>`
+    SELECT tenant_id FROM tenants_with_calls_since(${since})`;
+  return rows.map((r) => r.tenant_id);
+}

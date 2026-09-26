@@ -4,6 +4,8 @@ import type { CallEventType, Prisma } from "@platform/db";
 import type { RuntimeEvent, RuntimeTurn } from "@platform/runtime";
 import type { AgentConfig } from "@platform/shared";
 import { TenantDbService } from "../../infra/tenant-db.service";
+import { CrmSyncService } from "../crm/crm-sync.service";
+import { turnUsage, UsageService } from "../usage/usage.service";
 import type { CallState } from "./call-state.store";
 import { upsertLeadForCall } from "./lead-writer";
 
@@ -130,7 +132,11 @@ export function timelineEvents(
 /** Persists the call record, its timeline, usage and the resulting lead */
 @Injectable()
 export class CallRecorder {
-  constructor(private readonly tenantDb: TenantDbService) {}
+  constructor(
+    private readonly tenantDb: TenantDbService,
+    private readonly crm: CrmSyncService,
+    private readonly usage: UsageService,
+  ) {}
 
   /** Append a turn to the timeline and update the call summary; returns the next event sequence */
   async recordTurn(state: CallState, turn: RuntimeTurn, rows: EventRow[]): Promise<number> {
@@ -161,28 +167,19 @@ export class CallRecorder {
           qualificationStatus: session.qualification,
         },
       });
-      const usage = [
-        { kind: "LLM_INPUT_TOKENS" as const, quantity: turn.metrics.inputTokens },
-        { kind: "LLM_OUTPUT_TOKENS" as const, quantity: turn.metrics.outputTokens },
-      ].filter((u) => u.quantity > 0);
-      if (usage.length) {
-        await tx.usageRecord.createMany({
-          data: usage.map((u) => ({
-            tenantId: state.tenantId,
-            callId: state.callId,
-            kind: u.kind,
-            quantity: BigInt(u.quantity),
-            provider: "llm",
-          })),
-        });
-      }
+      await this.usage.record(
+        tx,
+        state.tenantId,
+        state.callId,
+        turnUsage(turn, { callerSpoke: rows.some((r) => r.type === "USER_TURN") }),
+      );
     });
     return seq;
   }
 
   /** The conversation is over: store the outcome and make sure collected details become a lead */
   async finalize(state: CallState, session: CallSession, config: AgentConfig): Promise<void> {
-    await this.tenantDb.tx(state.tenantId, async (tx) => {
+    const leadId = await this.tenantDb.tx(state.tenantId, async (tx) => {
       await tx.call.update({
         where: { id: state.callId },
         data: {
@@ -194,9 +191,12 @@ export class CallRecorder {
         },
       });
       if (Object.keys(session.collected).length) {
-        await upsertLeadForCall(tx, { ...state, collected: session.collected, config });
+        return (await upsertLeadForCall(tx, { ...state, collected: session.collected, config })).id;
       }
+      return null;
     });
+    // After commit, so the sync job reads the final lead
+    if (leadId) await this.crm.enqueueLead(state.tenantId, leadId);
   }
 
   async markStatus(
@@ -209,17 +209,16 @@ export class CallRecorder {
         where: { id: state.callId },
         data: { status, ...(durationSec !== undefined ? { durationSec } : {}), endedAt: new Date() },
       });
-      if (durationSec) {
-        await tx.usageRecord.create({
-          data: {
-            tenantId: state.tenantId,
-            callId: state.callId,
+      if (durationSec)
+        await this.usage.record(tx, state.tenantId, state.callId, [
+          // Carriers bill started minutes
+          {
             kind: "TELEPHONY_MINUTES",
-            quantity: BigInt(Math.ceil(durationSec / 60)),
+            quantity: Math.ceil(durationSec / 60),
             provider: "twilio",
+            model: null,
           },
-        });
-      }
+        ]);
     });
   }
 }

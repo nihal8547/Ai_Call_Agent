@@ -1,4 +1,4 @@
-import { envPrimitives, parseEnv } from "@platform/shared";
+import { envPrimitives, parseEnv, priceTable } from "@platform/shared";
 import { StorageEnvSchema } from "@platform/storage";
 import { z } from "zod";
 
@@ -21,6 +21,18 @@ export const ApiEnvSchema = z
       .string()
       .regex(/^[\w-]{1,32}$/)
       .default("bull"),
+    /**
+     * Run the call-side job consumers (webhooks, notifications, CRM) in this process. Turn off on
+     * API instances that should only serve requests; at least one instance must keep them on.
+     */
+    QUEUE_CONSUMERS: z
+      .enum(["true", "false"])
+      .default("true")
+      .transform((v) => v === "true"),
+    /** Multiplies retry backoff delays (tests use a tiny factor) */
+    QUEUE_BACKOFF_SCALE: z.coerce.number().min(0.0001).max(10).default(1),
+    /** Enables the queue dashboard at /admin/queues (HTTP basic auth, user "admin"). Platform operators only. */
+    ADMIN_BOARD_PASSWORD: z.string().min(16).optional(),
     /** Origins allowed to call the API directly (the web app normally goes through its same-origin proxy) */
     CORS_ORIGINS: envPrimitives.csv,
     /** Public HTTPS base URL of this API, used to build telephony webhook URLs */
@@ -51,6 +63,12 @@ export const ApiEnvSchema = z
     /** Google OAuth client (web application) for "Connect with Google"; service-account keys work without it */
     GOOGLE_OAUTH_CLIENT_ID: z.string().min(10).optional(),
     GOOGLE_OAUTH_CLIENT_SECRET: z.string().min(10).optional(),
+    /** HubSpot public app for "Connect with HubSpot"; private-app tokens work without it */
+    HUBSPOT_CLIENT_ID: z.string().min(10).optional(),
+    HUBSPOT_CLIENT_SECRET: z.string().min(10).optional(),
+    /** Zoho API console client (server-based) for "Connect with Zoho"; Self Client tokens work without it */
+    ZOHO_CLIENT_ID: z.string().min(10).optional(),
+    ZOHO_CLIENT_SECRET: z.string().min(10).optional(),
     /**
      * Let webhooks and SMTP reach private/loopback addresses. Development and tests only:
      * in production it would let tenants probe the internal network.
@@ -59,6 +77,22 @@ export const ApiEnvSchema = z
       .enum(["true", "false"])
       .default("false")
       .transform((v) => v === "true"),
+    /**
+     * Your own rates for usage cost estimates, as JSON in micro-dollars per unit, e.g.
+     * {"TELEPHONY_MINUTES":10000,"LLM_INPUT_TOKENS:gemini-2.5-pro":1.25}. Defaults are list prices.
+     */
+    USAGE_PRICES: z
+      .string()
+      .optional()
+      .refine((v) => {
+        if (!v) return true;
+        try {
+          priceTable(v);
+          return true;
+        } catch {
+          return false;
+        }
+      }, "must be a JSON object of KIND or KIND:model → micro-dollars per unit"),
     /** Largest accepted document upload */
     MAX_UPLOAD_MB: z.coerce.number().int().min(1).max(200).default(50),
   })

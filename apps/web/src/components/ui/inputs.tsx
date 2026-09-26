@@ -37,11 +37,13 @@ export function Check({
   checked,
   onChange,
   hint,
+  disabled,
 }: {
   label: ReactNode;
   checked: boolean;
   onChange: (v: boolean) => void;
   hint?: string;
+  disabled?: boolean;
 }) {
   return (
     <label className="flex items-start gap-2 text-sm">
@@ -49,6 +51,7 @@ export function Check({
         type="checkbox"
         className="mt-0.5"
         checked={checked}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
       />
       <span>

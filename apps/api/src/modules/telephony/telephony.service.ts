@@ -12,8 +12,10 @@ import { TenantDbService } from "../../infra/tenant-db.service";
 import { AgentConfigService } from "./agent-config.service";
 import { CallRecorder, timelineEvents } from "./call-recorder";
 import { type CallState, CallStateStore } from "./call-state.store";
-import { sendMail, type SmtpCredentials, type SmtpSettings, type ToolRunEvent } from "@platform/tools";
-import { IntegrationsService } from "../integrations/integrations.service";
+import { queueForTool, TOOL_SPECS, type ToolName } from "@platform/shared";
+import type { ToolRunEvent } from "@platform/tools";
+import { QueueService } from "../../infra/queue.service";
+import { CrmSyncService } from "../crm/crm-sync.service";
 import { RetrieverFactory } from "../knowledge/retriever.factory";
 import { type CallTools, ToolService } from "../tools/tool.service";
 import { upsertLeadForCall } from "./lead-writer";
@@ -44,7 +46,8 @@ export class TelephonyService {
     private readonly store: CallStateStore,
     private readonly recorder: CallRecorder,
     private readonly toolService: ToolService,
-    private readonly integrations: IntegrationsService,
+    private readonly queues: QueueService,
+    private readonly crm: CrmSyncService,
     private readonly retrievers: RetrieverFactory,
   ) {
     this.twilio = env.TWILIO_AUTH_TOKEN ? new TwilioAdapter(env.TWILIO_AUTH_TOKEN) : null;
@@ -174,7 +177,21 @@ export class TelephonyService {
         await this.recorder.finalize(state, out.session, config);
       }
       await this.recorder.markStatus(state, status, call.durationSeconds);
-      await this.store.delete(call.callSid);
+      await this.store.delete(call.callSid, state);
+      // Refresh this business's analytics shortly (calls ending in the same minute share one job)
+      const now = Date.now();
+      await this.queues
+        .addAnalytics(
+          {
+            kind: "rollup",
+            tenantId: state.tenantId,
+            from: new Date(now - 4 * 3_600_000).toISOString(),
+            to: new Date(now + 1).toISOString(),
+          },
+          `rollup-${state.tenantId}-${Math.floor(now / 60_000)}`,
+          Math.round(30_000 * this.env.QUEUE_BACKOFF_SCALE),
+        )
+        .catch((err: unknown) => this.logger.warn({ err }, "could not queue the analytics roll-up"));
     });
   }
 
@@ -214,7 +231,7 @@ export class TelephonyService {
       await this.recorder.finalize(state, out.session, config);
       state.finalized = true;
     }
-    this.runBackground(state, config, out.backgroundTools);
+    await this.runBackground(state, out.backgroundTools);
 
     state.seq += 1;
     state.lastReply = this.render(reply, config);
@@ -265,9 +282,7 @@ export class TelephonyService {
         state.missedTransfer = true;
         await this.recordMissedTransfer(state, config, call.dialStatus ?? "unknown");
         await this.store.set(state.callSid, state);
-        void this.notifyStaff(state, config).catch((err: unknown) =>
-          this.logger.warn({ err, callId: state.callId }, "missed-transfer notification failed"),
-        );
+        await this.notifyStaff(state, config);
       }
       const say = renderTemplate(
         config.handoff.unavailableMessage,
@@ -285,7 +300,7 @@ export class TelephonyService {
     config: AgentConfig,
     dialStatus: string,
   ): Promise<void> {
-    await this.tenantDb.tx(state.tenantId, async (tx) => {
+    const lead = await this.tenantDb.tx(state.tenantId, async (tx) => {
       await tx.callEvent.create({
         data: {
           tenantId: state.tenantId,
@@ -296,23 +311,24 @@ export class TelephonyService {
         },
       });
       await tx.call.update({ where: { id: state.callId }, data: { outcome: "FOLLOW_UP_REQUIRED" } });
-      await upsertLeadForCall(tx, { ...state, collected: state.session.collected, config });
+      return upsertLeadForCall(tx, { ...state, collected: state.session.collected, config });
     });
+    await this.crm.enqueueLead(state.tenantId, lead.id);
   }
 
+  /** Staff hear about a missed transfer by email, sent (and retried) by the notifications queue */
   private async notifyStaff(state: CallState, config: AgentConfig): Promise<void> {
     if (!config.handoff.notifyEmails.length) return;
-    const mail = await this.integrations.firstOfType(state.tenantId, "EMAIL_SMTP");
-    if (!mail) {
-      this.logger.warn({ callId: state.callId }, "no email integration for missed-transfer notifications");
-      return;
-    }
-    await sendMail(
-      mail.credentials as unknown as SmtpCredentials,
-      mail.config as unknown as SmtpSettings,
+    const caller = state.callerNumber || "the caller";
+    await this.queues.add(
+      "notifications",
       {
+        kind: "email",
+        tenantId: state.tenantId,
+        callId: state.callId,
+        label: `Missed-transfer email about ${caller}`,
         to: config.handoff.notifyEmails,
-        subject: `Missed transfer: please call back ${state.callerNumber || "the caller"}`,
+        subject: `Missed transfer: please call back ${caller}`,
         text: [
           `A caller asked to speak to someone at ${config.businessName}, but the transfer was not answered.`,
           "",
@@ -321,12 +337,9 @@ export class TelephonyService {
           "",
           `Call reference: ${state.callId}`,
         ].join("\n"),
-      },
-      {
-        allowPrivateNetwork: this.env.ALLOW_PRIVATE_NETWORK_TOOLS,
-        timeoutMs: 8000,
         idempotencyKey: `missed:${state.callId}`,
       },
+      `missed-${state.callId}`,
     );
   }
 
@@ -339,18 +352,27 @@ export class TelephonyService {
     return this.toolService.forCall({ ...state, config });
   }
 
-  /** Non-blocking tools (exports, notifications) run after the reply; they move to BullMQ in P11 */
-  private runBackground(state: CallState, config: AgentConfig, calls: ToolCall[]): void {
+  /**
+   * Non-blocking tools (webhooks, emails, sheet rows) are queued with the reply: they retry with
+   * backoff and, if they still fail, show up in the tenant's failed-jobs list.
+   */
+  private async runBackground(state: CallState, calls: ToolCall[]): Promise<void> {
     for (const call of calls) {
-      void this.tools(state, config)
-        .run(call, this.ctx(state))
-        .then((r) => {
-          if (!r.ok)
-            this.logger.warn(
-              { callId: state.callId, tool: call.tool, error: r.error },
-              "background tool failed",
-            );
-        });
+      await this.queues.add(
+        queueForTool(call.tool),
+        {
+          kind: "tool",
+          tenantId: state.tenantId,
+          label: `${TOOL_SPECS[call.tool as ToolName]?.label ?? call.tool} for the call from ${state.callerNumber || "an unknown number"}`,
+          callId: state.callId,
+          agentId: state.agentId,
+          agentVersionId: state.agentVersionId,
+          callerNumber: state.callerNumber,
+          timezone: state.timezone,
+          call,
+        },
+        `tool-${state.callId}-${call.idempotencyKey}`,
+      );
     }
   }
 

@@ -1115,18 +1115,166 @@ With the free-tier key, Gemini timed out or returned 429 during these calls, so 
 
 ---
 
-## P11 — Production state, queues, CRM, analytics
+## P11 — Production state, queues, CRM, analytics ✅
 
-- `RedisSessionStore`: `session:{callId}` with a 2 h TTL, a per-call lock (Redlock-lite), a turn sequence for idempotency, and a Postgres snapshot on every turn for recovery.
-- BullMQ in production:
-  - Queues: `ingestion`, `exports`, `crm`, `notifications`, `analytics`, `webhooks`.
-  - Retries with exponential backoff and dead-letter queues.
-  - Bull Board (admin only) and a "Failed jobs" view per tenant.
-- CRM adapters: HubSpot + Zoho (OAuth), with a field-mapping UI (agent field → CRM property, validated types), and sync status on leads.
-- Analytics:
-  - Hourly/daily roll-up tables (calls, outcomes, qualification funnel per field, bookings, transfers, latency p50/p95 per hop, tool failures, RAG stats, cost).
-  - The full Analytics page with date range and agent filters, plus CSV export.
-- Usage metering: `usage_records` on every LLM, embedding, telephony, and TTS use, and cost estimates from a price table.
+**Status: done.**
+
+**Call state that survives Redis**
+
+- Call state stays in Redis (`callstate:{CallSid}`, per-call lock, turn sequence for idempotent retries, as in P5).
+- It is now also mirrored to `calls.session_snapshot` on every turn.
+- When Redis has lost it (restart, eviction, failover), the next webhook rebuilds the state from the last completed turn through a SECURITY DEFINER lookup (`resolve_call_snapshot`, live calls from the last 4 hours only), and the conversation carries on.
+- The snapshot is cleared when the call ends, so an ended call cannot be revived.
+- The TTL stays at 3 hours (not the planned 2), so long calls are covered.
+
+**Queues (BullMQ)**
+
+- **Producers:** one `QueueService` for every queue.
+- **Retry policy per queue** (`QUEUE_RETRY` in shared), with exponential backoff:
+
+  | Queue         | Attempts | First wait |
+  | ------------- | -------- | ---------- |
+  | webhooks      | 6        | 5 s        |
+  | notifications | 4        | 10 s       |
+  | crm           | 6        | 10 s       |
+  | analytics     | 3        | 5 s        |
+
+  Completed jobs are kept a day and failed ones a week.
+
+- **Background tools now go through the queues:** `webhooks` for webhooks; `notifications` for email, SMS and WhatsApp; `crm` for leads, sheets and CRMs. So does the missed-transfer staff email.
+- **Retries and failures:**
+  - Only transient errors are retried: network, 5xx, 429, timeouts. An email that timed out is not resent, because it may already have been delivered.
+  - Anything else fails straight away.
+  - Every attempt of a job reuses the same idempotency key.
+- **Dead letters:** a job that used up its attempts is written to `failed_jobs` (tenant-scoped, RLS).
+  - **Integrations → Failed deliveries** lists them, with Send again and Dismiss (audited).
+  - `integrations:read` can see the list; `integrations:write` can act on it.
+  - Background results also appear on the call timeline, using sequence numbers from 1,000,000 up so they never collide with live turns.
+- **Consumers:**
+  - The call-side queues are consumed in the API process, because they need tenant keys, integrations and tool grants. `QUEUE_CONSUMERS=false` turns this off per instance.
+  - The worker consumes `ingestion` and `analytics`, and schedules an analytics sweep with `upsertJobScheduler`, so there is one schedule however many workers run.
+- **Bull Board** at `/admin/queues` for platform operators only: off unless `ADMIN_BOARD_PASSWORD` is set, HTTP basic auth, and separate from tenant roles.
+
+**CRM: HubSpot and Zoho**
+
+- Adapters in `@platform/tools/crm`:
+  - **HubSpot contacts:**
+    - Auth: a private app token, or OAuth with refresh.
+    - Upsert: by the id from the previous sync, else by email or phone, else create. A contact deleted in HubSpot is recreated; a 409 race is resolved.
+  - **Zoho leads:**
+    - Auth: a Self Client (the business's own client and refresh token), or OAuth.
+    - Data centers: `.in`, `.com`, `.eu`, `.sa` and others.
+    - The API domain must be Zoho's own.
+    - Upsert by phone (and email); a caller who gave no name still gets a last name.
+- **Connect with HubSpot / Zoho:** the same browser-bound OAuth state as Google.
+- **Field mapping:**
+  - Every answer any agent asks (published or draft), plus `@summary`, `@status`, `@agent` and `@call_date`, can be mapped to a CRM property.
+  - Validation: the property must exist and be writable, the types must be compatible, no property may be used twice, and every option of a choice field must have a matching CRM option. Problems come back per field.
+  - When a mapped value can't be written at sync time, that value is skipped and reported; the rest of the sync still goes through.
+- **Lead sync:**
+  - Leads are queued after each call, after a missed transfer, when staff edit a lead, and from **Send to CRM again**. Changes within 2 s become one sync.
+  - Each lead keeps `crm_sync[integrationId] = {status, externalId, syncedAt, error, skipped}`, shown on the Leads page.
+  - Rejected credentials flag the integration, and it is skipped until it tests fine again.
+
+**Usage metering**
+
+- Every turn records the following in `usage_records`, with an estimated cost:
+  - LLM tokens per model: understanding, phrasing and knowledge answers
+  - query embedding tokens
+  - text-to-speech characters
+  - speech recognition (15 s per caller turn, as Twilio bills)
+- Also recorded:
+  - phone minutes when the call ends
+  - ingestion (embedding tokens, OCR tokens)
+  - test-console AI usage
+- `calls.cost_micros` keeps each call's running cost.
+- Prices are public list prices in micro-dollars (`DEFAULT_PRICES`); `USAGE_PRICES` overrides them per deployment.
+- `GET /usage/summary` gives lines and a per-day breakdown (`billing:read` only).
+
+**Analytics**
+
+- **`analytics_hourly` roll-ups** per tenant, agent and local hour (the business's time zone, so half-hour offsets like India's work). Each row holds:
+  - calls, outcomes and qualification
+  - duration, turns and turns without AI
+  - missed transfers
+  - knowledge questions, answered, and the reasons for the unanswered ones
+  - tool runs and failures per tool (a taken slot is not a failure)
+  - cost
+  - a funnel count per field
+  - latency histograms per step (whole reply, understanding, search, answer, tools, phrasing)
+- **Rebuilding:** `rollupAnalytics` is idempotent (delete and recompute the touched hours under an advisory lock). It is queued about 30 s after each call ends, and the worker sweeps tenants with calls in the last 3 hours every `ANALYTICS_SWEEP_MINUTES`.
+- **`GET /analytics/report`** takes local days and an agent. It returns:
+  - totals, the daily series and busiest hours
+  - outcomes and the funnel in the agents' field order
+  - p50/p95 per step (approximate, from the histograms)
+  - tools and knowledge
+  - cost only with `billing:read`
+- **`GET /analytics/export.csv`** gives one row per day and agent. Cells a spreadsheet would run as formulas are neutralised.
+- **Analytics page:** filters in one row (period, custom range, agent); stat tiles; calls per day; how calls ended; the funnel; busiest hours; speed; tools; knowledge; usage and cost for billing people. Charts use one hue, hover tooltips and screen-reader tables.
+
+**Tests**
+
+- Isolation: `failed_jobs` and `analytics_hourly` are added to the RLS matrix (109 tests).
+- tools: HubSpot and Zoho adapters and mapping (+9).
+- API (+22; 107 in total):
+  - **Recovery:**
+    - Redis loses a call's state and the call continues.
+    - A finished call can't be revived.
+  - **Queues:**
+    - A background webhook recovers after two 503s: three attempts with one idempotency key.
+    - A 400 goes straight to Failed deliveries; retry, dismiss, permissions and tenant isolation.
+    - A missed-transfer email with no email integration is listed.
+    - The queue dashboard: password protected, and absent unless configured.
+  - **CRM:**
+    - HubSpot: connect, test and mapping validation.
+    - After a call the contact carries the mapped fields; a staff edit updates the same contact.
+    - A revoked token flags the integration, fails the lead and lists the job; after reconnecting it syncs.
+    - Zoho Self Client in the India data center.
+    - OAuth start and callback bound to the browser.
+    - Permissions.
+  - **Usage:**
+    - Turn metering.
+    - A call's minutes, speech and cost with contract prices.
+    - The summary for billing people only.
+  - **Analytics:**
+    - The roll-up queued at call end.
+    - The full report.
+    - Rebuilding gives the same numbers.
+    - Cost hidden without billing access.
+    - The CSV, with a hostile agent name neutralised.
+    - Range validation.
+
+**Browser E2E (manual Playwright run, real API, worker, web and Gemini):**
+
+1. Connect a webhook (the test passes), then connect HubSpot with a token. The HubSpot test showed "HTTP 403": this sandbox's egress proxy blocks `api.hubapi.com`, so HubSpot and Zoho are verified only against the fake APIs in the tests.
+2. Publish an agent with a background webhook step and a number, while the receiver answers 400.
+3. Four signed calls:
+   - a booking
+   - an emergency nobody answered
+   - a question
+   - a call where Redis lost its state after the first answer; the next reply carried on at the urgency question
+4. The Integrations page shows "1 delivery failed". **Failed deliveries** lists "Call a webhook … rejected: Webhook answered 400". After the receiver is fixed, **Send again** delivered it with the same idempotency key, and it moved to "Sent again".
+5. The mapping page explains that HubSpot's fields couldn't be read.
+6. About 30 s after the calls, the worker's roll-up fed **Analytics**:
+   - 4 calls, 1 booked, 2 qualified
+   - funnel 4 → 3 → 2 → 1 → 1
+   - whole reply p50 113 ms / p95 2.3 s; phrasing p95 2.8 s (Gemini)
+   - webhook 2 runs, 1 failed
+   - estimated cost $0.34: speech recognition, minutes and text-to-speech; the AI tokens were rate-limited and fell back
+7. The CSV downloads. Mobile dark mode has no horizontal overflow. Bull Board shows every queue behind basic auth.
+
+**Changed from the original plan and known limits**
+
+- **Call-side consumers run in the API process,** not the worker, because they share its services. Scale them with the API, or set `QUEUE_CONSUMERS=false` on request-only instances.
+- **No daily roll-up table:** days are summed from hourly rows (at most 8,760 rows per agent per year). Latency percentiles are approximate, from buckets of 100 ms up to ≥ 5 s.
+- **Analytics lag:** it is up to about 30 s behind; the dashboard's summary stays live.
+- **Hour buckets:** calls count in the hour they started. After changing the business's time zone, rebuild the roll-ups.
+- **Cost estimates** are list-price estimates, not invoices. Twilio speech recognition is estimated at one 15 s block per caller turn. OCR usage is recorded only for Gemini OCR.
+- **CRM:**
+  - Leads sync to HubSpot contacts and Zoho leads only: no deals, notes or activities yet.
+  - The `crm.*` workflow tools stay "coming soon"; automatic sync covers the common case.
+  - Not verified against real HubSpot or Zoho accounts here (network policy).
+- **`exports` queue:** declared but still unused; the CSV export is small and synchronous.
 
 ---
 

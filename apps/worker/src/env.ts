@@ -16,6 +16,10 @@ export const WorkerEnvSchema = z
     WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(4),
     GEMINI_API_KEY: z.string().min(10).optional(),
     EMBEDDINGS_PROVIDER: z.enum(["auto", "gemini", "hashing", "none"]).default("auto"),
+    /** Your own unit prices for cost estimates (same format as the API's USAGE_PRICES) */
+    USAGE_PRICES: z.string().optional(),
+    /** How often analytics roll-ups are refreshed for tenants with recent calls */
+    ANALYTICS_SWEEP_MINUTES: z.coerce.number().int().min(1).max(1440).default(10),
   })
   .extend(StorageEnvSchema.shape);
 export type WorkerEnv = z.infer<typeof WorkerEnvSchema>;

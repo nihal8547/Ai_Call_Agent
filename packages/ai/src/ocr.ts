@@ -13,7 +13,11 @@ export class GeminiOcr {
     private readonly baseUrl = "https://generativelanguage.googleapis.com/v1beta",
   ) {}
 
-  async pages(file: Buffer, mimeType: string): Promise<string[]> {
+  async pages(
+    file: Buffer,
+    mimeType: string,
+    opts: { onUsage?: (u: { model: string; inputTokens: number; outputTokens: number }) => void } = {},
+  ): Promise<string[]> {
     const prompt = [
       "Transcribe all text in this document exactly, in reading order.",
       'Mark headings with "#" (Markdown). Write each table row on one line as "Column: value; Column: value".',
@@ -38,7 +42,15 @@ export class GeminiOcr {
       },
     );
     if (!res.ok) throw new Error(`OCR failed: HTTP ${res.status}`);
-    const data = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+    const data = (await res.json()) as {
+      candidates?: { content?: { parts?: { text?: string }[] } }[];
+      usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
+    };
+    opts.onUsage?.({
+      model: this.model,
+      inputTokens: data.usageMetadata?.promptTokenCount ?? 0,
+      outputTokens: data.usageMetadata?.candidatesTokenCount ?? 0,
+    });
     const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
     return text
       .split(new RegExp(`^\\s*${PAGE_BREAK}\\s*$`, "m"))

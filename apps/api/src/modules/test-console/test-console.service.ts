@@ -3,6 +3,7 @@ import { createLLMProvider } from "@platform/ai";
 import type { CallSession, EngineContext, ToolCall } from "@platform/core";
 import { readJson } from "@platform/db";
 import { createRuntime, type RuntimeTurn } from "@platform/runtime";
+import { turnUsage, UsageService } from "../usage/usage.service";
 import { AgentConfig } from "@platform/shared";
 import { randomUUID } from "node:crypto";
 import type { AuthContext } from "../../common/auth/auth.types";
@@ -40,7 +41,16 @@ export class TestConsoleService {
     private readonly tenantDb: TenantDbService,
     private readonly redis: RedisService,
     private readonly retrievers: RetrieverFactory,
+    private readonly usage: UsageService,
   ) {}
+
+  /** Test calls use real AI: their tokens are metered too (no call, no telephony or speech) */
+  private async meter(tenantId: string, turn: RuntimeTurn): Promise<void> {
+    const lines = turnUsage(turn, { callerSpoke: false }).filter(
+      (l) => l.kind !== "TTS_CHARACTERS" && l.kind !== "STT_SECONDS",
+    );
+    if (lines.length) await this.tenantDb.tx(tenantId, (tx) => this.usage.record(tx, tenantId, null, lines));
+  }
 
   async start(
     auth: AuthContext,
@@ -83,6 +93,7 @@ export class TestConsoleService {
     };
     const toolLog: ToolCall[] = [];
     const turn = await this.runtime(base, toolLog).start(config, this.ctx(base), `test-${id}`);
+    await this.meter(auth.tenantId, turn);
     await this.save(id, { ...base, session: turn.output.session });
     return { sessionId: id, version: version.version, ...this.view(turn, toolLog) };
   }
@@ -102,6 +113,7 @@ export class TestConsoleService {
       { transcript: text },
       this.ctx(state),
     );
+    await this.meter(auth.tenantId, turn);
     await this.save(sessionId, { ...state, session: turn.output.session });
     return { sessionId, version: state.version, ...this.view(turn, toolLog) };
   }

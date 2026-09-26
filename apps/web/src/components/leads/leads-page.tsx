@@ -7,6 +7,7 @@ import { useCan, useMe } from "@/components/app/me-context";
 import { Button } from "@/components/ui/button";
 import { SelectField, TextField } from "@/components/ui/field";
 import { Alert, Badge, Card, PageHeader } from "@/components/ui/misc";
+import { StatusPill } from "@/components/ui/status-pill";
 import { api } from "@/lib/api/client";
 import { errorMessage } from "@/lib/api/errors";
 import { fmtDateTime, fmtValue, humanize } from "@/lib/format";
@@ -43,6 +44,10 @@ export function LeadsPage() {
   const setStatus = useMutation({
     mutationFn: ({ id, statusId: s }: { id: string; statusId: string }) =>
       api(`/leads/${id}`, { method: "PATCH", body: { statusId: s } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["leads"] }),
+  });
+  const resync = useMutation({
+    mutationFn: (id: string) => api(`/leads/${id}/crm-sync`, { method: "POST" }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["leads"] }),
   });
   const rows = leads.data?.pages.flatMap((p) => p.items) ?? [];
@@ -103,6 +108,7 @@ export function LeadsPage() {
       </form>
       {leads.error ? <Alert>{errorMessage(leads.error)}</Alert> : null}
       {setStatus.error ? <Alert>{errorMessage(setStatus.error)}</Alert> : null}
+      {resync.error ? <Alert>{errorMessage(resync.error)}</Alert> : null}
       {view === "board" && statuses.data ? (
         <LeadsBoard statuses={statuses.data.items} search={search} canWrite={canWrite} />
       ) : (
@@ -153,14 +159,27 @@ export function LeadsPage() {
                     ))}
                   </dl>
                 ) : null}
-                {l.callId ? (
-                  <Link
-                    href={`/t/${me.tenant.slug}/calls/${l.callId}`}
-                    className="mt-3 inline-block text-sm text-brand-600 hover:underline"
-                  >
-                    View call
-                  </Link>
-                ) : null}
+                <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
+                  {l.callId ? (
+                    <Link
+                      href={`/t/${me.tenant.slug}/calls/${l.callId}`}
+                      className="text-brand-600 hover:underline"
+                    >
+                      View call
+                    </Link>
+                  ) : null}
+                  <CrmState lead={l} />
+                  {canWrite && l.crmSync && Object.values(l.crmSync).some((c) => c.status === "failed") ? (
+                    <button
+                      type="button"
+                      className="text-brand-600 hover:underline disabled:opacity-50"
+                      disabled={resync.isPending && resync.variables === l.id}
+                      onClick={() => resync.mutate(l.id)}
+                    >
+                      Send to CRM again
+                    </button>
+                  ) : null}
+                </div>
               </Card>
             ))}
           </div>
@@ -185,4 +204,16 @@ export function LeadsPage() {
       )}
     </>
   );
+}
+
+/** Where the lead is in the CRM sync: sent, on its way, or failed (with why) */
+function CrmState({ lead }: { lead: Lead }) {
+  const states = Object.values(lead.crmSync ?? {});
+  if (!states.length) return null;
+  const failed = states.find((c) => c.status === "failed");
+  if (failed)
+    return <StatusPill value="ERROR" label={`CRM sync failed: ${failed.error ?? "unknown error"}`} />;
+  if (states.some((c) => c.status === "pending"))
+    return <StatusPill value="PROCESSING" label="Sending to CRM" />;
+  return <StatusPill value="CONNECTED" label="In CRM" />;
 }

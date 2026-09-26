@@ -32,6 +32,7 @@ import { requestMeta } from "../../common/http/request-meta";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import { TenantDbService } from "../../infra/tenant-db.service";
 import { AuditService } from "../audit/audit.service";
+import { CrmSyncService } from "../crm/crm-sync.service";
 
 const DeleteLeadStatusQuery = z.object({ moveTo: z.uuid().optional() });
 
@@ -45,6 +46,7 @@ const leadView = {
   notes: true,
   followUpAt: true,
   syncedToCrm: true,
+  crmSync: true,
   createdAt: true,
   updatedAt: true,
   callId: true,
@@ -58,6 +60,7 @@ export class LeadsController {
   constructor(
     private readonly tenantDb: TenantDbService,
     private readonly audit: AuditService,
+    private readonly crm: CrmSyncService,
   ) {}
 
   @RequirePermissions("leads:read")
@@ -102,13 +105,13 @@ export class LeadsController {
 
   @RequirePermissions("leads:write")
   @Patch("leads/:id")
-  update(
+  async update(
     @CurrentAuth() auth: AuthContext,
     @Param(new ZodValidationPipe(IdParam)) { id }: { id: string },
     @Body(new ZodValidationPipe(UpdateLeadBody)) body: z.output<typeof UpdateLeadBody>,
     @Req() req: FastifyRequest,
   ) {
-    return this.tenantDb.tx(auth.tenantId, async (tx) => {
+    const updated = await this.tenantDb.tx(auth.tenantId, async (tx) => {
       const lead = await tx.lead.findUnique({ where: { id } });
       if (!lead) throw new AppException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Lead not found");
       if (body.statusId && !(await tx.leadStatus.count({ where: { id: body.statusId } }))) {
@@ -162,6 +165,9 @@ export class LeadsController {
       });
       return updated;
     });
+    // Staff edits reach the CRM too
+    await this.crm.enqueueLead(auth.tenantId, id);
+    return updated;
   }
 
   @RequirePermissions("leads:read")

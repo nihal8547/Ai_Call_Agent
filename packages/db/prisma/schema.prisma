@@ -131,6 +131,12 @@ enum AppointmentStatus {
   NO_SHOW
 }
 
+enum FailedJobStatus {
+  FAILED
+  RETRIED
+  DISMISSED
+}
+
 enum UsageKind {
   TELEPHONY_MINUTES
   LLM_INPUT_TOKENS
@@ -177,6 +183,8 @@ model Tenant {
   appointments  Appointment[]
   usageRecords  UsageRecord[]
   auditLogs     AuditLog[]
+  failedJobs    FailedJob[]
+  analytics     AnalyticsHourly[]
 
   @@map("tenants")
 }
@@ -316,6 +324,7 @@ model Agent {
   calls            Call[]
   leads            Lead[]
   appointments     Appointment[]
+  analytics        AnalyticsHourly[]
 
   @@unique([tenantId, name])
   @@index([tenantId, status])
@@ -551,6 +560,8 @@ model Call {
   endedAt             DateTime?           @map("ended_at") @db.Timestamptz(3)
   durationSec         Int?                @map("duration_sec")
   costMicros          BigInt              @default(0) @map("cost_micros")
+  /// Live call state, mirrored on every turn so a call survives losing Redis; cleared when the call ends
+  sessionSnapshot     Json?               @map("session_snapshot")
 
   tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   agent        Agent         @relation(fields: [agentId], references: [id], onDelete: Restrict)
@@ -621,6 +632,8 @@ model Lead {
   notes        String?
   followUpAt   DateTime? @map("follow_up_at") @db.Timestamptz(3)
   syncedToCrm  Boolean   @default(false) @map("synced_to_crm")
+  /// Per CRM integration id: { status: pending|synced|failed, externalId, syncedAt, error }
+  crmSync      Json      @default("{}") @map("crm_sync")
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -706,4 +719,80 @@ model AuditLog {
   @@index([tenantId, createdAt(sort: Desc)])
   @@index([tenantId, entityType, entityId])
   @@map("audit_logs")
+}
+
+// ─────────────────────── Background jobs, analytics ───────────────────────
+
+/// Background jobs that used up their retries: the dead-letter list staff can retry or dismiss
+model FailedJob {
+  id            String          @id @default(uuid(7)) @db.Uuid
+  tenantId      String          @map("tenant_id") @db.Uuid
+  queue         String          @db.VarChar(40)
+  name          String          @db.VarChar(80)
+  jobId         String          @map("job_id") @db.VarChar(200)
+  /// What the job was doing, for people ("Call a webhook via CRM webhook")
+  label         String          @db.VarChar(200)
+  /// zod: the queue's job payload; replayed as is on retry
+  payload       Json
+  error         String
+  attempts      Int
+  callId        String?         @map("call_id") @db.Uuid
+  leadId        String?         @map("lead_id") @db.Uuid
+  integrationId String?         @map("integration_id") @db.Uuid
+  status        FailedJobStatus @default(FAILED)
+  resolvedAt    DateTime?       @map("resolved_at") @db.Timestamptz(3)
+  resolvedBy    String?         @map("resolved_by") @db.Uuid
+  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([queue, jobId])
+  @@index([tenantId, status, createdAt(sort: Desc)])
+  @@map("failed_jobs")
+}
+
+/// Hourly roll-up per agent, bucketed by the local hour (business time zone) each call started in.
+/// Derived data: rebuilt from calls, call_events and usage_records at any time.
+model AnalyticsHourly {
+  tenantId          String   @map("tenant_id") @db.Uuid
+  agentId           String   @map("agent_id") @db.Uuid
+  /// Local wall-clock hour in the tenant's time zone
+  hour              DateTime @db.Timestamp(0)
+  calls             Int      @default(0)
+  answered          Int      @default(0)
+  completed         Int      @default(0)
+  failed            Int      @default(0)
+  qualified         Int      @default(0)
+  disqualified      Int      @default(0)
+  leadCaptured      Int      @default(0) @map("lead_captured")
+  booked            Int      @default(0)
+  enquiryAnswered   Int      @default(0) @map("enquiry_answered")
+  handoff           Int      @default(0)
+  followUp          Int      @default(0) @map("follow_up")
+  abandoned         Int      @default(0)
+  durationSec       Int      @default(0) @map("duration_sec")
+  turns             Int      @default(0)
+  fallbackTurns     Int      @default(0) @map("fallback_turns")
+  transfersMissed   Int      @default(0) @map("transfers_missed")
+  questions         Int      @default(0)
+  questionsAnswered Int      @default(0) @map("questions_answered")
+  toolRuns          Int      @default(0) @map("tool_runs")
+  toolFailures      Int      @default(0) @map("tool_failures")
+  costMicros        BigInt   @default(0) @map("cost_micros")
+  /// { fieldKey: calls that collected it } for the qualification funnel
+  fields            Json     @default("{}")
+  /// { tool: { runs, failed } }
+  tools             Json     @default("{}")
+  /// { hop: counts per latency bucket } (bucket bounds in @platform/shared analytics)
+  latency           Json     @default("{}")
+  /// { reason: count } for questions answered with the safe reply
+  ragReasons        Json     @default("{}") @map("rag_reasons")
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agent  Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, agentId, hour])
+  @@index([tenantId, hour])
+  @@map("analytics_hourly")
 }

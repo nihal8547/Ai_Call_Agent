@@ -9,3 +9,4 @@ export * from "./handlers";
 export * from "./net";
 export * from "./slots";
 export * from "./webhook";
+export * from "./crm";

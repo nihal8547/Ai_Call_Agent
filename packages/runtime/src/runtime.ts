@@ -236,6 +236,20 @@ export function createRuntime(deps: RuntimeDeps) {
             used: used.has(h.chunkId),
           })),
           ...(answer && result?.answer ? { used: result.answer.sources } : {}),
+          ...(found?.usage || result?.usage
+            ? {
+                usage: {
+                  ...(found?.usage ?? {}),
+                  ...(result?.usage
+                    ? {
+                        llmModel: result.usage.model,
+                        inputTokens: result.usage.inputTokens,
+                        outputTokens: result.usage.outputTokens,
+                      }
+                    : {}),
+                },
+              }
+            : {}),
         },
       ],
       metrics: { retrieveMs: latencyMs },

@@ -1,6 +1,20 @@
 import type { Integration } from "@/lib/types";
 
-export type ConnectableType = "GOOGLE_CALENDAR" | "GOOGLE_SHEETS" | "EMAIL_SMTP" | "WEBHOOK";
+export type ConnectableType =
+  "GOOGLE_CALENDAR" | "GOOGLE_SHEETS" | "EMAIL_SMTP" | "WEBHOOK" | "HUBSPOT" | "ZOHO";
+
+export const isCrm = (type: string): type is "HUBSPOT" | "ZOHO" => type === "HUBSPOT" || type === "ZOHO";
+
+/** Zoho data centers, by the accounts server a Self Client token was made in */
+export const ZOHO_DATA_CENTERS: { server: string; label: string }[] = [
+  { server: "https://accounts.zoho.in", label: "India (zoho.in)" },
+  { server: "https://accounts.zoho.com", label: "United States (zoho.com)" },
+  { server: "https://accounts.zoho.eu", label: "Europe (zoho.eu)" },
+  { server: "https://accounts.zoho.sa", label: "Saudi Arabia (zoho.sa)" },
+  { server: "https://accounts.zoho.com.au", label: "Australia (zoho.com.au)" },
+  { server: "https://accounts.zoho.jp", label: "Japan (zoho.jp)" },
+  { server: "https://accounts.zohocloud.ca", label: "Canada (zohocloud.ca)" },
+];
 
 export const CATALOG: { type: string; label: string; description: string; available: boolean }[] = [
   {
@@ -27,8 +41,18 @@ export const CATALOG: { type: string; label: string; description: string; availa
     description: "Post call details to your own system, signed so you can trust them.",
     available: true,
   },
-  { type: "HUBSPOT", label: "HubSpot", description: "Create and update CRM leads.", available: false },
-  { type: "ZOHO", label: "Zoho CRM", description: "Create and update CRM leads.", available: false },
+  {
+    type: "HUBSPOT",
+    label: "HubSpot",
+    description: "Send every caller to HubSpot as a contact, with their answers in your own fields.",
+    available: true,
+  },
+  {
+    type: "ZOHO",
+    label: "Zoho CRM",
+    description: "Send every caller to Zoho CRM as a lead, in your own data center.",
+    available: true,
+  },
   {
     type: "CALCOM",
     label: "Cal.com",
@@ -54,6 +78,20 @@ export function describeConfig(i: Pick<Integration, "type" | "config">): string 
       return `${c.from ?? ""} via ${c.host ?? ""}:${c.port ?? ""} → ${Array.isArray(c.defaultTo) ? c.defaultTo.join(", ") : ""}`;
     case "WEBHOOK":
       return String(c.url ?? "");
+    case "HUBSPOT":
+    case "ZOHO": {
+      const center = ZOHO_DATA_CENTERS.find((d) => d.server === c.dataCenter)?.label;
+      const mapped = Object.keys((c.mapping as unknown as Record<string, string> | undefined) ?? {}).length;
+      const how = c.auth === "oauth" ? "Signed in" : i.type === "HUBSPOT" ? "Private app" : "Self Client";
+      return [
+        how,
+        center,
+        (c.syncLeads as unknown) === false ? "lead sync off" : "leads sync after each call",
+        `${mapped} ${mapped === 1 ? "field" : "fields"} mapped`,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+    }
     default:
       return "";
   }

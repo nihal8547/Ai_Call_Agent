@@ -65,12 +65,21 @@ export async function searchKnowledge(
   prisma: PrismaClient,
   embeddings: EmbeddingProvider | null,
   p: SearchParams,
-): Promise<{ hits: SearchHit[]; mode: "hybrid" | "keyword" }> {
+): Promise<{
+  hits: SearchHit[];
+  mode: "hybrid" | "keyword";
+  /** Tokens embedded for the query (usage metering) */
+  embedUsage?: { model: string; inputTokens: number };
+}> {
   const topK = p.topK ?? 5;
   let queryVector: number[] | null = null;
+  let embedUsage: { model: string; inputTokens: number } | undefined;
   if (embeddings) {
     const r = await embeddings.embed([p.query], { kind: "query", timeoutMs: p.embedTimeoutMs ?? 1500 });
-    if (r.ok) queryVector = r.vectors[0] ?? null;
+    if (r.ok) {
+      queryVector = r.vectors[0] ?? null;
+      embedUsage = { model: r.model, inputTokens: r.usage.inputTokens };
+    }
   }
   const tsq = toTsQuery(p.query);
 
@@ -144,5 +153,6 @@ export async function searchKnowledge(
   return {
     hits: [...hits.values()].sort((a, b) => b.score - a.score).slice(0, topK),
     mode: queryVector ? "hybrid" : "keyword",
+    ...(embedUsage ? { embedUsage } : {}),
   };
 }

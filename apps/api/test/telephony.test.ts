@@ -1,5 +1,6 @@
 import { type NestFastifyApplication } from "@nestjs/platform-fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { RedisService } from "../src/infra/redis.service";
 import { TenantDbService } from "../src/infra/tenant-db.service";
 import { Client, createTestApp, hasTestDb, registerOwner, STRONG_PASSWORD, uniqueEmail } from "./support/app";
 import { DEFAULT_CALLER, phoneCall, provisionAgent, twilioPost } from "./support/telephony";
@@ -140,6 +141,31 @@ describe.skipIf(!hasTestDb)("telephony: real phone calls through Twilio webhooks
     expect(record.totalTurns).toBe(2);
     const userTurns = await db().callEvent.count({ where: { callId: record.id, type: "USER_TURN" } });
     expect(userTurns).toBe(2);
+  });
+
+  it("continues the conversation when Redis loses the call's state", async () => {
+    const call = await phoneCall(app, clinic.e164, ["Priya"]);
+    const record = await db().call.findUniqueOrThrow({ where: { providerCallSid: call.callSid } });
+    expect(record.sessionSnapshot).toMatchObject({ callId: record.id, seq: 3 });
+    // Redis restarts without persistence mid-call
+    await app.get(RedisService).client.del(`callstate:${call.callSid}`);
+    const next = await twilioPost(app, call.last.next!, { ...call.base, SpeechResult: "cleaning" });
+    expect(next.twiml.say).not.toContain("problem on our side");
+    expect(next.twiml.next).toContain("seq=4");
+    // State is back in Redis, and the next turn carries on from the collected name
+    expect(await app.get(RedisService).client.exists(`callstate:${call.callSid}`)).toBe(1);
+    const after = await db().call.findUniqueOrThrow({ where: { id: record.id } });
+    expect(after.collectedData).toMatchObject({ patient_name: "Priya", service_required: "Dental cleaning" });
+
+    await twilioPost(app, "/telephony/twilio/status", {
+      ...call.base,
+      CallStatus: "completed",
+      CallDuration: "20",
+    });
+    // The live state is forgotten once the call is over, and can't be revived
+    expect((await db().call.findUniqueOrThrow({ where: { id: record.id } })).sessionSnapshot).toBeNull();
+    const late = await twilioPost(app, next.twiml.next!, { ...call.base, SpeechResult: "hello" });
+    expect(late.twiml.say).toContain("problem on our side");
   });
 
   it("re-prompts on silence", async () => {

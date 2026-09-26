@@ -6,6 +6,7 @@ import { NestFactory } from "@nestjs/core";
 import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fastify";
 import { randomUUID } from "node:crypto";
 import { Logger } from "nestjs-pino";
+import { mountQueueBoard } from "./admin/queue-board";
 import { AppModule } from "./app.module";
 import { type ApiEnv } from "./config/env";
 
@@ -38,6 +39,7 @@ export async function createApp(
   // Provider webhooks keep stable, unversioned URLs (they are configured in the provider console)
   app.setGlobalPrefix("api/v1", { exclude: ["health", "ready", "telephony/{*path}"] });
   app.enableShutdownHooks();
+  await mountQueueBoard(app, env);
 
   // Echo the request id so clients and logs can be correlated
   app

@@ -1,5 +1,6 @@
 import type { EmbeddingProvider } from "@platform/ai";
 import { Prisma, type PrismaClient, type TenantTx, withTenant } from "@platform/db";
+import { costMicros, DEFAULT_PRICES, mergeUsage, type PriceTable, type UsageLine } from "@platform/shared";
 import type { ObjectStorage } from "@platform/storage";
 import { chunkBlocks } from "./chunk";
 import { cleanBlocks } from "./clean";
@@ -13,6 +14,8 @@ export type IngestDeps = {
   /** null = no embedding provider: the document is searchable by keywords only */
   embeddings: EmbeddingProvider | null;
   ocr: OcrProvider | null;
+  /** Unit prices for usage cost estimates (defaults: list prices) */
+  prices?: PriceTable;
 };
 
 /** Temporary failure (provider outage, rate limit): the job should be retried */
@@ -50,7 +53,11 @@ export async function ingestDocument(
     const buf = await deps.storage.get(doc.storageKey);
     const kind = detectFileKind(buf, doc.fileName);
     if (!kind) throw new DocumentError("This file type is not supported.");
-    const extraction = await extract(kind, buf, deps.ocr);
+    const usage: UsageLine[] = [];
+    const extraction = await extract(kind, buf, deps.ocr, (u) => {
+      usage.push({ kind: "LLM_INPUT_TOKENS", quantity: u.inputTokens, provider: "gemini", model: u.model });
+      usage.push({ kind: "LLM_OUTPUT_TOKENS", quantity: u.outputTokens, provider: "gemini", model: u.model });
+    });
     const blocks = cleanBlocks(extraction.blocks);
     if (!blocks.some((b) => b.kind !== "heading"))
       throw new DocumentError("No readable text was found in this file.");
@@ -62,8 +69,15 @@ export async function ingestDocument(
     });
 
     await setStatus("EMBEDDING", 40);
-    const vectors = deps.embeddings
-      ? await embedAll(deps.embeddings, chunks, (p) => setStatus("EMBEDDING", 40 + Math.round(p * 50)))
+    const embedder = deps.embeddings;
+    const vectors = embedder
+      ? await embedAll(
+          embedder,
+          chunks,
+          (p) => setStatus("EMBEDDING", 40 + Math.round(p * 50)),
+          (tokens, model) =>
+            usage.push({ kind: "EMBEDDING_TOKENS", quantity: tokens, provider: model.split("-")[0]!, model }),
+        )
       : null;
 
     const oldStorageKey = await tenant(async (tx) => {
@@ -95,6 +109,20 @@ export async function ingestDocument(
           },
         },
       });
+      // What processing this document consumed, with its estimated cost
+      const prices = deps.prices ?? DEFAULT_PRICES;
+      const lines = mergeUsage(usage);
+      if (lines.length)
+        await tx.usageRecord.createMany({
+          data: lines.map((l) => ({
+            tenantId: job.tenantId,
+            kind: l.kind,
+            quantity: BigInt(Math.round(l.quantity)),
+            costMicros: costMicros(prices, l.kind, l.quantity, l.model),
+            provider: l.provider.slice(0, 40),
+            model: l.model?.slice(0, 80) ?? null,
+          })),
+        });
       if (!doc.replacesId) return null;
       const old = await tx.document.findUnique({ where: { id: doc.replacesId } });
       if (!old) return null;
@@ -130,6 +158,7 @@ async function embedAll(
   embeddings: EmbeddingProvider,
   chunks: Chunk[],
   progress: (fraction: number) => Promise<unknown>,
+  onUsage: (tokens: number, model: string) => void,
 ): Promise<number[][]> {
   const out: number[][] = [];
   for (let i = 0; i < chunks.length; i += EMBED_BATCH) {
@@ -143,6 +172,7 @@ async function embedAll(
       throw new TransientIngestError(`Embedding failed: ${r.error}`);
     }
     out.push(...r.vectors);
+    onUsage(r.usage.inputTokens, r.model);
     await progress(out.length / chunks.length);
   }
   return out;

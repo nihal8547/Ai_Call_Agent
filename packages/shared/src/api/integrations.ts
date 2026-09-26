@@ -28,6 +28,48 @@ export const WebhookConfig = z.object({
   url: z.url({ protocol: /^https?$/ }).max(2000),
 });
 
+/** Zoho accounts servers, one per data center (India: .in) */
+export const ZOHO_ACCOUNTS_SERVERS = [
+  "https://accounts.zoho.com",
+  "https://accounts.zoho.in",
+  "https://accounts.zoho.eu",
+  "https://accounts.zoho.com.au",
+  "https://accounts.zoho.jp",
+  "https://accounts.zoho.sa",
+  "https://accounts.zohocloud.ca",
+] as const;
+
+/**
+ * Where lead answers go in a CRM: qualification field key (or a built-in detail such as
+ * "@summary") → CRM property name.
+ */
+export const CrmMapping = z
+  .record(
+    z.string().regex(/^(@[a-z_]{2,20}|[a-z][a-z0-9_]{1,39})$/, "Unknown answer"),
+    z.string().trim().min(1).max(100),
+  )
+  .refine((m) => Object.keys(m).length <= 60, "Too many mapped fields");
+export const CrmConfig = z.object({
+  /** Push leads to this CRM after each call and when staff edit them */
+  syncLeads: z.boolean().default(true),
+  mapping: CrmMapping.default({}),
+});
+export const HubspotCredentials = z.object({
+  kind: z.literal("private_app"),
+  /** A private app's access token (Settings → Integrations → Private apps) */
+  token: z
+    .string()
+    .trim()
+    .regex(/^pat-[a-z0-9]+-[A-Za-z0-9-]{10,}$/, "Paste the private app's access token (it starts with pat-)"),
+});
+export const ZohoCredentials = z.object({
+  kind: z.literal("self_client"),
+  clientId: z.string().trim().min(10).max(200),
+  clientSecret: z.string().trim().min(10).max(200),
+  refreshToken: z.string().trim().min(10).max(500),
+  accountsServer: z.enum(ZOHO_ACCOUNTS_SERVERS),
+});
+
 /** A Google service account key file, pasted as JSON */
 export const ServiceAccountJson = z
   .string()
@@ -90,6 +132,8 @@ export const CreateIntegrationBody = z.discriminatedUnion("type", [
     config: WebhookConfig,
     credentials: WebhookCredentials.default({}),
   }),
+  z.object({ type: z.literal("HUBSPOT"), name: Name, config: CrmConfig, credentials: HubspotCredentials }),
+  z.object({ type: z.literal("ZOHO"), name: Name, config: CrmConfig, credentials: ZohoCredentials }),
 ]);
 export type CreateIntegrationBody = z.infer<typeof CreateIntegrationBody>;
 
@@ -99,6 +143,8 @@ export const CONNECTABLE_INTEGRATIONS = [
   "GOOGLE_SHEETS",
   "EMAIL_SMTP",
   "WEBHOOK",
+  "HUBSPOT",
+  "ZOHO",
 ] as const;
 export type ConnectableIntegration = (typeof CONNECTABLE_INTEGRATIONS)[number];
 
@@ -107,13 +153,24 @@ export const INTEGRATION_CONFIG: Record<ConnectableIntegration, z.ZodType> = {
   GOOGLE_SHEETS: GoogleSheetsConfig,
   EMAIL_SMTP: SmtpConfig,
   WEBHOOK: WebhookConfig,
+  HUBSPOT: CrmConfig,
+  ZOHO: CrmConfig,
 };
 export const INTEGRATION_CREDENTIALS: Record<ConnectableIntegration, z.ZodType> = {
   GOOGLE_CALENDAR: GoogleCredentialsInput,
   GOOGLE_SHEETS: GoogleCredentialsInput,
   EMAIL_SMTP: SmtpCredentials,
   WEBHOOK: WebhookCredentials,
+  HUBSPOT: HubspotCredentials,
+  ZOHO: ZohoCredentials,
 };
+
+/** CRMs that leads are pushed to */
+export const CRM_INTEGRATIONS = ["HUBSPOT", "ZOHO"] as const;
+export type CrmIntegration = (typeof CRM_INTEGRATIONS)[number];
+
+export const CrmOAuthStartQuery = z.object({ name: Name });
+export const SaveCrmMappingBody = z.object({ syncLeads: z.boolean(), mapping: CrmMapping });
 
 /** Validated per type by the API */
 export const UpdateIntegrationBody = z
@@ -164,3 +221,4 @@ export const UpdateAppointmentBody = z
     message: "Reschedule or change the status, not both",
     path: ["status"],
   });
+export type SaveCrmMappingBody = z.infer<typeof SaveCrmMappingBody>;

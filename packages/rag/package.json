@@ -25,6 +25,7 @@
     "@platform/ai": "*",
     "@platform/core": "*",
     "@platform/db": "*",
+    "@platform/shared": "*",
     "@platform/storage": "*",
     "exceljs": "^4.4.0",
     "mammoth": "^1.12.0",

@@ -1,3 +1,6 @@
+import { checkHubspot } from "./crm/hubspot";
+import type { CrmCredentials } from "./crm/types";
+import { checkZoho } from "./crm/zoho";
 import { verifySmtp, type SmtpCredentials } from "./email";
 import { ToolError } from "./errors";
 import type { GoogleCredentials, GoogleDeps } from "./google/auth";
@@ -8,6 +11,8 @@ import { postWebhook } from "./webhook";
 export type ConnectionTestDeps = {
   fetch?: typeof fetch;
   googleOAuth?: { clientId: string; clientSecret: string };
+  hubspotOAuth?: { clientId: string; clientSecret: string };
+  zohoOAuth?: { clientId: string; clientSecret: string };
   allowPrivateNetwork?: boolean;
   timeoutMs?: number;
 };
@@ -61,6 +66,18 @@ export async function testConnection(
       );
       return `Your endpoint answered ${r.status}`;
     }
+    case "HUBSPOT":
+      return checkHubspot(credentials as CrmCredentials, {
+        fetch: deps.fetch ?? fetch,
+        timeoutMs,
+        ...(deps.hubspotOAuth ? { oauthClient: deps.hubspotOAuth } : {}),
+      });
+    case "ZOHO":
+      return checkZoho(credentials as CrmCredentials, {
+        fetch: deps.fetch ?? fetch,
+        timeoutMs,
+        ...(deps.zohoOAuth ? { oauthClient: deps.zohoOAuth } : {}),
+      });
     default:
       throw new ToolError("config", "This integration type can't be tested yet");
   }

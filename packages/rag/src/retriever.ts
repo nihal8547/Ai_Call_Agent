@@ -24,6 +24,8 @@ export type KnowledgeSearch = {
   latencyMs: number;
   /** Why nothing can be answered from knowledge */
   reason?: "no_collections" | "no_hits" | "not_relevant" | "error";
+  /** The query's embedding (usage metering) */
+  usage?: { embedModel: string; embeddingTokens: number };
 };
 
 export type KnowledgeAnswerResult = {
@@ -31,6 +33,7 @@ export type KnowledgeAnswerResult = {
   failure?: AnswerFailure | KnowledgeSearch["reason"];
   detail?: string;
   llmMs?: number;
+  usage?: { model: string; inputTokens: number; outputTokens: number };
   /** Chunk ids given to the answer step */
   usedChunkIds: string[];
 };
@@ -96,6 +99,9 @@ export function createKnowledgeRetriever(deps: RetrieverDeps) {
         })),
         passages,
         latencyMs: Date.now() - started,
+        ...(r.embedUsage
+          ? { usage: { embedModel: r.embedUsage.model, embeddingTokens: r.embedUsage.inputTokens } }
+          : {}),
         ...(r.hits.length
           ? passages.length
             ? {}
@@ -124,6 +130,7 @@ export function createKnowledgeRetriever(deps: RetrieverDeps) {
       ...(r.failure ? { failure: r.failure } : {}),
       ...(r.detail ? { detail: r.detail } : {}),
       ...(r.llmMs !== undefined ? { llmMs: r.llmMs } : {}),
+      ...(r.usage ? { usage: r.usage } : {}),
       usedChunkIds: r.used.map((p) => p.chunkId),
     };
   }

@@ -114,6 +114,7 @@ describe.skipIf(!hasTestDb)(`RAG evaluation (${GEMINI ? "Gemini embeddings" : "o
     }
   }, timeout);
   afterAll(async () => {
+    // eslint-disable-next-line no-console -- the report is the point of REPORT=1 / DEBUG_EVAL
     if (process.env.REPORT) console.table(report);
     await app.close();
   });
@@ -153,6 +154,7 @@ describe.skipIf(!hasTestDb)(`RAG evaluation (${GEMINI ? "Gemini embeddings" : "o
           misses.push(q);
           if (process.env.DEBUG_EVAL) {
             const ps = found.passages as { content: string; coverage: number }[];
+            // eslint-disable-next-line no-console -- the report is the point of REPORT=1 / DEBUG_EVAL
             console.log(
               `MISS ${q} || ${ps.map((p) => `[${p.coverage.toFixed(2)}] ${p.content.split("\n")[0]}`).join(" | ")}`,
             );

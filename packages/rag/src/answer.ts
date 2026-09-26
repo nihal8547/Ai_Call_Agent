@@ -224,6 +224,8 @@ export async function answerFromPassages(
   failure?: AnswerFailure;
   detail?: string;
   llmMs?: number;
+  /** Tokens the answering model used (usage metering) */
+  usage?: { model: string; inputTokens: number; outputTokens: number };
   used: Passage[];
 }> {
   if (!passages.length) return { answer: null, failure: "weak_match", used: [] };
@@ -240,18 +242,21 @@ export async function answerFromPassages(
       jsonSchema: ANSWER_SCHEMA,
     });
     if (r.ok) {
+      const usage = { model: r.model, inputTokens: r.usage.inputTokens, outputTokens: r.usage.outputTokens };
       const parsed = AnswerJson.safeParse(r.json);
-      if (!parsed.success) return fallback("ungrounded", "schema", r.latencyMs);
+      if (!parsed.success) return { ...fallback("ungrounded", "schema", r.latencyMs), usage };
       const v = verifyAnswer(parsed.data, used);
       if (v.ok)
         return {
           answer: { text: v.text, sources: v.cited.map(toSource), method: "generated" },
           llmMs: r.latencyMs,
+          usage,
           used,
         };
       // The model judged the sources insufficient: trust that rather than quoting something loosely related
-      if (v.reason === "not_in_sources") return { answer: null, failure: v.reason, llmMs: r.latencyMs, used };
-      return fallback(v.reason, v.detail, r.latencyMs);
+      if (v.reason === "not_in_sources")
+        return { answer: null, failure: v.reason, llmMs: r.latencyMs, usage, used };
+      return { ...fallback(v.reason, v.detail, r.latencyMs), usage };
     }
     return fallback("llm_error", r.error, r.latencyMs);
   }

@@ -40,6 +40,7 @@ export type KnowledgeSearchResult = {
   passages: unknown[];
   latencyMs: number;
   reason?: string;
+  usage?: { embedModel: string; embeddingTokens: number };
 };
 
 /** Answers caller questions from the business's own knowledge (implemented by @platform/rag) */
@@ -54,6 +55,7 @@ export interface KnowledgeRetriever {
     failure?: string;
     detail?: string;
     llmMs?: number;
+    usage?: { model: string; inputTokens: number; outputTokens: number };
     usedChunkIds: string[];
   }>;
 }
@@ -99,6 +101,14 @@ export type RuntimeEvent =
         used: boolean;
       })[];
       used?: KnowledgeSource[];
+      /** What the search and answer consumed (embedding tokens, answer LLM tokens) */
+      usage?: {
+        embedModel?: string;
+        embeddingTokens?: number;
+        llmModel?: string;
+        inputTokens?: number;
+        outputTokens?: number;
+      };
     }
   | { type: "phrase_rejected"; reasons: string[] }
   /** Understanding/tools used most of the turn's latency budget, so the reply was not rephrased */

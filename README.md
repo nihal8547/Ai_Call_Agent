@@ -92,6 +92,15 @@ docker compose up -d --build
 - In an agent's **Workflow & tools** tab, tick the tools it may use and pick the integration each one runs through. Publishing is refused until every ticked tool has one.
 - Webhooks and SMTP cannot reach private or loopback addresses. `ALLOW_PRIVATE_NETWORK_TOOLS=true` lifts this for local development only.
 - Webhook requests carry `x-platform-signature: t=<unix>,v1=<hex HMAC-SHA256 of "t.body">` and an `idempotency-key`.
+- Background work (webhook steps, emails, sheet rows, CRM syncs) runs on BullMQ queues with retries and exponential backoff. Anything that still fails appears under **Integrations → Failed deliveries**, where staff can send it again once the cause is fixed. The API process consumes these queues (`QUEUE_CONSUMERS=false` turns that off on request-only instances); the worker runs ingestion and analytics.
+- **CRMs:** connect HubSpot (a private app token, or "Connect with HubSpot" with `HUBSPOT_CLIENT_ID`/`SECRET`) or Zoho CRM (a Self Client in your data center, or "Connect with Zoho" with `ZOHO_CLIENT_ID`/`SECRET`). Under **Field mapping**, choose which CRM field each answer goes to; types and choices are checked against the CRM. Leads are sent after each call and when staff edit them, and each lead shows its sync state.
+- **Operators:** set `ADMIN_BOARD_PASSWORD` to open the queue dashboard at `<API>/admin/queues` (basic auth, user `admin`). It shows every tenant's jobs, so it is for platform operators, not businesses.
+
+### Analytics and usage
+
+- **Analytics** shows calls, outcomes, the qualification funnel, busiest hours, per-step latency (p50/p95), tool failures, knowledge answers and (for people with billing access) estimated cost, per date range and agent, with a CSV export.
+- Figures come from hourly roll-ups (`analytics_hourly`, in the business's time zone). The worker refreshes them about 30 s after each call and sweeps recent hours every `ANALYTICS_SWEEP_MINUTES`. They can be rebuilt at any time from calls and events.
+- Every call meters phone minutes, speech recognition, text-to-speech characters, AI tokens and embeddings (`usage_records`). Cost estimates use public list prices; set `USAGE_PRICES` to your own rates.
 
 ### Database rules
 

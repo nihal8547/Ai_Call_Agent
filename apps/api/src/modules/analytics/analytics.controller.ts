@@ -1,11 +1,13 @@
-import { Controller, Get, Query } from "@nestjs/common";
+import { Controller, Get, Query, Res } from "@nestjs/common";
 import { Prisma } from "@platform/db";
-import { AnalyticsSummaryQuery } from "@platform/shared";
+import { AnalyticsRangeQuery, AnalyticsSummaryQuery } from "@platform/shared";
+import type { FastifyReply } from "fastify";
 import { type z } from "zod";
 import type { AuthContext } from "../../common/auth/auth.types";
 import { CurrentAuth, RequirePermissions } from "../../common/auth/decorators";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import { TenantDbService } from "../../infra/tenant-db.service";
+import { AnalyticsService } from "./analytics.service";
 
 type Totals = {
   calls: bigint;
@@ -23,7 +25,35 @@ type Totals = {
 
 @Controller("analytics")
 export class AnalyticsController {
-  constructor(private readonly tenantDb: TenantDbService) {}
+  constructor(
+    private readonly tenantDb: TenantDbService,
+    private readonly analytics: AnalyticsService,
+  ) {}
+
+  /** The Analytics page: KPIs, daily series, outcomes, funnel, latency, tools, knowledge, cost */
+  @RequirePermissions("analytics:read")
+  @Get("report")
+  report(
+    @CurrentAuth() auth: AuthContext,
+    @Query(new ZodValidationPipe(AnalyticsRangeQuery)) q: z.output<typeof AnalyticsRangeQuery>,
+  ) {
+    return this.analytics.report(auth, q);
+  }
+
+  @RequirePermissions("analytics:read")
+  @Get("export.csv")
+  async exportCsv(
+    @CurrentAuth() auth: AuthContext,
+    @Query(new ZodValidationPipe(AnalyticsRangeQuery)) q: z.output<typeof AnalyticsRangeQuery>,
+    @Res() reply: FastifyReply,
+  ) {
+    const body = await this.analytics.csv(auth, q);
+    return reply
+      .header("content-type", "text/csv; charset=utf-8")
+      .header("content-disposition", `attachment; filename="analytics-${q.from}-to-${q.to}.csv"`)
+      .header("cache-control", "no-store")
+      .send(body);
+  }
 
   /** Dashboard KPIs and a per-day series, bucketed in the business's time zone */
   @RequirePermissions("analytics:read")

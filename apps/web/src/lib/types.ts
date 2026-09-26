@@ -130,6 +130,16 @@ export type Lead = {
   callId: string | null;
   status: { id: string; key: string; label: string; color: string };
   agent: { id: string; name: string } | null;
+  /** Per CRM integration id */
+  crmSync?: Record<
+    string,
+    {
+      status: "pending" | "synced" | "failed";
+      externalId: string | null;
+      syncedAt: string | null;
+      error: string | null;
+    }
+  >;
 };
 
 export type PhoneNumber = {

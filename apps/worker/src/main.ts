@@ -1,12 +1,13 @@
 import { createEmbeddingProvider, GeminiOcr } from "@platform/ai";
 import { createPrismaClient } from "@platform/db";
-import { QUEUES } from "@platform/shared";
+import { priceTable, QUEUES } from "@platform/shared";
 import { createStorage } from "@platform/storage";
-import { Worker } from "bullmq";
+import { Queue, Worker } from "bullmq";
 import { Redis } from "ioredis";
 import path from "node:path";
 import pino from "pino";
 import { loadWorkerEnv } from "./env";
+import { analyticsProcessor } from "./processors/analytics";
 import { ingestionProcessor } from "./processors/ingestion";
 import { processSystemJob } from "./processors/system";
 
@@ -22,6 +23,7 @@ async function main(): Promise<void> {
     storage: createStorage(env, path.resolve(__dirname, "../../..")),
     embeddings: createEmbeddingProvider(env.EMBEDDINGS_PROVIDER, { gemini: env.GEMINI_API_KEY }),
     ocr: env.GEMINI_API_KEY ? new GeminiOcr(env.GEMINI_API_KEY) : null,
+    prices: priceTable(env.USAGE_PRICES),
   };
   logger.info(
     {
@@ -43,7 +45,20 @@ async function main(): Promise<void> {
       prefix: env.QUEUE_PREFIX,
       concurrency: Math.min(env.WORKER_CONCURRENCY, 2),
     }),
+    new Worker(QUEUES.analytics, analyticsProcessor(prisma, logger), {
+      connection,
+      prefix: env.QUEUE_PREFIX,
+      concurrency: 2,
+    }),
   ];
+
+  // Periodic roll-up refresh (a repeatable job: one schedule however many workers run)
+  const analytics = new Queue(QUEUES.analytics, { connection, prefix: env.QUEUE_PREFIX });
+  await analytics.upsertJobScheduler(
+    "analytics-sweep",
+    { every: env.ANALYTICS_SWEEP_MINUTES * 60_000 },
+    { name: "sweep", data: { kind: "sweep", hours: 3 }, opts: { removeOnComplete: 50, removeOnFail: 200 } },
+  );
 
   for (const w of workers) {
     w.on("completed", (job) => logger.info({ queue: w.name, jobId: job.id }, "job completed"));
@@ -54,6 +69,7 @@ async function main(): Promise<void> {
   const shutdown = async (signal: string) => {
     logger.info({ signal }, "shutting down: finishing active jobs");
     await Promise.all(workers.map((w) => w.close()));
+    await analytics.close();
     await prisma.$disconnect();
     connection.disconnect();
     process.exit(0);

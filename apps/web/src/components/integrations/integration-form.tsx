@@ -3,31 +3,36 @@
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { TextField } from "@/components/ui/field";
+import { SelectField, TextField } from "@/components/ui/field";
 import { Check, TextArea } from "@/components/ui/inputs";
 import { Alert } from "@/components/ui/misc";
 import { api } from "@/lib/api/client";
 import { ApiError, errorMessage } from "@/lib/api/errors";
 import type { Integration } from "@/lib/types";
-import { type ConnectableType, spreadsheetIdFrom } from "./catalog";
+import { type ConnectableType, isCrm, spreadsheetIdFrom, ZOHO_DATA_CENTERS } from "./catalog";
+
+/** Which "Connect with …" sign-ins this platform offers */
+export type OAuthAvailability = { google: boolean; hubspot: boolean; zoho: boolean };
 
 const DEFAULT_NAME: Record<ConnectableType, string> = {
   GOOGLE_CALENDAR: "Appointments calendar",
   GOOGLE_SHEETS: "Leads sheet",
   EMAIL_SMTP: "Office email",
   WEBHOOK: "CRM webhook",
+  HUBSPOT: "HubSpot",
+  ZOHO: "Zoho CRM",
 };
 
 /** Connect a new integration, or edit one (credentials are replaced only when re-entered) */
 export function IntegrationForm({
   type,
   existing,
-  googleOAuth,
+  oauth,
   onSaved,
 }: {
   type: ConnectableType;
   existing?: Integration;
-  googleOAuth: boolean;
+  oauth: OAuthAvailability;
   onSaved: (i: Integration) => void;
 }) {
   const cfg = (existing?.config ?? {}) as Record<string, unknown>;
@@ -49,8 +54,21 @@ export function IntegrationForm({
   // Webhook
   const [url, setUrl] = useState(String(cfg.url ?? ""));
   const [secret, setSecret] = useState("");
+  // CRMs
+  const [token, setToken] = useState("");
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
+  const [refreshToken, setRefreshToken] = useState("");
+  const [dataCenter, setDataCenter] = useState(String(cfg.dataCenter ?? ZOHO_DATA_CENTERS[0]!.server));
 
   const isGoogle = type === "GOOGLE_CALENDAR" || type === "GOOGLE_SHEETS";
+  const signIn = isGoogle
+    ? oauth.google
+    : type === "HUBSPOT"
+      ? oauth.hubspot
+      : type === "ZOHO"
+        ? oauth.zoho
+        : false;
   const config = (): Record<string, unknown> => {
     switch (type) {
       case "GOOGLE_CALENDAR":
@@ -65,6 +83,10 @@ export function IntegrationForm({
         };
       case "WEBHOOK":
         return { url: url.trim() };
+      case "HUBSPOT":
+      case "ZOHO":
+        // The field mapping is edited on its own screen; keep it as it is
+        return { syncLeads: cfg.syncLeads !== false, mapping: cfg.mapping ?? {} };
     }
   };
   const credentials = (): Record<string, unknown> | undefined => {
@@ -84,6 +106,18 @@ export function IntegrationForm({
           : undefined;
       case "WEBHOOK":
         return secret ? { secret } : existing ? undefined : {};
+      case "HUBSPOT":
+        return token.trim() ? { kind: "private_app", token: token.trim() } : undefined;
+      case "ZOHO":
+        return clientId.trim() || clientSecret.trim() || refreshToken.trim()
+          ? {
+              kind: "self_client",
+              clientId: clientId.trim(),
+              clientSecret: clientSecret.trim(),
+              refreshToken: refreshToken.trim(),
+              accountsServer: dataCenter,
+            }
+          : undefined;
     }
   };
 
@@ -105,10 +139,13 @@ export function IntegrationForm({
   const google = useMutation({
     mutationFn: () =>
       api<{ url: string }>(
-        `/integrations/oauth/google/start?${new URLSearchParams({ type, name, config: JSON.stringify(config()) })}`,
+        isGoogle
+          ? `/integrations/oauth/google/start?${new URLSearchParams({ type, name, config: JSON.stringify(config()) })}`
+          : `/integrations/oauth/${type === "HUBSPOT" ? "hubspot" : "zoho"}/start?${new URLSearchParams({ name })}`,
       ),
     onSuccess: ({ url }) => window.location.assign(url),
   });
+  const providerName = type === "HUBSPOT" ? "HubSpot" : type === "ZOHO" ? "Zoho" : "Google";
   const fieldErrors = save.error instanceof ApiError ? save.error.fieldErrors : [];
   const err = (path: string) =>
     fieldErrors.find((e) => e.path === path || e.path.startsWith(`${path}.`))?.message;
@@ -160,7 +197,7 @@ export function IntegrationForm({
 
       {isGoogle ? (
         <div className="space-y-3 rounded-xl border border-slate-200 p-4 dark:border-slate-700">
-          {googleOAuth && !existing ? (
+          {signIn && !existing ? (
             <>
               <Button
                 type="button"
@@ -280,13 +317,98 @@ export function IntegrationForm({
         </>
       ) : null}
 
+      {isCrm(type) ? (
+        <div className="space-y-3 rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+          {signIn && !existing ? (
+            <>
+              <Button
+                type="button"
+                className="w-full"
+                loading={google.isPending}
+                onClick={() => google.mutate()}
+                disabled={name.trim().length < 2}
+              >
+                Connect with {providerName}
+              </Button>
+              <p className="text-center text-xs text-slate-500">
+                or use {type === "HUBSPOT" ? "a private app token" : "a Self Client"}
+              </p>
+            </>
+          ) : null}
+          {type === "HUBSPOT" ? (
+            <TextField
+              label={existing ? "New private app token (optional)" : "Private app access token"}
+              type="password"
+              autoComplete="off"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              error={err("credentials.token") ?? err("credentials")}
+              placeholder="pat-na1-…"
+              hint="HubSpot → Settings → Integrations → Private apps → Create. Scopes: crm.objects.contacts (read, write) and crm.schemas.contacts.read."
+            />
+          ) : (
+            <>
+              <SelectField
+                label="Data center"
+                value={dataCenter}
+                onChange={(e) => setDataCenter(e.target.value)}
+                error={err("credentials.accountsServer")}
+              >
+                {ZOHO_DATA_CENTERS.map((d) => (
+                  <option key={d.server} value={d.server}>
+                    {d.label}
+                  </option>
+                ))}
+              </SelectField>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <TextField
+                  label="Client ID"
+                  autoComplete="off"
+                  value={clientId}
+                  onChange={(e) => setClientId(e.target.value)}
+                  error={err("credentials.clientId")}
+                />
+                <TextField
+                  label="Client secret"
+                  type="password"
+                  autoComplete="off"
+                  value={clientSecret}
+                  onChange={(e) => setClientSecret(e.target.value)}
+                  error={err("credentials.clientSecret")}
+                />
+              </div>
+              <TextField
+                label={existing ? "New refresh token (optional)" : "Refresh token"}
+                type="password"
+                autoComplete="off"
+                value={refreshToken}
+                onChange={(e) => setRefreshToken(e.target.value)}
+                error={err("credentials.refreshToken") ?? err("credentials")}
+                hint="Zoho API console → Self Client. Scopes: ZohoCRM.modules.leads.ALL,ZohoCRM.settings.fields.READ; exchange the grant code for a refresh token."
+              />
+            </>
+          )}
+          <p className="text-xs text-slate-500">
+            After connecting, choose which answers go to which {providerName} fields under “Field mapping”.
+          </p>
+        </div>
+      ) : null}
+
       <div className="flex justify-end gap-2 pt-2">
         <Button
           type="submit"
           loading={save.isPending}
-          variant={isGoogle && googleOAuth && !existing ? "secondary" : "primary"}
+          variant={(isGoogle || isCrm(type)) && signIn && !existing ? "secondary" : "primary"}
         >
-          {existing ? "Save changes" : isGoogle ? "Connect with key" : "Connect"}
+          {existing
+            ? "Save changes"
+            : isGoogle
+              ? "Connect with key"
+              : type === "HUBSPOT"
+                ? "Connect with token"
+                : type === "ZOHO"
+                  ? "Connect Self Client"
+                  : "Connect"}
         </Button>
       </div>
     </form>

@@ -13,3 +13,68 @@ export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
 
 /** Payload of an `ingestion` job */
 export type IngestionJob = { tenantId: string; documentId: string };
+
+/** Every tenant job says what it does in words, for the failed-jobs list */
+type TenantJob = { tenantId: string; label: string };
+
+/**
+ * A non-blocking tool the agent ran during a call (`webhooks` for webhooks, `notifications` for
+ * email, `crm` for spreadsheets and CRMs): the call's reply never waits for it.
+ */
+export type ToolJob = TenantJob & {
+  kind: "tool";
+  callId: string;
+  agentId: string;
+  agentVersionId: string;
+  callerNumber: string;
+  timezone: string;
+  call: {
+    tool: string;
+    input: Record<string, unknown>;
+    stepId: string;
+    background: boolean;
+    idempotencyKey: string;
+  };
+};
+
+/** An email to staff through the tenant's SMTP integration (`notifications`) */
+export type EmailJob = TenantJob & {
+  kind: "email";
+  callId?: string;
+  to: string[];
+  subject: string;
+  text: string;
+  idempotencyKey: string;
+};
+
+/** Push a lead to one CRM integration (`crm`); the job reads the lead as it is when it runs */
+export type LeadSyncJob = TenantJob & { kind: "lead_sync"; leadId: string; integrationId: string };
+
+/** Recompute analytics roll-ups (`analytics`) */
+export type AnalyticsJob =
+  | { kind: "rollup"; tenantId: string; from: string; to: string }
+  /** Periodic: every tenant with calls in the last hours */
+  | { kind: "sweep"; hours: number };
+
+export type QueueJob = ToolJob | EmailJob | LeadSyncJob;
+
+/** Where a background tool's job goes: webhooks, messages to people, or records (leads, sheets, CRMs) */
+export function queueForTool(tool: string): "webhooks" | "notifications" | "crm" {
+  if (tool.startsWith("webhook.")) return QUEUES.webhooks;
+  if (/^(email|sms|whatsapp)\./.test(tool)) return QUEUES.notifications;
+  return QUEUES.crm;
+}
+
+/**
+ * Retry policy per queue: attempts and the first backoff delay (doubled each time).
+ * Webhooks carry an idempotency key, so receivers can drop repeats; CRM upserts are idempotent.
+ */
+export const QUEUE_RETRY: Record<
+  "webhooks" | "notifications" | "crm" | "analytics",
+  { attempts: number; delayMs: number }
+> = {
+  webhooks: { attempts: 6, delayMs: 5_000 },
+  notifications: { attempts: 4, delayMs: 10_000 },
+  crm: { attempts: 6, delayMs: 10_000 },
+  analytics: { attempts: 3, delayMs: 5_000 },
+};
