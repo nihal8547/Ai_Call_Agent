@@ -34,7 +34,11 @@
     "@platform/runtime": "workspace:*",
     "@platform/ai": "workspace:*",
     "@platform/telephony": "workspace:*",
-    "@platform/templates": "workspace:*"
+    "@platform/templates": "workspace:*",
+    "@fastify/multipart": "^9.4.0",
+    "@platform/rag": "workspace:*",
+    "@platform/storage": "workspace:*",
+    "bullmq": "^5.81.5"
   },
   "devDependencies": {
     "@nestjs/testing": "~11.2.6",

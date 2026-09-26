@@ -117,3 +117,56 @@ export const StartTestSessionBody = z.object({
   failTools: z.boolean().default(false),
 });
 export const TestMessageBody = z.object({ text: z.string().max(1000) });
+
+// ── Knowledge ───────────────────────────────────────────────────────────────
+export const DOCUMENT_STATUSES = [
+  "UPLOADING",
+  "PROCESSING",
+  "EXTRACTING",
+  "EMBEDDING",
+  "READY",
+  "FAILED",
+] as const;
+
+export const CollectionSettings = z.object({
+  targetTokens: z.number().int().min(100).max(1200).optional(),
+  overlapTokens: z.number().int().min(0).max(300).optional(),
+});
+export const CreateCollectionBody = z.object({
+  name: z.string().trim().min(2).max(120),
+  description: z.string().trim().max(500).optional(),
+  settings: CollectionSettings.default({}),
+});
+export const UpdateCollectionBody = CreateCollectionBody.partial().refine(
+  (b) => Object.keys(b).length > 0,
+  "Nothing to update",
+);
+
+export const ListDocumentsQuery = CursorPageQuery.extend({
+  collectionId: z.uuid().optional(),
+  status: z.enum(DOCUMENT_STATUSES).optional(),
+  q: z.string().trim().min(1).max(100).optional(),
+});
+
+/** Multipart form fields sent with an upload */
+export const UploadDocumentFields = z.object({
+  collectionId: z.uuid(),
+  title: z.string().trim().min(1).max(200).optional(),
+});
+
+export const UpdateDocumentBody = z
+  .object({
+    title: z.string().trim().min(1).max(200),
+    enabled: z.boolean(),
+    /** Restrict the document to these agents; [] = every agent using its collection */
+    agentIds: z.array(z.uuid()).max(50),
+  })
+  .partial()
+  .refine((b) => Object.keys(b).length > 0, "Nothing to update");
+
+export const KnowledgeSearchBody = z.object({
+  query: z.string().trim().min(2).max(500),
+  collectionIds: z.array(z.uuid()).max(20).optional(),
+  agentId: z.uuid().optional(),
+  topK: z.number().int().min(1).max(20).default(5),
+});

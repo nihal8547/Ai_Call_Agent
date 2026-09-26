@@ -1,6 +1,7 @@
 import "reflect-metadata";
 import fastifyCookie from "@fastify/cookie";
 import fastifyHelmet from "@fastify/helmet";
+import fastifyMultipart from "@fastify/multipart";
 import { NestFactory } from "@nestjs/core";
 import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fastify";
 import { randomUUID } from "node:crypto";
@@ -30,6 +31,9 @@ export async function createApp(
 
   await app.register(fastifyHelmet);
   await app.register(fastifyCookie);
+  await app.register(fastifyMultipart, {
+    limits: { fileSize: env.MAX_UPLOAD_MB * 1024 * 1024, files: 1, fields: 10, fieldSize: 10_000 },
+  });
   app.enableCors({ origin: env.CORS_ORIGINS, credentials: true });
   // Provider webhooks keep stable, unversioned URLs (they are configured in the provider console)
   app.setGlobalPrefix("api/v1", { exclude: ["health", "ready", "telephony/{*path}"] });

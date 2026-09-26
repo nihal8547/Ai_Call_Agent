@@ -10,3 +10,6 @@ export const QUEUES = {
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
+
+/** Payload of an `ingestion` job */
+export type IngestionJob = { tenantId: string; documentId: string };

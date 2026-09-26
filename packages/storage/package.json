@@ -1,0 +1,28 @@
+{
+  "name": "@platform/storage",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Object storage for uploaded documents: S3-compatible or local disk",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src test",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.900.0",
+    "zod": "^4.6.5"
+  }
+}

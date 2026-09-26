@@ -13,3 +13,7 @@ onlyBuiltDependencies:
   - "msgpackr-extract"
   - "@swc/core"
   - "unrs-resolver"
+
+# One Node type definition for the whole workspace (matches .nvmrc); some packages pull newer ones
+overrides:
+  "@types/node": "^22.20.4"

@@ -14,7 +14,7 @@ const NAV: { section?: string; items: NavItem[] }[] = [
     items: [
       { label: "Dashboard", href: "dashboard" },
       { label: "AI Agents", href: "agents", permission: "agents:read" },
-      { label: "Knowledge Base", href: "knowledge", permission: "knowledge:read", soon: true },
+      { label: "Knowledge Base", href: "knowledge", permission: "knowledge:read" },
       { label: "Calls", href: "calls", permission: "calls:read" },
       { label: "Leads", href: "leads", permission: "leads:read" },
       { label: "Appointments", href: "appointments", permission: "appointments:read", soon: true },

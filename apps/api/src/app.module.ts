@@ -14,6 +14,7 @@ import { AgentsModule } from "./modules/agents/agents.module";
 import { AnalyticsModule } from "./modules/analytics/analytics.module";
 import { CallsModule } from "./modules/calls/calls.module";
 import { HealthModule } from "./modules/health/health.module";
+import { KnowledgeModule } from "./modules/knowledge/knowledge.module";
 import { LeadsModule } from "./modules/leads/leads.module";
 import { PhoneNumbersModule } from "./modules/phone-numbers/phone-numbers.module";
 import { TelephonyModule } from "./modules/telephony/telephony.module";
@@ -53,6 +54,7 @@ export class AppModule {
         AgentsModule,
         AnalyticsModule,
         TestConsoleModule,
+        KnowledgeModule,
       ],
       providers: [
         { provide: API_ENV, useValue: env },

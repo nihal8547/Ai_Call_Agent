@@ -70,6 +70,7 @@ Ai_Call_Agent/
 │   ├── runtime/                     # LangGraph turn graph: understand → retrieve → decide → phrase → guard
 │   ├── ai/                          # LLMProvider + EmbeddingProvider adapters (Gemini, OpenAI, Anthropic)
 │   ├── rag/                         # extractors, cleaner, chunker, retriever, grounding
+│   ├── storage/                     # uploaded files: local disk or S3-compatible
 │   ├── telephony/                   # TelephonyProvider interface + Twilio adapter
 │   ├── tools/                       # tool registry, executor, built-in tools
 │   └── crypto/                      # envelope encryption, hashing, token utils
@@ -766,30 +767,88 @@ understand ─┬─(question & knowledge configured)→ retrieve ─┐
 
 ---
 
-## P8 — Documents & knowledge base (ingestion)
+## P8 — Documents & knowledge base (ingestion) ✅
 
-- **Storage:** S3-compatible (MinIO locally). `POST /documents/upload-url` → a presigned PUT, with content-type and size restrictions per plan → client uploads → `POST /documents/:id/complete` enqueues ingestion.
-- **Validation:**
-  - MIME allow-list (pdf, docx, txt, csv, xlsx, png, jpg, webp) + magic-byte sniffing (`file-type`).
-  - Size limits per plan.
-  - SHA-256 dedupe per collection (409 on duplicate).
-  - Filename sanitisation.
-  - ClamAV scan hook (optional in dev).
-- **Worker pipeline (BullMQ `ingestion` queue)**, with status and progress updated at each step:
-  1. `EXTRACTING`: pdf (`unpdf`/pdf.js text + page numbers; pages with no text → OCR), docx (`mammoth` → structured HTML → text with headings), txt, csv (`papaparse`), xlsx (`exceljs`: one record per row, `Header: value`), images (`tesseract.js`, with Gemini vision as the fallback).
-  2. Cleaning: whitespace normalisation, repeated header/footer removal, dedupe.
-  3. Chunking: heading-aware, 300–500 tokens, 10–15% overlap; tables and rows kept whole; metadata `{page, headingPath, sheet, row}`.
-  4. `EMBEDDING`: batched embeddings, retry with backoff, rate-limit aware.
-  5. Chunks inserted with `$queryRaw` (vector). On **replace**, old chunks are deleted in the same transaction once the new version is ready.
-  6. `READY`, or `FAILED` with a user-readable `statusMessage`. Jobs are idempotent and resumable.
-- **API:** collections CRUD; `GET /documents` (filters: collection, status, enabled, search by title); `GET /documents/:id` (metadata, chunk count, preview of the first chunks); `PATCH` (title, enabled, agent assignment); `POST /documents/:id/replace`; `DELETE`; `GET /documents/:id/download` (signed URL); `GET /documents/events` (SSE status stream); `POST /knowledge/search` (semantic search playground, tenant and collection scoped).
-- **Frontend: Knowledge section**
-  - Collections list and create/edit.
-  - Drag-and-drop multi-upload with per-file progress.
-  - Documents table with live status badges (`Uploading → Processing → Extracting → Embedding → Ready / Failed`), enable toggle, assign to agents, replace, delete (confirm), and a metadata drawer.
-  - Search playground showing chunks with scores and source page.
-  - Agent editor → Knowledge tab: assign collections, `topK`, `minScore`.
-- **Tests:** a fixture file of each type → expected chunk counts and metadata; a failed extraction → `FAILED` with a message; replacing keeps old chunks until the new version is ready; the isolation test covers chunks and search.
+**Status: done.**
+
+**New packages**
+
+- `@platform/storage`: `LocalStorage` (keys validated, no path escapes) and `S3Storage` (any S3-compatible store; MD5 integrity check and server-side encryption). Chosen by `STORAGE_DRIVER`.
+- `@platform/rag`:
+  - **Detection by content, not by name:** magic bytes for PDF, DOCX, XLSX, PNG, JPEG, WebP; text files must be valid UTF-8. A renamed `.exe` is rejected with 415.
+  - **Extractors:** PDF (`unpdf`, per page, running headers and page numbers removed, heading lines detected), Word (`mammoth` → headings, paragraphs, tables), Excel (`exceljs`, one record per row as `Header: value`, per sheet), CSV (`papaparse`), text/Markdown (headings kept), images and scanned PDFs via Gemini OCR.
+  - **Cleaning:** control characters, whitespace, repeated lines, page-number lines.
+  - **Chunking:** heading-aware (a heading stack gives each chunk its `headingPath`), ~400 tokens with a 60-token overlap, table rows never split, metadata `{page | pages, headingPath, sheet, rows}`. Target and overlap are per-collection settings.
+  - **`ingestDocument`:** `EXTRACTING → EMBEDDING → READY | FAILED` with progress. Chunks are replaced in one transaction, so retries and reprocessing never duplicate. User-fixable problems (unreadable file, no text, scan without OCR) fail at once with a readable message. Provider outages throw a transient error, so the job is retried.
+  - **`searchKnowledge`:** hybrid search. pgvector cosine (only vectors from the current embedding model) plus Postgres full-text with prefix matching, fused with reciprocal rank fusion. Filters: enabled, `READY`, collections, and per-agent restriction. Row-Level Security confines results to the tenant. It works with keywords alone when there are no embeddings.
+- `@platform/ai`:
+  - `HashingEmbeddings`: offline, deterministic, used in tests and optionally in development.
+  - `GeminiOcr`.
+  - `createEmbeddingProvider(auto | gemini | hashing | none)`.
+
+**Worker:** a BullMQ `ingestion` queue with concurrency ≤ 2, 3 attempts and exponential backoff. The last failed attempt marks the document `FAILED`. `QUEUE_PREFIX` keeps environments that share a Redis apart (tests use their own prefix).
+
+**API**
+
+- **Collections:** list (with document counts), create, update, delete (only when empty).
+- **Documents:**
+  - `POST /documents` (multipart: file + `collectionId` + optional title) → stored → queued.
+  - `GET /documents` (filters: collection, status, text; cursor pagination), `GET /documents/:id` (metadata + first 5 chunks), `PATCH` (title, enabled, agent restriction).
+  - `POST /documents/:id/replace`, `POST /documents/:id/reprocess`, `DELETE`.
+  - `GET /documents/:id/download` (streamed, `nosniff`, safe filename).
+- **Upload checks:**
+  - plan limits: file size, document count, total storage
+  - SHA-256 duplicate check per collection (409)
+  - global `MAX_UPLOAD_MB`
+  - audit entries
+- **Replace** creates version N+1 and copies agent restrictions. The old version stays searchable until the new one is `READY`, then it is deleted together with its file.
+- **Search:** `POST /knowledge/search` (playground: query, collections, "as agent", top K).
+- **Publish check:** publishing fails if the agent's `knowledge.collectionIds` points at a missing collection.
+- Storage keys are never returned to clients.
+
+**Frontend**
+
+- **Knowledge Base:** collections sidebar and create/edit/delete. Drag-and-drop or multi-file upload with per-file progress (three at a time). The documents table shows live status (Uploading → Processing → Extracting → Embedding → Ready / Failed, with a progress bar; polling while anything is in flight), failure reasons, size, chunks, and an on/off switch. A notice appears when documents are keyword-only.
+- **Document page:** processing details (type, pages, chunks, search mode, OCR), title, enable, restrict to agents, replace (with progress), reprocess, download, delete, and a preview of the first chunks with page and heading.
+- **Search playground:** question, collections, "as agent", results count. Hits show relative score, meaning and keyword signals, source (page, sheet, rows, headings) and the passage.
+- **Agent editor → Knowledge tab:** pick collections, passages per answer (`topK`), match strictness (`minScore`), and a warning (with one-click cleanup) for collections that were deleted.
+
+**Tests**
+
+- **rag (9):** content-based detection (disguised binaries rejected); PDF, DOCX, XLSX and CSV extraction with page, heading, sheet and row metadata; running header removal; scanned PDF via OCR or a readable failure without it; chunk sizing, overlap, and records never split. Ingestion and search run against the real database in the API tests.
+- **storage:** local round-trip and path escapes, plus S3 against a real S3 API (moto) when `S3_TEST_ENDPOINT` is set.
+- **ai:** hashing embeddings, Gemini OCR (mocked HTTP).
+- **API (9 new, 61 total):**
+  - upload → job actually queued → ingest → hybrid search → download
+  - duplicate 409; disguised executable 415; empty file; unknown collection; not multipart
+  - plan document limit (403 `USAGE_LIMIT_EXCEEDED`)
+  - replace keeps v1 searchable until v2 is ready, then v1 is gone
+  - reprocess only when finished, with no duplicated chunks
+  - disabled documents and agent restrictions in search
+  - publishing with a missing collection is blocked
+  - tenant isolation (document, download, list, search, cross-tenant upload); MANAGER read-only, STAFF no access
+  - delete removes the stored file; only empty collections can be deleted
+
+**Browser E2E (manual Playwright run, real worker):**
+
+1. Create a collection.
+2. Upload PDF, DOCX, XLSX, Markdown and a scanned PDF together, and watch live progress.
+3. Four files reach Ready. The scan fails with "needs an AI provider key" (no key in this environment).
+4. A duplicate upload shows an inline error.
+5. The document page shows 4 chunks with page and heading; download returns the original PDF.
+6. The playground finds the parking passage (page 4) and the room prices (Excel rows).
+7. The agent Knowledge tab selects the collection and publishes.
+8. Mobile dark mode has no horizontal page overflow.
+
+**Changed from the original plan**
+
+- Files are uploaded **through the API** (multipart), not with presigned URLs. The type check and plan limits run before anything is stored, and it works the same with local storage. Presigned uploads for very large files are left for P14.
+- Downloads stream through the API instead of a signed URL, so the same permission check applies.
+- Status updates use **polling** (every 2 s, only while something is processing) instead of SSE.
+- OCR uses Gemini rather than `tesseract.js`, to avoid shipping a large model.
+- A ClamAV scan hook is deferred to P12 (security hardening).
+
+**Not verified here:** real Gemini embeddings and OCR (no API key in this environment; tested with mocked HTTP and hashing embeddings).
 
 ---
 

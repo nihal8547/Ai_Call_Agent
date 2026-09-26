@@ -49,7 +49,7 @@ export const TextField = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLIn
 export const SelectField = forwardRef<
   HTMLSelectElement,
   SelectHTMLAttributes<HTMLSelectElement> & FieldProps
->(function SelectField({ label, error, className, id, children, ...props }, ref) {
+>(function SelectField({ label, error, hint, className, id, children, ...props }, ref) {
   const autoId = useId();
   const selectId = id ?? autoId;
   return (
@@ -64,12 +64,19 @@ export const SelectField = forwardRef<
         ref={ref}
         id={selectId}
         aria-invalid={error ? true : undefined}
+        aria-describedby={hint && !error ? `${selectId}-hint` : undefined}
         className={cn(control, error ? "border-red-500" : "border-slate-300 dark:border-slate-700")}
         {...props}
       >
         {children}
       </select>
-      {error ? <p className="mt-1 text-sm text-red-600">{error}</p> : null}
+      {error ? (
+        <p className="mt-1 text-sm text-red-600">{error}</p>
+      ) : hint ? (
+        <p id={`${selectId}-hint`} className="mt-1 text-xs text-slate-500">
+          {hint}
+        </p>
+      ) : null}
     </div>
   );
 });

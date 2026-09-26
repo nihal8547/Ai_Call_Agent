@@ -1,4 +1,5 @@
 import { type NestFastifyApplication } from "@nestjs/platform-fastify";
+import os from "node:os";
 import path from "node:path";
 import { createApp } from "../../src/bootstrap";
 import { loadApiEnv } from "../../src/config/env";
@@ -11,6 +12,9 @@ try {
 
 export const TWILIO_TOKEN = "test-twilio-auth-token-0123456789";
 export const PUBLIC_URL = "https://voice.test";
+
+/** Uploaded files from integration tests land here, away from the development storage */
+export const TEST_STORAGE_DIR = path.join(os.tmpdir(), "platform-api-test-storage");
 
 export const hasTestDb = Boolean(process.env.TEST_APP_DATABASE_URL && process.env.REDIS_URL);
 
@@ -26,6 +30,11 @@ export async function createTestApp(): Promise<NestFastifyApplication> {
     TWILIO_AUTH_TOKEN: TWILIO_TOKEN,
     PUBLIC_BASE_URL: PUBLIC_URL,
     GEMINI_API_KEY: undefined,
+    EMBEDDINGS_PROVIDER: "hashing",
+    // Keep test jobs away from a development worker using the same Redis
+    QUEUE_PREFIX: "test",
+    STORAGE_DRIVER: "local",
+    STORAGE_LOCAL_DIR: TEST_STORAGE_DIR,
   });
   const app = await createApp(env, { logger: false });
   await app.init();
@@ -112,4 +121,27 @@ export async function registerOwner(app: NestFastifyApplication, label: string) 
     email,
     me: res.json() as { tenant: { id: string }; user: { id: string }; role: { key: string } },
   };
+}
+
+type Owner = Awaited<ReturnType<typeof registerOwner>>;
+
+export async function roleId(owner: Owner, key: string): Promise<string> {
+  const res = await owner.client.get("/api/v1/roles");
+  return res.json().items.find((r: { key: string }) => r.key === key).id;
+}
+
+/** Invite someone with a system role and return their signed-in client */
+export async function addMember(app: NestFastifyApplication, owner: Owner, key: string) {
+  const email = uniqueEmail(key.toLowerCase());
+  const invite = await owner.client.post("/api/v1/invitations", { email, roleId: await roleId(owner, key) });
+  if (invite.statusCode !== 201) throw new Error(`invite failed: ${invite.statusCode} ${invite.body}`);
+  const token = String(invite.json().inviteUrl).split("/invite/")[1];
+  const client = new Client(app);
+  const res = await client.post("/api/v1/invitations/accept", {
+    token,
+    name: key,
+    password: STRONG_PASSWORD,
+  });
+  if (res.statusCode !== 200) throw new Error(`accept failed: ${res.statusCode} ${res.body}`);
+  return { client, email, me: res.json() };
 }

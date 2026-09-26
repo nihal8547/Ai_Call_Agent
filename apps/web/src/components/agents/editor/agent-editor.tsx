@@ -13,6 +13,7 @@ import { ApiError, errorMessage } from "@/lib/api/errors";
 import { cn } from "@/lib/cn";
 import { DraftProvider, useDraft } from "./draft-context";
 import { HoursTab } from "./tab-hours";
+import { KnowledgeTab } from "./tab-knowledge";
 import { ProfileTab } from "./tab-profile";
 import { QuestionsTab } from "./tab-questions";
 import { TestTab } from "./tab-test";
@@ -37,6 +38,7 @@ const TABS = [
   },
   { key: "questions", label: "Questions", prefixes: ["qualificationFields"] },
   { key: "workflow", label: "Workflow & tools", prefixes: ["workflow", "tools"] },
+  { key: "knowledge", label: "Knowledge", prefixes: ["knowledge"] },
   {
     key: "hours",
     label: "Hours & handoff",
@@ -196,6 +198,7 @@ function Editor() {
         {tab === "profile" ? <ProfileTab /> : null}
         {tab === "questions" ? <QuestionsTab /> : null}
         {tab === "workflow" ? <WorkflowTab /> : null}
+        {tab === "knowledge" ? <KnowledgeTab /> : null}
         {tab === "hours" ? <HoursTab /> : null}
         {tab === "versions" ? <VersionsTab /> : null}
         {tab === "test" ? <TestTab /> : null}

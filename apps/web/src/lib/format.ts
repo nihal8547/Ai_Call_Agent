@@ -42,3 +42,36 @@ export function fmtValue(v: unknown): string {
   }
   return String(v);
 }
+
+/** 1536 → "1.5 KB" */
+export function fmtBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  const units = ["KB", "MB", "GB"];
+  let v = n / 1024;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  return `${v >= 10 ? Math.round(v) : Math.round(v * 10) / 10} ${units[i]}`;
+}
+
+/** Where a search hit or chunk came from: "Page 3 · Pricing › Implants" */
+export function fmtSource(meta: {
+  page?: number;
+  pages?: number[];
+  headingPath?: string[];
+  sheet?: string;
+  rows?: [number, number];
+}): string {
+  const parts: string[] = [];
+  if (meta.pages?.length) parts.push(`Pages ${meta.pages[0]}–${meta.pages[meta.pages.length - 1]}`);
+  else if (meta.page !== undefined) parts.push(`Page ${meta.page}`);
+  if (meta.sheet) parts.push(`Sheet ${meta.sheet}`);
+  if (meta.rows) parts.push(`Rows ${meta.rows[0]}–${meta.rows[1]}`);
+  if (meta.headingPath?.length) parts.push(meta.headingPath.join(" › "));
+  return parts.join(" · ");
+}
+
+export const fmtDate = (iso: string | null | undefined) =>
+  iso ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(iso)) : "—";

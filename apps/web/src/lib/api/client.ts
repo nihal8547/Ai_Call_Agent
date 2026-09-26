@@ -54,3 +54,41 @@ export async function api<T>(path: string, { method = "GET", body, retry = true 
   if (!res.ok) throw await toApiError(res);
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
+
+/**
+ * Multipart upload with progress (fetch cannot report upload progress).
+ * Same CSRF and refresh-once behaviour as `api`.
+ */
+export function upload<T>(
+  path: string,
+  form: FormData,
+  onProgress?: (fraction: number) => void,
+  retry = true,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${BASE}${path}`);
+    xhr.withCredentials = true;
+    xhr.setRequestHeader("accept", "application/json");
+    xhr.setRequestHeader("x-csrf-token", csrfToken() ?? "");
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress?.(e.loaded / e.total);
+    };
+    xhr.onerror = () =>
+      reject(new ApiError(0, { detail: "Network error. Check your connection and try again." }));
+    xhr.onload = async () => {
+      if (xhr.status === 401 && retry) {
+        if (await refreshSession()) return upload<T>(path, form, onProgress, false).then(resolve, reject);
+        window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`;
+        return reject(new ApiError(401, { detail: "Session expired" }));
+      }
+      const res = new Response(xhr.responseText || null, {
+        status: xhr.status,
+        headers: { "content-type": xhr.getResponseHeader("content-type") ?? "application/json" },
+      });
+      if (!res.ok) return reject(await toApiError(res));
+      resolve((await res.json()) as T);
+    };
+    xhr.send(form);
+  });
+}

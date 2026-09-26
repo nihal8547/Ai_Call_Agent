@@ -139,3 +139,58 @@ export type PhoneNumber = {
   isActive: boolean;
   agent: { id: string; name: string; status: string } | null;
 };
+
+export type DocumentStatus = "UPLOADING" | "PROCESSING" | "EXTRACTING" | "EMBEDDING" | "READY" | "FAILED";
+
+export type KnowledgeCollection = {
+  id: string;
+  name: string;
+  description: string | null;
+  settings: { targetTokens?: number; overlapTokens?: number };
+  documentCount: number;
+  createdAt: string;
+};
+
+export type KnowledgeDocument = {
+  id: string;
+  collectionId: string;
+  title: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  status: DocumentStatus;
+  statusMessage: string | null;
+  progress: number;
+  enabled: boolean;
+  version: number;
+  replacesId: string | null;
+  pageCount: number | null;
+  chunkCount: number;
+  metadata: { kind?: string; ocr?: boolean; embedded?: boolean; embeddingModel?: string | null };
+  processedAt: string | null;
+  createdAt: string;
+  agents: { id: string; name: string }[];
+};
+
+export type DocumentDetail = KnowledgeDocument & {
+  preview: { ordinal: number; content: string; tokenCount: number; metadata: ChunkMeta }[];
+};
+
+export type ChunkMeta = {
+  page?: number;
+  pages?: number[];
+  headingPath?: string[];
+  sheet?: string;
+  rows?: [number, number];
+};
+
+export type SearchHit = {
+  chunkId: string;
+  documentId: string;
+  documentTitle: string;
+  content: string;
+  metadata: ChunkMeta;
+  vectorScore: number | null;
+  textScore: number | null;
+  score: number;
+};

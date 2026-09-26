@@ -13,3 +13,6 @@ coverage/
 # Local Redis snapshots
 dump.rdb
 *.rdb
+
+# Local document storage
+.data/

@@ -4,30 +4,18 @@ import { ModulesContainer } from "@nestjs/core";
 import { type NestFastifyApplication } from "@nestjs/platform-fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ANY_AUTHENTICATED, IS_PUBLIC, REQUIRED_PERMISSIONS } from "../src/common/auth/decorators";
-import { Client, createTestApp, hasTestDb, registerOwner, STRONG_PASSWORD, uniqueEmail } from "./support/app";
+import {
+  addMember,
+  Client,
+  createTestApp,
+  hasTestDb,
+  registerOwner,
+  roleId,
+  STRONG_PASSWORD,
+  uniqueEmail,
+} from "./support/app";
 
 type Owner = Awaited<ReturnType<typeof registerOwner>>;
-
-async function roleId(owner: Owner, key: string): Promise<string> {
-  const res = await owner.client.get("/api/v1/roles");
-  return res.json().items.find((r: { key: string }) => r.key === key).id;
-}
-
-/** Invite someone with a system role and return their signed-in client */
-async function addMember(app: NestFastifyApplication, owner: Owner, key: string) {
-  const email = uniqueEmail(key.toLowerCase());
-  const invite = await owner.client.post("/api/v1/invitations", { email, roleId: await roleId(owner, key) });
-  expect(invite.statusCode).toBe(201);
-  const token = String(invite.json().inviteUrl).split("/invite/")[1];
-  const client = new Client(app);
-  const res = await client.post("/api/v1/invitations/accept", {
-    token,
-    name: key,
-    password: STRONG_PASSWORD,
-  });
-  expect(res.statusCode).toBe(200);
-  return { client, email, me: res.json() };
-}
 
 describe.skipIf(!hasTestDb)("RBAC, members and tenancy", () => {
   let app: NestFastifyApplication;

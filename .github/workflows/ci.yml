@@ -43,6 +43,7 @@ jobs:
       MASTER_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
       JWT_SECRET: ci-only-jwt-secret-0123456789abcdefghijklmnop
       REDIS_URL: redis://localhost:6379
+      EMBEDDINGS_PROVIDER: hashing
 
     steps:
       - uses: actions/checkout@v4

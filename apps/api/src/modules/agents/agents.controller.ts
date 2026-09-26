@@ -274,6 +274,28 @@ export class AgentsController {
       if (!draft) throw new AppException(HttpStatus.CONFLICT, "CONFLICT", "There is no draft to publish");
       const config = parseConfig(readJson(AgentConfig, draft.config, "agent_versions.config"));
       assertToolsAvailable(config);
+      const known = new Set(
+        (
+          await tx.knowledgeCollection.findMany({
+            where: { id: { in: config.knowledge.collectionIds } },
+            select: { id: true },
+          })
+        ).map((c) => c.id),
+      );
+      const missing = config.knowledge.collectionIds
+        .map((cid, i) => ({ cid, i }))
+        .filter(({ cid }) => !known.has(cid));
+      if (missing.length) {
+        throw new AppException(
+          HttpStatus.BAD_REQUEST,
+          "VALIDATION_FAILED",
+          "Unknown knowledge collections",
+          missing.map(({ i }) => ({
+            path: `config.knowledge.collectionIds.${i}`,
+            message: "This collection no longer exists",
+          })),
+        );
+      }
 
       await tx.agentVersion.updateMany({
         where: { agentId: id, status: "PUBLISHED" },
