@@ -1,0 +1,44 @@
+{
+  "name": "@platform/db",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Prisma schema, migrations, tenant-scoped client and seed",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "prisma"
+  ],
+  "prisma": {
+    "schema": "prisma/schema.prisma",
+    "seed": "tsx prisma/seed.ts"
+  },
+  "scripts": {
+    "generate": "prisma generate",
+    "build": "prisma generate && tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "typecheck": "prisma generate && tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run --passWithNoTests",
+    "migrate:dev": "prisma migrate dev",
+    "migrate:deploy": "prisma migrate deploy",
+    "migrate:reset": "prisma migrate reset --force --skip-seed",
+    "seed": "tsx prisma/seed.ts",
+    "check": "PRISMA_BIN=\"pnpm exec prisma\" ./scripts/check-migrations.sh",
+    "studio": "prisma studio"
+  },
+  "dependencies": {
+    "@prisma/client": "~6.19.3",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "prisma": "~6.19.3",
+    "tsx": "^4.23.15"
+  }
+}

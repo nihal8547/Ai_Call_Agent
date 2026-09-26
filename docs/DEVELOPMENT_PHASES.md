@@ -10,19 +10,19 @@ This document turns [`IMPLEMENTATION_PLAN.md`](./IMPLEMENTATION_PLAN.md) into bu
 
 Prisma is a Node.js/TypeScript ORM, and its Python client is no longer maintained. To use Prisma properly, the backend moves from Python/FastAPI to **TypeScript**. Every architectural concept from the plan carries over; only the libraries change:
 
-| Concern | Earlier plan (Python) | This plan (TypeScript) |
-|---|---|---|
-| API server | FastAPI | **NestJS** (modules, guards, DI, interceptors) on Fastify adapter |
-| Validation / schemas | Pydantic v2 | **zod** — one schema package shared by API, workers and frontend |
-| ORM / migrations | SQLAlchemy + Alembic | **Prisma** (schema + Prisma Migrate) + hand-written SQL for RLS/pgvector |
-| Dynamic qualification model | `pydantic.create_model` | zod schema built at runtime from field config |
-| Orchestration | LangGraph (Python) | **LangGraph.js** (`@langchain/langgraph`) around a pure-TS decision core |
-| Background jobs | arq + Redis | **BullMQ** + Redis |
-| LLM SDKs | google-genai, openai, anthropic | `@google/genai`, `openai`, `@anthropic-ai/sdk` |
-| Telephony | twilio (py) | `twilio` (node) |
-| Logging | structlog | **pino** (JSON) + OpenTelemetry |
-| Tests | pytest | **Vitest**, Supertest, Testcontainers, Playwright |
-| Frontend | Next.js | Next.js (unchanged) |
+| Concern                     | Earlier plan (Python)           | This plan (TypeScript)                                                   |
+| --------------------------- | ------------------------------- | ------------------------------------------------------------------------ |
+| API server                  | FastAPI                         | **NestJS** (modules, guards, DI, interceptors) on Fastify adapter        |
+| Validation / schemas        | Pydantic v2                     | **zod** — one schema package shared by API, workers and frontend         |
+| ORM / migrations            | SQLAlchemy + Alembic            | **Prisma** (schema + Prisma Migrate) + hand-written SQL for RLS/pgvector |
+| Dynamic qualification model | `pydantic.create_model`         | zod schema built at runtime from field config                            |
+| Orchestration               | LangGraph (Python)              | **LangGraph.js** (`@langchain/langgraph`) around a pure-TS decision core |
+| Background jobs             | arq + Redis                     | **BullMQ** + Redis                                                       |
+| LLM SDKs                    | google-genai, openai, anthropic | `@google/genai`, `openai`, `@anthropic-ai/sdk`                           |
+| Telephony                   | twilio (py)                     | `twilio` (node)                                                          |
+| Logging                     | structlog                       | **pino** (JSON) + OpenTelemetry                                          |
+| Tests                       | pytest                          | **Vitest**, Supertest, Testcontainers, Playwright                        |
+| Frontend                    | Next.js                         | Next.js (unchanged)                                                      |
 
 Benefits: one language, one type system, and the **same zod schemas** validate the agent editor form in the browser, the API request, the JSONB column, and the LLM output.
 
@@ -71,8 +71,7 @@ Ai_Call_Agent/
 │   ├── rag/                         # extractors, cleaner, chunker, retriever, grounding
 │   ├── telephony/                   # TelephonyProvider interface + Twilio adapter
 │   ├── tools/                       # tool registry, executor, built-in tools
-│   ├── crypto/                      # envelope encryption, hashing, token utils
-│   └── config/                      # tsconfig, eslint, prettier, vitest presets
+│   └── crypto/                      # envelope encryption, hashing, token utils
 ├── templates/                       # seed agent templates (real-estate/Ava, clinic, hotel, restaurant)
 ├── docs/
 ├── infra/                           # docker-compose, Dockerfiles, deploy manifests
@@ -108,39 +107,55 @@ Repository  (Prisma queries via the tenant-scoped client; no business rules)
 
 ### 2.2 Validation: seven layers, one source of truth (`packages/shared`)
 
-| # | Where | What | Tool |
-|---|---|---|---|
-| 1 | Environment | All env vars parsed at boot; the process exits on invalid config | zod `EnvSchema` |
-| 2 | Frontend forms | Same schemas as the API, inline errors | react-hook-form + `zodResolver` |
-| 3 | API boundary | Body, query, params, and responses validated; unknown keys stripped | `ZodValidationPipe`, `nestjs-zod` for OpenAPI |
-| 4 | Domain rules | E.g. a publish needs ≥1 field and existing tools/collections; slot within working hours | Service layer + `AgentConfig.superRefine` |
-| 5 | Database | NOT NULL, FK, unique, enums, CHECK constraints, RLS `WITH CHECK` | Prisma schema + SQL migration |
-| 6 | JSONB columns | Every `Json` column has a zod schema and is parsed on read and write (`AgentConfig`, `CallEventPayload`, `TenantLimits`, ...) | `packages/db` typed helpers |
-| 7 | LLM output | Dynamic zod schema from qualification fields; validated per field; invalid fields are dropped and re-asked | `packages/core/dynamic-schema.ts` |
+| #   | Where          | What                                                                                                                          | Tool                                          |
+| --- | -------------- | ----------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| 1   | Environment    | All env vars parsed at boot; the process exits on invalid config                                                              | zod `EnvSchema`                               |
+| 2   | Frontend forms | Same schemas as the API, inline errors                                                                                        | react-hook-form + `zodResolver`               |
+| 3   | API boundary   | Body, query, params, and responses validated; unknown keys stripped                                                           | `ZodValidationPipe`, `nestjs-zod` for OpenAPI |
+| 4   | Domain rules   | E.g. a publish needs ≥1 field and existing tools/collections; slot within working hours                                       | Service layer + `AgentConfig.superRefine`     |
+| 5   | Database       | NOT NULL, FK, unique, enums, CHECK constraints, RLS `WITH CHECK`                                                              | Prisma schema + SQL migration                 |
+| 6   | JSONB columns  | Every `Json` column has a zod schema and is parsed on read and write (`AgentConfig`, `CallEventPayload`, `TenantLimits`, ...) | `packages/db` typed helpers                   |
+| 7   | LLM output     | Dynamic zod schema from qualification fields; validated per field; invalid fields are dropped and re-asked                    | `packages/core/dynamic-schema.ts`             |
 
 Example (`packages/shared/src/agent/qualification-field.ts`):
 
 ```ts
-export const FieldType = z.enum(["text","number","select","multiselect","boolean","date","time","phone","email"]);
+export const FieldType = z.enum([
+  "text",
+  "number",
+  "select",
+  "multiselect",
+  "boolean",
+  "date",
+  "time",
+  "phone",
+  "email",
+]);
 
-export const QualificationField = z.object({
-  key: z.string().regex(/^[a-z][a-z0-9_]{1,39}$/, "lowercase_snake_case, 2–40 chars"),
-  label: z.string().min(1).max(80),
-  question: z.string().min(5).max(300),
-  type: FieldType,
-  options: z.array(z.string().min(1).max(80)).max(50).default([]),
-  required: z.boolean().default(true),
-  order: z.number().int().min(0),
-  validation: z.object({
-    min: z.number().optional(), max: z.number().optional(),
-    pattern: z.string().max(200).optional(), futureOnly: z.boolean().optional(),
-  }).default({}),
-  reaskPrompts: z.array(z.string().min(5).max(300)).max(3).default([]),
-  confirmBack: z.boolean().default(false),
-}).superRefine((f, ctx) => {
-  if ((f.type === "select" || f.type === "multiselect") && f.options.length < 2)
-    ctx.addIssue({ code: "custom", path: ["options"], message: "Select fields need at least 2 options" });
-});
+export const QualificationField = z
+  .object({
+    key: z.string().regex(/^[a-z][a-z0-9_]{1,39}$/, "lowercase_snake_case, 2–40 chars"),
+    label: z.string().min(1).max(80),
+    question: z.string().min(5).max(300),
+    type: FieldType,
+    options: z.array(z.string().min(1).max(80)).max(50).default([]),
+    required: z.boolean().default(true),
+    order: z.number().int().min(0),
+    validation: z
+      .object({
+        min: z.number().optional(),
+        max: z.number().optional(),
+        pattern: z.string().max(200).optional(),
+        futureOnly: z.boolean().optional(),
+      })
+      .default({}),
+    reaskPrompts: z.array(z.string().min(5).max(300)).max(3).default([]),
+    confirmBack: z.boolean().default(false),
+  })
+  .superRefine((f, ctx) => {
+    if ((f.type === "select" || f.type === "multiselect") && f.options.length < 2)
+      ctx.addIssue({ code: "custom", path: ["options"], message: "Select fields need at least 2 options" });
+  });
 ```
 
 ### 2.3 Database access and tenant isolation
@@ -212,47 +227,77 @@ export function tenantClient(prisma: PrismaClient, tenantId: string) {
 
 ## 3. Phase overview
 
-| Phase | Name | Level | Estimate |
-|---|---|---|---|
-| P0 | Foundation & tooling | L1 | 3–4 days |
-| P1 | Database & tenant isolation | L1 | 3–4 days (**started, see below**) |
-| P2 | Auth, RBAC, tenant & user management | L1 | 1 week |
-| P3 | Shared schemas & conversation core | L1 | 1 week |
-| P4 | AI providers & runtime orchestration | L1 | 1 week |
-| P5 | Telephony, calls & leads | L1 | 1 week |
-| P6 | Frontend foundation & Level 1 screens | L1 | 1.5 weeks |
-| **M1** | **Level 1 milestone: working multi-tenant voice agent** | | |
-| P7 | Agent editor, versioning, workflow engine, test console | L2 | 2 weeks |
-| P8 | Documents & knowledge base (ingestion) | L2 | 2 weeks |
-| P9 | Tools, integrations, appointments, handoff | L2 | 2 weeks |
-| **M2** | **Level 2 milestone: self-serve configurable platform** | | |
-| P10 | Live-call RAG | L3 | 1.5 weeks |
-| P11 | Production state, queues, CRM, analytics | L3 | 2 weeks |
-| P12 | Security hardening, observability, deployment | L3 | 1.5 weeks |
-| **M3** | **Level 3 milestone: production-ready** | | |
-| P13 | Streaming voice | L4 | 2–3 weeks |
-| P14 | Advanced RAG, multi-provider AI, billing, enterprise | L4 | 4–5 weeks |
-| **M4** | **Level 4 milestone: business-ready SaaS** | | |
+| Phase  | Name                                                    | Level | Estimate                          |
+| ------ | ------------------------------------------------------- | ----- | --------------------------------- |
+| P0     | Foundation & tooling                                    | L1    | 3–4 days                          |
+| P1     | Database & tenant isolation                             | L1    | 3–4 days (**started, see below**) |
+| P2     | Auth, RBAC, tenant & user management                    | L1    | 1 week                            |
+| P3     | Shared schemas & conversation core                      | L1    | 1 week                            |
+| P4     | AI providers & runtime orchestration                    | L1    | 1 week                            |
+| P5     | Telephony, calls & leads                                | L1    | 1 week                            |
+| P6     | Frontend foundation & Level 1 screens                   | L1    | 1.5 weeks                         |
+| **M1** | **Level 1 milestone: working multi-tenant voice agent** |       |                                   |
+| P7     | Agent editor, versioning, workflow engine, test console | L2    | 2 weeks                           |
+| P8     | Documents & knowledge base (ingestion)                  | L2    | 2 weeks                           |
+| P9     | Tools, integrations, appointments, handoff              | L2    | 2 weeks                           |
+| **M2** | **Level 2 milestone: self-serve configurable platform** |       |                                   |
+| P10    | Live-call RAG                                           | L3    | 1.5 weeks                         |
+| P11    | Production state, queues, CRM, analytics                | L3    | 2 weeks                           |
+| P12    | Security hardening, observability, deployment           | L3    | 1.5 weeks                         |
+| **M3** | **Level 3 milestone: production-ready**                 |       |                                   |
+| P13    | Streaming voice                                         | L4    | 2–3 weeks                         |
+| P14    | Advanced RAG, multi-provider AI, billing, enterprise    | L4    | 4–5 weeks                         |
+| **M4** | **Level 4 milestone: business-ready SaaS**              |       |                                   |
 
 ---
 
-## P0 — Foundation & tooling
+## P0 — Foundation & tooling ✅
 
 **Goal:** an empty but fully wired monorepo where every later phase only adds code.
 
-- **Repo:** pnpm workspace, Turborepo pipelines (`build`, `dev`, `lint`, `typecheck`, `test`), shared `tsconfig` (strict, `noUncheckedIndexedAccess`), ESLint (typescript-eslint, import rules, boundaries), Prettier, commitlint, lint-staged + husky.
-- **apps/api:** NestJS + Fastify adapter, `/health` and `/ready` (DB + Redis ping), pino logger with request id, `ProblemDetailsFilter`, `ZodValidationPipe`, OpenAPI at `/api/docs` (non-prod only).
-- **apps/worker:** BullMQ bootstrap, a sample `noop` queue, graceful shutdown.
-- **apps/web:** Next.js App Router, Tailwind, shadcn/ui, TanStack Query provider, `/login` placeholder.
-- **Config:** `packages/shared/env.ts` with a zod `EnvSchema` per app; `.env.example` documents every variable.
-- **Local infra:** `infra/docker-compose.yml` with `pgvector/pgvector:pg16`, `redis:7`, `minio`, `mailpit`, plus an init script that creates the `voice_app` login role (`GRANT app_user`).
-- **CI:** GitHub Actions workflow running the gates from §2.6.
+**Status: done.**
+
+- [x] **Repo:**
+  - pnpm workspace + Turborepo pipelines (`build`, `dev`, `lint`, `typecheck`, `test`)
+  - root `tsconfig.base.json` (strict, `noUncheckedIndexedAccess`); this replaces a separate `packages/config`
+  - ESLint flat config (typescript-eslint + layer-boundary import rules), Prettier, `.editorconfig`, `.nvmrc`
+- [x] **apps/api:**
+  - NestJS 11 + Fastify adapter
+  - `/health` and `/ready` (DB + Redis ping with timeouts → problem+json 503)
+  - pino logging with request id (`x-request-id` echoed back) and redaction of auth headers and cookies
+  - `ProblemDetailsFilter` (RFC 7807, internal errors never leaked), `AppException`, `ZodValidationPipe`
+  - helmet, cookies, CORS allow-list, `/api/v1` prefix
+- [x] **apps/worker:** BullMQ bootstrap, a `system` queue with a zod-validated `noop` job, graceful shutdown.
+- [x] **apps/web:** Next.js 15 App Router, Tailwind 4, TanStack Query provider, `/api/*` same-origin proxy to the API, security headers, `/login` placeholder.
+- [x] **Config:** `parseEnv` + `envPrimitives` in `@platform/shared`; a zod env schema per app; `.env.example`.
+- [x] **Local infra:** `infra/docker-compose.yml` (pgvector pg16, redis 7, minio, mailpit) + `infra/postgres/init.sql` (`app_user` role, `voice_app` login, shadow and test databases).
+- [x] **CI:** `.github/workflows/ci.yml` runs the following against Postgres + Redis service containers:
+  - install
+  - roles
+  - `migrate deploy`
+  - migration drift check
+  - format
+  - lint
+  - typecheck
+  - test
+  - build
+- Moved to later phases:
+  - OpenAPI docs → P2, once real endpoints exist
+  - shadcn/ui components → P6
+  - Docker images → P12
+  - commitlint/husky → optional
+
+**Verified:**
+
+- `pnpm build`, `typecheck`, `lint`, `test`, and `format:check` are all green.
+- The API against real Postgres 16 + Redis: `/ready` → `{"database":"ok","redis":"ok"}`, and unknown routes → problem+json 404.
+- The worker consumed an enqueued `noop` job.
 
 **Definition of Done**
 
-- `pnpm i && docker compose up -d && pnpm dev` starts api, worker, and web.
+- `pnpm i && docker compose -f infra/docker-compose.yml up -d && pnpm db:migrate && pnpm dev` starts api, worker, and web.
 - `/health` is green.
-- CI passes on an empty PR.
+- CI passes.
 
 ---
 
@@ -304,17 +349,17 @@ export function tenantClient(prisma: PrismaClient, tenantId: string) {
 
 **Backend (`modules/auth`, `users`, `tenants`, `api-keys`, `audit`)**
 
-| Method | Endpoint | Permission |
-|---|---|---|
-| POST | `/auth/register` (creates tenant + owner, seeds roles & lead statuses) | public, rate-limited |
-| POST | `/auth/login` · `/auth/refresh` · `/auth/logout` | public / cookie |
-| GET | `/auth/me` → user + memberships (`user_memberships()`) | authenticated |
-| POST | `/auth/switch-tenant` | member of target |
-| GET/PATCH | `/tenant` (profile, timezone, industry) | `tenant:read` / `tenant:write` |
-| GET/POST/PATCH/DELETE | `/members`, `/invitations`, `/roles` | `users:*`, `roles:*` |
-| POST | `/invitations/:token/accept` | public (token) |
-| GET/POST/DELETE | `/api-keys` | `api_keys:*` |
-| GET | `/audit-logs` | `audit:read` |
+| Method                | Endpoint                                                               | Permission                     |
+| --------------------- | ---------------------------------------------------------------------- | ------------------------------ |
+| POST                  | `/auth/register` (creates tenant + owner, seeds roles & lead statuses) | public, rate-limited           |
+| POST                  | `/auth/login` · `/auth/refresh` · `/auth/logout`                       | public / cookie                |
+| GET                   | `/auth/me` → user + memberships (`user_memberships()`)                 | authenticated                  |
+| POST                  | `/auth/switch-tenant`                                                  | member of target               |
+| GET/PATCH             | `/tenant` (profile, timezone, industry)                                | `tenant:read` / `tenant:write` |
+| GET/POST/PATCH/DELETE | `/members`, `/invitations`, `/roles`                                   | `users:*`, `roles:*`           |
+| POST                  | `/invitations/:token/accept`                                           | public (token)                 |
+| GET/POST/DELETE       | `/api-keys`                                                            | `api_keys:*`                   |
+| GET                   | `/audit-logs`                                                          | `audit:read`                   |
 
 - **Passwords:** argon2id; minimum 10 characters + zxcvbn score ≥ 3 (validated in `shared`).
 - **Tokens:**

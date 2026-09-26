@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: voice_owner
+          POSTGRES_PASSWORD: voice_owner
+          POSTGRES_DB: voice
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U voice_owner -d voice"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://voice_app:voice_app@localhost:5432/voice
+      DATABASE_MIGRATION_URL: postgresql://voice_owner:voice_owner@localhost:5432/voice
+      SHADOW_DATABASE_URL: postgresql://voice_owner:voice_owner@localhost:5432/voice_shadow
+      TEST_DATABASE_URL: postgresql://voice_owner:voice_owner@localhost:5432/voice_test
+      REDIS_URL: redis://localhost:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Create database roles and databases
+        env:
+          PGPASSWORD: voice_owner
+        run: psql -h localhost -U voice_owner -d voice -v ON_ERROR_STOP=1 -f infra/postgres/init.sql
+
+      - name: Apply migrations
+        run: pnpm db:migrate
+
+      - name: Migrations match schema.prisma
+        run: pnpm db:check
+
+      - name: Format
+        run: pnpm format:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build

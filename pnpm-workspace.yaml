@@ -1,0 +1,15 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# pnpm 10 blocks dependency install scripts unless allow-listed
+onlyBuiltDependencies:
+  - "@prisma/client"
+  - "@prisma/engines"
+  - "prisma"
+  - "argon2"
+  - "esbuild"
+  - "sharp"
+  - "msgpackr-extract"
+  - "@swc/core"
+  - "unrs-resolver"

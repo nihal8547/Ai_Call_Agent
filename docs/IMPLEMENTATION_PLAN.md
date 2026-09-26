@@ -18,18 +18,18 @@ It keeps the architecture of the original "Ava" voice agent (CodeMatrix7 Voice A
 
 ### 1.1 What changed from the first plan
 
-| Area | Original plan (Ava) | Updated plan (Platform) |
-|---|---|---|
-| Scope | One real estate agent | Many businesses (tenants), many agents per tenant |
-| Qualification fields | Hard-coded `budget/timeline/location/financing` | Per-agent configurable fields (type, required, order, validation) |
-| Flow | Fixed LangGraph flow | Generic LangGraph engine driven by a per-agent workflow config |
-| Knowledge | None; the LLM relies on general knowledge | Document upload → extraction → chunking → embeddings → pgvector → RAG on live calls |
-| State storage | Memory → Redis | Redis (live call state) + PostgreSQL (system of record) + pgvector |
-| Tools | Sheets and calendar wired in code | Tool registry + per-tenant integrations + per-agent permissions + encrypted credentials |
-| LLM | Gemini | Provider abstraction: Gemini / OpenAI / Claude |
-| Telephony | Twilio | Provider abstraction: Twilio first; Telnyx/Plivo/SIP later |
-| UI | None | Full management web app (dashboard, agents, knowledge, calls, leads, appointments, integrations, analytics, settings) |
-| Security | Webhook signature, rate limits | + auth, RBAC, tenant isolation (RLS), credential encryption, audit logs, usage limits |
+| Area                 | Original plan (Ava)                             | Updated plan (Platform)                                                                                               |
+| -------------------- | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Scope                | One real estate agent                           | Many businesses (tenants), many agents per tenant                                                                     |
+| Qualification fields | Hard-coded `budget/timeline/location/financing` | Per-agent configurable fields (type, required, order, validation)                                                     |
+| Flow                 | Fixed LangGraph flow                            | Generic LangGraph engine driven by a per-agent workflow config                                                        |
+| Knowledge            | None; the LLM relies on general knowledge       | Document upload → extraction → chunking → embeddings → pgvector → RAG on live calls                                   |
+| State storage        | Memory → Redis                                  | Redis (live call state) + PostgreSQL (system of record) + pgvector                                                    |
+| Tools                | Sheets and calendar wired in code               | Tool registry + per-tenant integrations + per-agent permissions + encrypted credentials                               |
+| LLM                  | Gemini                                          | Provider abstraction: Gemini / OpenAI / Claude                                                                        |
+| Telephony            | Twilio                                          | Provider abstraction: Twilio first; Telnyx/Plivo/SIP later                                                            |
+| UI                   | None                                            | Full management web app (dashboard, agents, knowledge, calls, leads, appointments, integrations, analytics, settings) |
+| Security             | Webhook signature, rate limits                  | + auth, RBAC, tenant isolation (RLS), credential encryption, audit logs, usage limits                                 |
 
 ### 1.2 Current repo state
 
@@ -37,15 +37,15 @@ The repo contains only this plan, so all code is still to be written (greenfield
 
 ### 1.3 Mapping the seven layers to components (unchanged structure, generalised)
 
-| Layer | Component | Technology |
-|---|---|---|
-| 1. Caller | — | Phone / PSTN / WebRTC |
-| 2. Telephony | `app/telephony/` (provider interface) | Twilio Voice → Telnyx / Plivo / SIP later |
-| 3. Voice | `app/voice/` | Twilio Speech + TTS (L1–L3) → Deepgram + ElevenLabs/Cartesia streaming (L4) |
-| 4. AI Brain | `app/brain/` (LLM provider interface) + `app/rag/` | Gemini / OpenAI / Claude; RAG over pgvector |
-| 5. State | `app/state/`, `app/workflows/` | LangGraph + Pydantic (dynamic models), Redis, PostgreSQL |
-| 6. Tools | `app/tools/`, `app/integrations/` | CRM, Sheets, Calendar, Cal.com, Email, WhatsApp, Webhooks, REST |
-| 7. Outcome | `app/outcomes/`, `app/leads/`, `app/appointments/` | Lead, booking, enquiry, human handoff |
+| Layer        | Component                                          | Technology                                                                  |
+| ------------ | -------------------------------------------------- | --------------------------------------------------------------------------- |
+| 1. Caller    | —                                                  | Phone / PSTN / WebRTC                                                       |
+| 2. Telephony | `app/telephony/` (provider interface)              | Twilio Voice → Telnyx / Plivo / SIP later                                   |
+| 3. Voice     | `app/voice/`                                       | Twilio Speech + TTS (L1–L3) → Deepgram + ElevenLabs/Cartesia streaming (L4) |
+| 4. AI Brain  | `app/brain/` (LLM provider interface) + `app/rag/` | Gemini / OpenAI / Claude; RAG over pgvector                                 |
+| 5. State     | `app/state/`, `app/workflows/`                     | LangGraph + Pydantic (dynamic models), Redis, PostgreSQL                    |
+| 6. Tools     | `app/tools/`, `app/integrations/`                  | CRM, Sheets, Calendar, Cal.com, Email, WhatsApp, Webhooks, REST             |
+| 7. Outcome   | `app/outcomes/`, `app/leads/`, `app/appointments/` | Lead, booking, enquiry, human handoff                                       |
 
 A new cross-cutting layer, **Management & Configuration** (`frontend/` + `app/api/`), feeds layers 2–7 with tenant data.
 
@@ -60,6 +60,7 @@ A new cross-cutting layer, **Management & Configuration** (`frontend/` + `app/ap
    - the repository layer always scopes queries by tenant
 
    Vectors follow the same rules.
+
 5. **Published agent versions.** Editing an agent creates a draft, and publishing freezes a version. Each call pins the `agent_version_id` it started with, so config edits never change a call already in progress, and call records can be audited later.
 6. **Grounded answers only.** Business-specific facts must come from retrieved chunks above a similarity threshold. Otherwise the agent gives a safe "I'll have someone confirm that" and creates a follow-up or handoff.
 7. **Tools never block the call.** Non-critical tools (CRM push, Sheets, email, webhooks) run in the background: BullMQ queues on Redis. Critical tools such as slot lookup run with hard timeouts and have fallbacks.
@@ -114,22 +115,22 @@ A new cross-cutting layer, **Management & Configuration** (`frontend/` + `app/ap
 
 > **Updated:** the platform is built in **TypeScript end-to-end with Prisma + PostgreSQL**. Full details, and the Python → TypeScript mapping, are in [`DEVELOPMENT_PHASES.md` §0](./DEVELOPMENT_PHASES.md#0-stack-decision-typescript-end-to-end-with-prisma). Pydantic snippets in this document describe the schema shape; they are implemented as zod schemas in `packages/shared`.
 
-| Concern | Choice |
-|---|---|
-| API server | NestJS (Fastify adapter), REST `/api/v1`, OpenAPI generated from zod |
-| Validation | zod, shared by API, workers and frontend |
-| Database / ORM | PostgreSQL 16 + Prisma (schema: `packages/db/prisma/schema.prisma`); RLS + pgvector in hand-written SQL migrations |
-| Vector store | pgvector (HNSW, cosine) in the same database |
-| Cache / live state / queues | Redis + BullMQ |
-| Orchestration | LangGraph.js around a pure-TypeScript decision core (`packages/core`) |
-| LLM / embeddings | Provider interfaces: Gemini (default), OpenAI, Anthropic |
-| Document extraction | unpdf/pdf.js, mammoth, papaparse, exceljs, tesseract.js (or LLM vision) |
-| Object storage | S3-compatible (MinIO locally) |
-| Telephony / speech | Twilio (provider interface) → Deepgram + Cartesia/ElevenLabs streaming, LiveKit Agents |
-| Frontend | Next.js (App Router) + TypeScript, Tailwind, shadcn/ui, TanStack Query, react-hook-form + zod |
-| Auth | argon2id, JWT access + rotating refresh tokens in httpOnly cookies, API keys |
-| Observability | pino, OpenTelemetry, Prometheus/Grafana |
-| Tests | Vitest, Supertest, Testcontainers, Playwright |
+| Concern                     | Choice                                                                                                             |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| API server                  | NestJS (Fastify adapter), REST `/api/v1`, OpenAPI generated from zod                                               |
+| Validation                  | zod, shared by API, workers and frontend                                                                           |
+| Database / ORM              | PostgreSQL 16 + Prisma (schema: `packages/db/prisma/schema.prisma`); RLS + pgvector in hand-written SQL migrations |
+| Vector store                | pgvector (HNSW, cosine) in the same database                                                                       |
+| Cache / live state / queues | Redis + BullMQ                                                                                                     |
+| Orchestration               | LangGraph.js around a pure-TypeScript decision core (`packages/core`)                                              |
+| LLM / embeddings            | Provider interfaces: Gemini (default), OpenAI, Anthropic                                                           |
+| Document extraction         | unpdf/pdf.js, mammoth, papaparse, exceljs, tesseract.js (or LLM vision)                                            |
+| Object storage              | S3-compatible (MinIO locally)                                                                                      |
+| Telephony / speech          | Twilio (provider interface) → Deepgram + Cartesia/ElevenLabs streaming, LiveKit Agents                             |
+| Frontend                    | Next.js (App Router) + TypeScript, Tailwind, shadcn/ui, TanStack Query, react-hook-form + zod                      |
+| Auth                        | argon2id, JWT access + rotating refresh tokens in httpOnly cookies, API keys                                       |
+| Observability               | pino, OpenTelemetry, Prometheus/Grafana                                                                            |
+| Tests                       | Vitest, Supertest, Testcontainers, Playwright                                                                      |
 
 ---
 
@@ -139,7 +140,7 @@ A pnpm + Turborepo monorepo. The full tree and dependency rules are in [`DEVELOP
 
 ```
 apps/      api (NestJS) · worker (BullMQ) · web (Next.js) · voice (streaming, L4)
-packages/  db (Prisma) · shared (zod) · core (engine) · runtime (graph) · ai · rag · telephony · tools · crypto · config
+packages/  db (Prisma) · shared (zod) · core (engine) · runtime (graph) · ai · rag · telephony · tools · crypto
 templates/ seed agent templates (real-estate/Ava, clinic, hotel, restaurant)
 ```
 
@@ -158,30 +159,30 @@ Implemented in [`packages/db/prisma/schema.prisma`](../packages/db/prisma/schema
 
 Every table below has `tenant_id` (except `tenants` and `users`). RLS policy: `tenant_id = current_setting('app.tenant_id')::uuid`.
 
-| Table | Key columns |
-|---|---|
-| `tenants` | id, name, slug, industry, timezone, plan, status, usage_limits |
-| `users` | id, email, password_hash, is_platform_owner |
-| `memberships` | user_id, tenant_id, role_id |
-| `roles` / `role_permissions` | role name, permission strings (e.g. `agents:write`, `calls:read_transcript`) |
-| `agents` | id, tenant_id, name, status (active/inactive), current_version_id |
-| `agent_versions` | id, agent_id, version, `config` JSONB (validated by `AgentConfig`), status (draft/published), published_by |
-| `phone_numbers` | e164, provider, provider_sid, tenant_id, agent_id |
-| `knowledge_collections` | id, tenant_id, name, description |
-| `agent_collections` | agent_id, collection_id |
-| `documents` | id, tenant_id, collection_id, filename, mime, size, storage_key, checksum, status, error, enabled, version, metadata JSONB |
-| `document_agents` | document_id, agent_id (optional: restrict a document to specific agents) |
-| `document_chunks` | id, tenant_id, collection_id, document_id, ordinal, text, tokens, metadata JSONB (page, heading, sheet/row), `embedding vector(768)`, embedding_model |
-| `integrations` | id, tenant_id, type (crm_hubspot, google_calendar, …), `credentials_encrypted`, config JSONB, status |
-| `agent_tools` | agent_id, tool_name, integration_id, config JSONB, enabled |
-| `calls` | id, tenant_id, agent_id, agent_version_id, provider_call_sid, from/to, started/ended, duration, status, outcome, qualification_status, recording_key, cost fields |
-| `call_events` | call_id, seq, type (turn_user, turn_agent, extraction, rag_retrieval, tool_call, fallback, guard, handoff), payload JSONB, latency_ms |
-| `leads` | id, tenant_id, call_id, agent_id, customer_name, phone, `data` JSONB (validated against the agent's field schema), status_id, source, follow_up_at |
-| `lead_statuses` | tenant-configurable list, order, is_terminal |
-| `appointments` | id, tenant_id, lead_id, call_id, agent_id, start/end, status (upcoming/completed/cancelled/rescheduled), external_ref |
-| `usage_records` | tenant_id, call_id, kind (llm_tokens, embed_tokens, telephony_minutes, tts_chars), qty, cost |
-| `audit_logs` | tenant_id, actor, action, entity, before/after, ip, at |
-| `api_keys` | tenant_id, hashed_key, scopes, last_used |
+| Table                        | Key columns                                                                                                                                                       |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tenants`                    | id, name, slug, industry, timezone, plan, status, usage_limits                                                                                                    |
+| `users`                      | id, email, password_hash, is_platform_owner                                                                                                                       |
+| `memberships`                | user_id, tenant_id, role_id                                                                                                                                       |
+| `roles` / `role_permissions` | role name, permission strings (e.g. `agents:write`, `calls:read_transcript`)                                                                                      |
+| `agents`                     | id, tenant_id, name, status (active/inactive), current_version_id                                                                                                 |
+| `agent_versions`             | id, agent_id, version, `config` JSONB (validated by `AgentConfig`), status (draft/published), published_by                                                        |
+| `phone_numbers`              | e164, provider, provider_sid, tenant_id, agent_id                                                                                                                 |
+| `knowledge_collections`      | id, tenant_id, name, description                                                                                                                                  |
+| `agent_collections`          | agent_id, collection_id                                                                                                                                           |
+| `documents`                  | id, tenant_id, collection_id, filename, mime, size, storage_key, checksum, status, error, enabled, version, metadata JSONB                                        |
+| `document_agents`            | document_id, agent_id (optional: restrict a document to specific agents)                                                                                          |
+| `document_chunks`            | id, tenant_id, collection_id, document_id, ordinal, text, tokens, metadata JSONB (page, heading, sheet/row), `embedding vector(768)`, embedding_model             |
+| `integrations`               | id, tenant_id, type (crm_hubspot, google_calendar, …), `credentials_encrypted`, config JSONB, status                                                              |
+| `agent_tools`                | agent_id, tool_name, integration_id, config JSONB, enabled                                                                                                        |
+| `calls`                      | id, tenant_id, agent_id, agent_version_id, provider_call_sid, from/to, started/ended, duration, status, outcome, qualification_status, recording_key, cost fields |
+| `call_events`                | call_id, seq, type (turn_user, turn_agent, extraction, rag_retrieval, tool_call, fallback, guard, handoff), payload JSONB, latency_ms                             |
+| `leads`                      | id, tenant_id, call_id, agent_id, customer_name, phone, `data` JSONB (validated against the agent's field schema), status_id, source, follow_up_at                |
+| `lead_statuses`              | tenant-configurable list, order, is_terminal                                                                                                                      |
+| `appointments`               | id, tenant_id, lead_id, call_id, agent_id, start/end, status (upcoming/completed/cancelled/rescheduled), external_ref                                             |
+| `usage_records`              | tenant_id, call_id, kind (llm_tokens, embed_tokens, telephony_minutes, tts_chars), qty, cost                                                                      |
+| `audit_logs`                 | tenant_id, actor, action, entity, before/after, ip, at                                                                                                            |
+| `api_keys`                   | tenant_id, hashed_key, scopes, last_used                                                                                                                          |
 
 Indexes:
 
@@ -193,7 +194,7 @@ Indexes:
 
 ## 6. Agent configuration (business-agnostic)
 
-`agent_versions.config` holds this document. It is validated by Pydantic and edited in the UI.
+`agent_versions.config` holds this document. It is validated by the zod `AgentConfig` schema and edited in the UI.
 
 ```python
 class QualificationField(BaseModel):
@@ -356,17 +357,17 @@ Step types:
 
 Graph nodes (all generic):
 
-| Node | Responsibility | On failure |
-|---|---|---|
-| `ingest` | Normalise the transcript. Empty or low-confidence input increments `silent_turns`. | → `fallback` |
-| `understand` | One LLM call: intent + field extraction (dynamic JSON schema), with a hard timeout | → `fallback` |
-| `retrieve` | RAG when the intent includes a question | → safe response |
-| `decide` | **Pure Python.** Merges validated fields, evaluates the workflow step, and selects the next action (ask field / answer / run tool / confirm / handoff / end). Applies escalation rules, working hours, and limits. | — |
-| `run_tool` | Tool executor (permission-checked) | → step `on_error` or fallback |
-| `respond` | The LLM phrases the reply: acknowledgement + (grounded answer) + exactly one next question | → `fallback` |
-| `fallback` | Deterministic text from config (field question / re-ask / safe response / goodbye) | never fails |
-| `guard` | Length, no JSON or error text, no secrets, scope, citation check, PII | → fallback text |
-| `finalize` | Resolve the outcome, persist the lead/appointment, enqueue exports | background, retried |
+| Node         | Responsibility                                                                                                                                                                                                     | On failure                    |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------- |
+| `ingest`     | Normalise the transcript. Empty or low-confidence input increments `silent_turns`.                                                                                                                                 | → `fallback`                  |
+| `understand` | One LLM call: intent + field extraction (dynamic JSON schema), with a hard timeout                                                                                                                                 | → `fallback`                  |
+| `retrieve`   | RAG when the intent includes a question                                                                                                                                                                            | → safe response               |
+| `decide`     | **Pure Python.** Merges validated fields, evaluates the workflow step, and selects the next action (ask field / answer / run tool / confirm / handoff / end). Applies escalation rules, working hours, and limits. | —                             |
+| `run_tool`   | Tool executor (permission-checked)                                                                                                                                                                                 | → step `on_error` or fallback |
+| `respond`    | The LLM phrases the reply: acknowledgement + (grounded answer) + exactly one next question                                                                                                                         | → `fallback`                  |
+| `fallback`   | Deterministic text from config (field question / re-ask / safe response / goodbye)                                                                                                                                 | never fails                   |
+| `guard`      | Length, no JSON or error text, no secrets, scope, citation check, PII                                                                                                                                              | → fallback text               |
+| `finalize`   | Resolve the outcome, persist the lead/appointment, enqueue exports                                                                                                                                                 | background, retried           |
 
 Budgets and circuit breakers (from the original plan):
 
@@ -411,18 +412,18 @@ Budgets and circuit breakers (from the original plan):
 
 Next.js app (`frontend/`), responsive, talking only to `/api/v1`, with the tenant chosen via a switcher for multi-tenant users.
 
-| Section | Contents |
-|---|---|
-| **Dashboard** | KPI tiles: total/answered/completed/failed calls, qualified leads, appointments, human transfers, avg duration, AI usage, estimated cost, conversion; trends by day; per-agent breakdown |
-| **AI Agents** | List, create (from a template: real estate / clinic / hotel / restaurant / blank), edit, delete, activate/deactivate. Tabs: Profile (name, voice, language, greeting), Behaviour (persona, instructions, business rules, allowed actions), Qualification (drag-and-drop field builder), Workflow (step list editor), Knowledge (assign collections), Tools, Working hours, Escalation & handoff. Draft → **Test in browser** (text simulator) → Publish; version history + rollback |
-| **Knowledge Base** | Collections (Company info, Products, Services, Pricing, FAQs, Policies, Locations, Hours…), document upload (drag-and-drop, multi-file), live status (Uploading → Processing → Extracting → Embedding → Ready / Failed), view/preview, metadata, replace, delete, enable/disable, assign to agents, full-text + semantic **search playground** showing retrieved chunks and scores, RAG settings (top_k, min_score) |
-| **Calls** | Filterable table (caller, date, duration, agent, status, qualification status, outcome, recording). Detail page: call info → transcript → timeline (turns, extractions, fallbacks, guards) → extracted data → RAG sources used → tools executed → final outcome; audio player |
-| **Leads** | Table with dynamic columns from the agent's fields, configurable statuses (Kanban + table), follow-up dates, notes, CSV export |
-| **Appointments** | Calendar + list views; upcoming/completed/cancelled/rescheduled; reschedule/cancel (synced to the calendar tool) |
-| **Integrations** | Telephony, CRM, Calendar, Sheets, Email, WhatsApp, Webhooks: connect, test, status, last error |
-| **Analytics** | Call volume, success, qualification rate, booking rate, transfer rate, avg duration, AI latency (p50/p95 per hop), tool failures, RAG stats (hit rate, not-found rate, top unanswered questions), cost usage |
-| **Settings** | Business profile, users & invites, roles & permissions, phone numbers, AI defaults, security (2FA, session policy), API keys, outbound webhooks, billing & usage limits, audit log viewer |
-| **Platform admin** (platform owner only) | Tenants, plans, global usage, provider health |
+| Section                                  | Contents                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Dashboard**                            | KPI tiles: total/answered/completed/failed calls, qualified leads, appointments, human transfers, avg duration, AI usage, estimated cost, conversion; trends by day; per-agent breakdown                                                                                                                                                                                                                                                                                            |
+| **AI Agents**                            | List, create (from a template: real estate / clinic / hotel / restaurant / blank), edit, delete, activate/deactivate. Tabs: Profile (name, voice, language, greeting), Behaviour (persona, instructions, business rules, allowed actions), Qualification (drag-and-drop field builder), Workflow (step list editor), Knowledge (assign collections), Tools, Working hours, Escalation & handoff. Draft → **Test in browser** (text simulator) → Publish; version history + rollback |
+| **Knowledge Base**                       | Collections (Company info, Products, Services, Pricing, FAQs, Policies, Locations, Hours…), document upload (drag-and-drop, multi-file), live status (Uploading → Processing → Extracting → Embedding → Ready / Failed), view/preview, metadata, replace, delete, enable/disable, assign to agents, full-text + semantic **search playground** showing retrieved chunks and scores, RAG settings (top_k, min_score)                                                                 |
+| **Calls**                                | Filterable table (caller, date, duration, agent, status, qualification status, outcome, recording). Detail page: call info → transcript → timeline (turns, extractions, fallbacks, guards) → extracted data → RAG sources used → tools executed → final outcome; audio player                                                                                                                                                                                                       |
+| **Leads**                                | Table with dynamic columns from the agent's fields, configurable statuses (Kanban + table), follow-up dates, notes, CSV export                                                                                                                                                                                                                                                                                                                                                      |
+| **Appointments**                         | Calendar + list views; upcoming/completed/cancelled/rescheduled; reschedule/cancel (synced to the calendar tool)                                                                                                                                                                                                                                                                                                                                                                    |
+| **Integrations**                         | Telephony, CRM, Calendar, Sheets, Email, WhatsApp, Webhooks: connect, test, status, last error                                                                                                                                                                                                                                                                                                                                                                                      |
+| **Analytics**                            | Call volume, success, qualification rate, booking rate, transfer rate, avg duration, AI latency (p50/p95 per hop), tool failures, RAG stats (hit rate, not-found rate, top unanswered questions), cost usage                                                                                                                                                                                                                                                                        |
+| **Settings**                             | Business profile, users & invites, roles & permissions, phone numbers, AI defaults, security (2FA, session policy), API keys, outbound webhooks, billing & usage limits, audit log viewer                                                                                                                                                                                                                                                                                           |
+| **Platform admin** (platform owner only) | Tenants, plans, global usage, provider health                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 Frontend rules:
 
@@ -437,13 +438,13 @@ Frontend rules:
 
 Default roles, with permissions editable per tenant:
 
-| Role | Scope |
-|---|---|
-| Platform Owner | All tenants, plans, provider settings, impersonation (audited) |
-| Business Owner | Everything in their tenant incl. billing, deleting the tenant |
-| Business Admin | Agents, knowledge, integrations, users (except owner), settings |
-| Manager | Calls, transcripts, leads, appointments, analytics; read-only agents |
-| Agent / Staff | Assigned leads and appointments, limited call view (no recordings unless granted) |
+| Role           | Scope                                                                             |
+| -------------- | --------------------------------------------------------------------------------- |
+| Platform Owner | All tenants, plans, provider settings, impersonation (audited)                    |
+| Business Owner | Everything in their tenant incl. billing, deleting the tenant                     |
+| Business Admin | Agents, knowledge, integrations, users (except owner), settings                   |
+| Manager        | Calls, transcripts, leads, appointments, analytics; read-only agents              |
+| Agent / Staff  | Assigned leads and appointments, limited call view (no recordings unless granted) |
 
 Permissions are strings like `resource:action`, checked by a NestJS guard `@RequirePermissions("agents:write")`. The tenant comes from the membership, never from the request body.
 
@@ -451,22 +452,22 @@ Permissions are strings like `resource:action`, checked by a NestJS guard `@Requ
 
 ## 13. Security requirements → implementation
 
-| Requirement | Implementation |
-|---|---|
-| Tenant isolation | `tenant_id` everywhere + PostgreSQL RLS (`SET LOCAL app.tenant_id` per request/job) + scoped repositories + automated **cross-tenant isolation tests** in CI |
-| Authentication | argon2 hashes, JWT access (≈15 min) + rotating refresh, optional TOTP 2FA, email invites |
-| API authentication | Hashed, scoped API keys per tenant |
-| RBAC | Permission dependency on every route |
-| Webhook signature validation | Twilio HMAC-SHA1 `X-Twilio-Signature` (per-subaccount token); outbound webhooks signed with HMAC-SHA256 |
-| Secret management | Platform secrets in the cloud secret manager; nothing in images or repo |
-| Credential encryption | Envelope encryption (§9); never serialised to API responses |
-| PII protection | Redaction in logs; transcripts encrypted at rest; per-tenant retention policy + scheduled purge |
-| Call data access | Separate permissions for transcripts and recordings; signed short-lived URLs for audio |
-| Rate limiting | Per IP, per caller number, per tenant (Redis) |
-| Usage limits | Plan limits: minutes, calls/day, documents, storage, tokens; hard stop + alert |
-| Toll-fraud protection | Twilio geo permissions, blocklist, per-number concurrency limit, max call duration, anomaly alerts |
-| Audit logs | Every config change, publish, integration connect, export, and role change |
-| Prompt injection | Retrieved text and caller speech are treated as data; schema-only extraction; tools selected by code, not by the LLM; output guard |
+| Requirement                  | Implementation                                                                                                                                               |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Tenant isolation             | `tenant_id` everywhere + PostgreSQL RLS (`SET LOCAL app.tenant_id` per request/job) + scoped repositories + automated **cross-tenant isolation tests** in CI |
+| Authentication               | argon2 hashes, JWT access (≈15 min) + rotating refresh, optional TOTP 2FA, email invites                                                                     |
+| API authentication           | Hashed, scoped API keys per tenant                                                                                                                           |
+| RBAC                         | Permission dependency on every route                                                                                                                         |
+| Webhook signature validation | Twilio HMAC-SHA1 `X-Twilio-Signature` (per-subaccount token); outbound webhooks signed with HMAC-SHA256                                                      |
+| Secret management            | Platform secrets in the cloud secret manager; nothing in images or repo                                                                                      |
+| Credential encryption        | Envelope encryption (§9); never serialised to API responses                                                                                                  |
+| PII protection               | Redaction in logs; transcripts encrypted at rest; per-tenant retention policy + scheduled purge                                                              |
+| Call data access             | Separate permissions for transcripts and recordings; signed short-lived URLs for audio                                                                       |
+| Rate limiting                | Per IP, per caller number, per tenant (Redis)                                                                                                                |
+| Usage limits                 | Plan limits: minutes, calls/day, documents, storage, tokens; hard stop + alert                                                                               |
+| Toll-fraud protection        | Twilio geo permissions, blocklist, per-number concurrency limit, max call duration, anomaly alerts                                                           |
+| Audit logs                   | Every config change, publish, integration connect, export, and role change                                                                                   |
+| Prompt injection             | Retrieved text and caller speech are treated as data; schema-only extraction; tools selected by code, not by the LLM; output guard                           |
 
 ---
 
@@ -478,16 +479,16 @@ Customer ───────┤
                 └── Fallback path (deterministic, config-driven) ──→ safe flow
 ```
 
-| Failure | Detection | Fallback behaviour |
-|---|---|---|
-| LLM timeout / provider down | `asyncio.wait_for`, exceptions | Next field's configured question; after 2 failures, fallback-only mode for the call (L4: switch provider) |
-| Invalid JSON | Parse error | Same as above |
-| Pydantic validation failure | Per-field validation | Keep the valid fields, re-ask the invalid field with `reask_prompts` |
-| RAG failure / no knowledge | Timeout, error, score < threshold | Safe response + follow-up task |
-| Tool failure | Timeout / error | Step `on_error` (e.g. offer callback); background retry via BullMQ |
-| Guardrail violation | Output guard | Replace with fallback text |
-| ASR empty / noisy | Empty `SpeechResult`, low confidence | "Sorry, I didn't catch that", then goodbye after 3 |
-| Redis unavailable | Connection error | Serve the turn from a Postgres snapshot; alert |
+| Failure                     | Detection                            | Fallback behaviour                                                                                        |
+| --------------------------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| LLM timeout / provider down | `asyncio.wait_for`, exceptions       | Next field's configured question; after 2 failures, fallback-only mode for the call (L4: switch provider) |
+| Invalid JSON                | Parse error                          | Same as above                                                                                             |
+| Pydantic validation failure | Per-field validation                 | Keep the valid fields, re-ask the invalid field with `reask_prompts`                                      |
+| RAG failure / no knowledge  | Timeout, error, score < threshold    | Safe response + follow-up task                                                                            |
+| Tool failure                | Timeout / error                      | Step `on_error` (e.g. offer callback); background retry via BullMQ                                        |
+| Guardrail violation         | Output guard                         | Replace with fallback text                                                                                |
+| ASR empty / noisy           | Empty `SpeechResult`, low confidence | "Sorry, I didn't catch that", then goodbye after 3                                                        |
+| Redis unavailable           | Connection error                     | Serve the turn from a Postgres snapshot; alert                                                            |
 
 The caller never hears stack traces, provider names, or "error".
 
@@ -509,6 +510,7 @@ Multi-tenancy (`tenant_id` + RLS) and the dynamic field schema are built **from 
 ### Phase 1 — Level 1: Working voice agent + basic qualification + basic frontend (3–4 weeks)
 
 Backend:
+
 1. Scaffold the monorepo (§4), env config, Prisma + migrations, Redis.
 2. Tables: tenants, users, memberships, roles, agents, agent_versions, phone_numbers, calls, call_events, leads, with **RLS on**.
 3. `AgentConfig` + `QualificationField` + `dynamic_schema.py` (create_model, JSON schema, normalisers) + unit tests.
@@ -522,11 +524,10 @@ Backend:
 11. Auth: email/password login, JWT cookies, basic roles (Owner, Admin, Viewer).
 12. Seed templates: **Ava real estate** and a **clinic reception** agent, both as pure config. This proves the core is business-agnostic.
 
-Frontend:
-13. Next.js scaffold, login, tenant layout, generated API client.
-14. Pages: Dashboard (basic counts), Agents (list + edit a form for greeting/persona/instructions + a simple field list editor), Calls (list + transcript), Leads (list).
+Frontend: 13. Next.js scaffold, login, tenant layout, generated API client. 14. Pages: Dashboard (basic counts), Agents (list + edit a form for greeting/persona/instructions + a simple field list editor), Calls (list + transcript), Leads (list).
 
 **Exit criteria:**
+
 - Two different businesses (real estate + clinic) run on the same deploy with different numbers, fields, and greetings, with no code changes.
 - A real call completes qualification and creates a lead visible in the UI.
 - With an invalid LLM key, the call still completes on fallback prompts.
@@ -579,13 +580,13 @@ Frontend:
 
 ## 16. Example: same core, different businesses
 
-| | ABC Real Estate — Sales Agent (Ava template) | XYZ Clinic — Reception Agent |
-|---|---|---|
-| Fields | property_type (select), budget (number, lakh/crore), timeline, preferred_area, financing (select) | patient_name, service_required (select), preferred_date (date), preferred_time (time), urgency (select) |
-| Knowledge | Projects, price sheets (XLSX), FAQs, locations | Services list, doctors, timings, insurance policy PDF |
-| Workflow | greet → collect → offer site-visit slots → book → CRM lead | greet → collect → urgency=high? handoff : find slots → book → WhatsApp confirmation |
-| Tools | calendar, hubspot.create_lead, sheets | calcom, whatsapp.send, email |
-| Handoff | "Talk to a person" / budget > configured limit → sales desk | Emergency keywords → front desk immediately |
+|           | ABC Real Estate — Sales Agent (Ava template)                                                      | XYZ Clinic — Reception Agent                                                                            |
+| --------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Fields    | property_type (select), budget (number, lakh/crore), timeline, preferred_area, financing (select) | patient_name, service_required (select), preferred_date (date), preferred_time (time), urgency (select) |
+| Knowledge | Projects, price sheets (XLSX), FAQs, locations                                                    | Services list, doctors, timings, insurance policy PDF                                                   |
+| Workflow  | greet → collect → offer site-visit slots → book → CRM lead                                        | greet → collect → urgency=high? handoff : find slots → book → WhatsApp confirmation                     |
+| Tools     | calendar, hubspot.create_lead, sheets                                                             | calcom, whatsapp.send, email                                                                            |
+| Handoff   | "Talk to a person" / budget > configured limit → sales desk                                       | Emergency keywords → front desk immediately                                                             |
 
 Both are rows in the database. Neither exists as Python code.
 
@@ -593,17 +594,17 @@ Both are rows in the database. Neither exists as Python code.
 
 ## 17. Testing strategy
 
-| Level | What | How |
-|---|---|---|
-| Unit | Dynamic schema + normalisers, `decide`, fallback, guards, chunker, extractors, permission checks, encryption | Vitest, no network |
-| Workflow | Full multi-turn conversations per template (happy path, out-of-order answers, corrections, silence, off-topic, wants human, LLM timeout, invalid JSON, RAG not found, tool failure) | Scripted `FakeLLM` + `FakeRetriever` + fake tools |
-| RAG | Ingestion of sample PDF/DOCX/XLSX; retrieval accuracy on a Q&A set per template; grounding (no answer without sources) | Vitest + eval script tracked per prompt/embedding version |
-| Tenant isolation | Every repository/API endpoint called as tenant B tries to read tenant A's agents, documents, chunks, calls, leads, integrations | Dedicated `tests/isolation/`; must always pass |
-| API | Auth, RBAC matrix, Twilio signature rejection, idempotent retries, upload limits | Supertest + Testcontainers Postgres/Redis |
-| Frontend | Components, forms (zod), key flows: login → create agent → upload document → publish | Vitest + Playwright |
-| Failure drills | LLM down, embeddings down, Redis restart, Sheets/CRM down, 10 s silence, noisy audio | Chaos flags (`FORCE_LLM_FAILURE`, `FORCE_RAG_FAILURE`, …) |
-| Load | Concurrent calls, ingestion throughput | Locust against webhook + simulator endpoints |
-| Live | Real calls from multiple phones/networks per template | Release checklist |
+| Level            | What                                                                                                                                                                                | How                                                       |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| Unit             | Dynamic schema + normalisers, `decide`, fallback, guards, chunker, extractors, permission checks, encryption                                                                        | Vitest, no network                                        |
+| Workflow         | Full multi-turn conversations per template (happy path, out-of-order answers, corrections, silence, off-topic, wants human, LLM timeout, invalid JSON, RAG not found, tool failure) | Scripted `FakeLLM` + `FakeRetriever` + fake tools         |
+| RAG              | Ingestion of sample PDF/DOCX/XLSX; retrieval accuracy on a Q&A set per template; grounding (no answer without sources)                                                              | Vitest + eval script tracked per prompt/embedding version |
+| Tenant isolation | Every repository/API endpoint called as tenant B tries to read tenant A's agents, documents, chunks, calls, leads, integrations                                                     | Dedicated `tests/isolation/`; must always pass            |
+| API              | Auth, RBAC matrix, Twilio signature rejection, idempotent retries, upload limits                                                                                                    | Supertest + Testcontainers Postgres/Redis                 |
+| Frontend         | Components, forms (zod), key flows: login → create agent → upload document → publish                                                                                                | Vitest + Playwright                                       |
+| Failure drills   | LLM down, embeddings down, Redis restart, Sheets/CRM down, 10 s silence, noisy audio                                                                                                | Chaos flags (`FORCE_LLM_FAILURE`, `FORCE_RAG_FAILURE`, …) |
+| Load             | Concurrent calls, ingestion throughput                                                                                                                                              | Locust against webhook + simulator endpoints              |
+| Live             | Real calls from multiple phones/networks per template                                                                                                                               | Release checklist                                         |
 
 ---
 
@@ -627,30 +628,30 @@ Both are rows in the database. Neither exists as Python code.
 
 ## 19. Risks & mitigations
 
-| Risk | Mitigation |
-|---|---|
-| Cross-tenant data leak | RLS + scoped repositories + isolation test suite + tenant filter in every vector query |
-| RAG hallucination of business facts | Score threshold, grounded prompt, citation check, numeric-fact guard, safe not-found path |
-| RAG adds latency to calls | Retrieval only on question intent, run in parallel with extraction, ~400 ms timeout, FAQ cache (L4) |
-| Twilio ASR weak on Indian accents / names | `hints` built from field options and knowledge keywords; Deepgram in L4 |
-| LLM mis-normalises values (e.g. "80L") | Type normalisers in the dynamic schema + confirm-back option per field |
-| Config errors break live agents | Draft/publish with validation, test console, version pinning, rollback |
-| Duplicate webhooks corrupt state | Idempotency per turn + Redis lock |
-| Integration outages | Background queue with retries; `on_error` steps; never block the call |
-| Prompt injection via speech or documents | Retrieved text and speech treated as data; code-selected tools; output guard |
-| Runaway cost | Per-call token/duration limits, per-tenant daily ceilings, usage alerts |
-| Scope is large | Strict level gating; each level has exit criteria and ships independently |
+| Risk                                      | Mitigation                                                                                          |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Cross-tenant data leak                    | RLS + scoped repositories + isolation test suite + tenant filter in every vector query              |
+| RAG hallucination of business facts       | Score threshold, grounded prompt, citation check, numeric-fact guard, safe not-found path           |
+| RAG adds latency to calls                 | Retrieval only on question intent, run in parallel with extraction, ~400 ms timeout, FAQ cache (L4) |
+| Twilio ASR weak on Indian accents / names | `hints` built from field options and knowledge keywords; Deepgram in L4                             |
+| LLM mis-normalises values (e.g. "80L")    | Type normalisers in the dynamic schema + confirm-back option per field                              |
+| Config errors break live agents           | Draft/publish with validation, test console, version pinning, rollback                              |
+| Duplicate webhooks corrupt state          | Idempotency per turn + Redis lock                                                                   |
+| Integration outages                       | Background queue with retries; `on_error` steps; never block the call                               |
+| Prompt injection via speech or documents  | Retrieved text and speech treated as data; code-selected tools; output guard                        |
+| Runaway cost                              | Per-call token/duration limits, per-tenant daily ceilings, usage alerts                             |
+| Scope is large                            | Strict level gating; each level has exit criteria and ships independently                           |
 
 ---
 
 ## 20. Timeline summary (one full-stack developer; roughly halve it with two)
 
-| Phase | Deliverable | Estimate |
-|---|---|---|
-| 0 | Accounts, tooling, docker-compose | 1–2 days |
-| 1 | L1: multi-tenant core, dynamic fields, working phone agent, basic UI | 3–4 weeks |
-| 2 | L2: full config UI, workflows, tools, integrations, documents & knowledge base | 4–5 weeks |
-| 3 | L3: live RAG, Redis, BullMQ, CRM, analytics, security hardening, production deploy | 4–6 weeks |
-| 4 | L4: streaming voice, advanced RAG, multi-provider, billing, enterprise | 6–8 weeks |
+| Phase | Deliverable                                                                        | Estimate  |
+| ----- | ---------------------------------------------------------------------------------- | --------- |
+| 0     | Accounts, tooling, docker-compose                                                  | 1–2 days  |
+| 1     | L1: multi-tenant core, dynamic fields, working phone agent, basic UI               | 3–4 weeks |
+| 2     | L2: full config UI, workflows, tools, integrations, documents & knowledge base     | 4–5 weeks |
+| 3     | L3: live RAG, Redis, BullMQ, CRM, analytics, security hardening, production deploy | 4–6 weeks |
+| 4     | L4: streaming voice, advanced RAG, multi-provider, billing, enterprise             | 6–8 weeks |
 
 **Recommended next step:** start Phase 1 steps 1–8. Build the multi-tenant DB with RLS, `AgentConfig`, the dynamic schema, fallback, `decide`, the generic graph, and the text simulator, and run it against both the real estate and clinic templates. Then connect Twilio and the frontend.
