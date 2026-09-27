@@ -27,6 +27,18 @@ describe.skipIf(!hasTestDb)("agent editor: versions, restore, publish checks and
       ...(changeNote ? { changeNote } : {}),
     });
 
+  it("new agents say they're an AI assistant after the greeting; the business can turn it off", async () => {
+    const id = await newAgent("clinic-reception");
+    const config = await draftOf(id);
+    expect(config.disclosure).toEqual({ ai: true, message: "" });
+    const start = await owner.client.post(`/api/v1/agents/${id}/test-sessions`, {});
+    expect(start.json().reply).toContain("Just so you know, I'm an AI assistant.");
+
+    expect((await saveDraft(id, { ...config, disclosure: { ai: false, message: "" } })).statusCode).toBe(200);
+    const quiet = await owner.client.post(`/api/v1/agents/${id}/test-sessions`, {});
+    expect(quiet.json().reply).not.toContain("AI assistant");
+  });
+
   it("keeps a version history and restores an earlier version into the draft", async () => {
     const id = await newAgent("restaurant-booking");
     await owner.client.post(`/api/v1/agents/${id}/publish`); // v1
@@ -147,6 +159,7 @@ describe.skipIf(!hasTestDb)("agent editor: versions, restore, publish checks and
         token: invite.json().inviteUrl.split("/invite/")[1],
         name: "Admin",
         password: STRONG_PASSWORD,
+        acceptTerms: true,
       });
       expect(
         (await admin.post(`/api/v1/test-sessions/${s.sessionId}/messages`, { text: "hi" })).statusCode,

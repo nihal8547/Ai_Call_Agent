@@ -66,6 +66,7 @@ describe.skipIf(!hasTestDb)("RBAC, members and tenancy", () => {
         token,
         name: "W",
         password: "weakpass",
+        acceptTerms: true,
       });
       expect(weak.statusCode).toBe(400);
       expect(weak.json().errors[0].path).toBe("password");
@@ -76,6 +77,7 @@ describe.skipIf(!hasTestDb)("RBAC, members and tenancy", () => {
             token,
             name: "W",
             password: STRONG_PASSWORD,
+            acceptTerms: true,
           })
         ).statusCode,
       ).toBe(200);
@@ -85,6 +87,7 @@ describe.skipIf(!hasTestDb)("RBAC, members and tenancy", () => {
             token,
             name: "W",
             password: STRONG_PASSWORD,
+            acceptTerms: true,
           })
         ).statusCode,
       ).toBe(404);

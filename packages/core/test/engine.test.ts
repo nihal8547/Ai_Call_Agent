@@ -431,3 +431,30 @@ describe("a conversation the customer starts (WhatsApp)", () => {
     expect(early.prompt?.fieldKey).toBe("patient_name");
   });
 });
+
+describe("saying it's an AI assistant", () => {
+  const withDisclosure = (message = "") => {
+    const config = clinic();
+    config.disclosure = { ai: true, message };
+    return config;
+  };
+
+  it("right after the greeting, in the agent's language, when turned on", () => {
+    expect(startCall(clinic(), ctx, "c1").segments.some((s) => s.kind === "disclosure")).toBe(false);
+    const start = startCall(withDisclosure(), ctx, "c1");
+    expect(start.segments.map((s) => s.kind).slice(0, 2)).toEqual(["greeting", "disclosure"]);
+    expect(start.segments[1]!.text).toBe("Just so you know, I'm an AI assistant.");
+
+    const arabic = withDisclosure();
+    arabic.language = "ar-QA";
+    expect(startCall(arabic, ctx, "c1").segments[1]!.text).toBe("للعلم، أنا مساعد ذكاء اصطناعي.");
+  });
+
+  it("in the business's own words, with placeholders", () => {
+    const start = startCall(withDisclosure("{{agent_name}} here is a virtual assistant."), ctx, "c1");
+    expect(start.segments[1]!.text).toBe(`${clinic().agentName} here is a virtual assistant.`);
+    expect(
+      AgentConfig.safeParse({ ...clinic(), disclosure: { ai: true, message: "Hi {{nope}}" } }).success,
+    ).toBe(false);
+  });
+});

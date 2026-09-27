@@ -69,6 +69,7 @@ async function setup() {
     name: "Load test",
     email: `load-${stamp}@example.com`,
     password: "Str0ng-Passw0rd!",
+    acceptTerms: true,
     businessName: `Load test ${stamp}`,
   });
   const agent = await api("POST", "/agents", { name: `Load ${stamp}`, templateKey: "clinic-reception" });

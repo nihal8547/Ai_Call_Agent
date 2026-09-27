@@ -264,6 +264,7 @@ describe.skipIf(!hasTestDb)("telephony: real phone calls through Twilio webhooks
         token: invite.json().inviteUrl.split("/invite/")[1],
         name: "Staff",
         password: STRONG_PASSWORD,
+        acceptTerms: true,
       });
       expect((await staff.get(`/api/v1/calls/${call.id}`)).statusCode).toBe(200);
       expect((await staff.get(`/api/v1/calls/${call.id}/events`)).statusCode).toBe(403);

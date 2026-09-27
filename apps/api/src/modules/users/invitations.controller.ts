@@ -237,7 +237,7 @@ export class InvitationsController {
       }
     } else {
       const password = Password.safeParse(body.password);
-      if (!body.name || !password.success) {
+      if (!body.name || !password.success || !body.acceptTerms) {
         throw new AppException(
           HttpStatus.BAD_REQUEST,
           "VALIDATION_FAILED",
@@ -247,11 +247,20 @@ export class InvitationsController {
             ...(!password.success
               ? [{ path: "password", message: password.error.issues[0]?.message ?? "Invalid password" }]
               : []),
+            ...(!body.acceptTerms
+              ? [{ path: "acceptTerms", message: "Accept the terms and privacy policy to continue" }]
+              : []),
           ],
         );
       }
       user = await this.prisma.client.user.create({
-        data: { email: invite.email, name: body.name, passwordHash: await hashPassword(password.data) },
+        data: {
+          email: invite.email,
+          name: body.name,
+          passwordHash: await hashPassword(password.data),
+          termsAcceptedAt: new Date(),
+          termsVersion: this.env.TERMS_VERSION,
+        },
       });
     }
 

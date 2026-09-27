@@ -155,6 +155,8 @@ export class AgentsController {
         businessName: tenant.name,
         ...(body.agentName ? { agentName: body.agentName } : {}),
       });
+      // New agents say they're an AI assistant; the business can turn it off in the editor
+      config.disclosure.ai = true;
       const agent = await tx.agent.create({
         data: {
           tenantId: auth.tenantId,

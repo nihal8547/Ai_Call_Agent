@@ -105,6 +105,7 @@ describe.skipIf(!hasTestDb)("platform emails: invitations and password reset", (
         token,
         name: "Invitee",
         password: STRONG_PASSWORD,
+        acceptTerms: true,
       });
     expect((await accept(firstToken)).statusCode).toBeGreaterThanOrEqual(400);
     expect((await accept(secondToken)).statusCode).toBe(200);
@@ -244,6 +245,7 @@ describe.skipIf(!hasTestDb)("confirming the email address after sign-up", () => 
       token,
       name: "Teammate",
       password: STRONG_PASSWORD,
+      acceptTerms: true,
     });
     expect(joined.json().user.emailVerified).toBe(true);
 

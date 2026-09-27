@@ -280,10 +280,10 @@ export class WhatsAppAgentService implements OnModuleInit {
       if (!session) {
         const start = await runtime.start(config, ctx, conversationId);
         turns.push(start);
-        // The customer only sees the greeting, not the first question: their message isn't an answer to it
+        // The customer only sees the greeting (and "I'm an AI assistant"), not the first question: their message isn't an answer to it
         session = { ...start.output.session, awaiting: null };
         greeting = start.output.segments
-          .filter((s) => s.kind === "greeting")
+          .filter((s) => s.kind === "greeting" || s.kind === "disclosure")
           .map((s) => s.text)
           .join(" ");
       }

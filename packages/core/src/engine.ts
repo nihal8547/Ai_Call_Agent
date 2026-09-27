@@ -1,4 +1,5 @@
 import type { AgentConfig, Condition, QualificationField, WorkflowStep } from "@platform/shared";
+import { systemLines } from "@platform/shared";
 import type { EngineContext } from "./context";
 import { extractCandidate, type FieldValue, formatFieldValue, validateFieldValue } from "./fields";
 import {
@@ -44,7 +45,8 @@ export type TurnInput = {
   answer?: string | null;
 };
 
-export type SegmentKind = "greeting" | "notice" | "ack" | "answer" | "prompt" | "say" | "goodbye";
+export type SegmentKind =
+  "greeting" | "disclosure" | "notice" | "ack" | "answer" | "prompt" | "say" | "goodbye";
 export type SpeechSegment = { kind: SegmentKind; text: string };
 
 export type EngineEvent =
@@ -100,12 +102,20 @@ type Ctx = { config: AgentConfig; ctx: EngineContext; s: CallSession; t: Turn };
 
 // ───────────────────────────── public API ─────────────────────────────
 
+/** "I'm an AI assistant", right after the greeting, when the agent is set to say so */
+function discloseAi(c: Ctx): void {
+  const d = c.config.disclosure;
+  if (d.ai)
+    c.t.say("disclosure", d.message ? render(c, d.message) : systemLines(c.config.language).aiDisclosure);
+}
+
 /** Begin a call: greeting and the first question */
 export function startCall(config: AgentConfig, ctx: EngineContext, callId: string): TurnOutput {
   const c: Ctx = { config, ctx, s: newSession(callId), t: new Turn() };
   const hours = config.workingHours;
   if (hours && !isOpen(hours, ctx.now) && hours.offHours === "closed_message") {
     c.t.say("greeting", renderTemplate(config.greeting, config, {}, ctx));
+    discloseAi(c);
     c.t.say("notice", render(c, hours.offHoursMessage));
     finish(c, "closed");
     return output(c);
@@ -318,6 +328,7 @@ function runSteps(c: Ctx, opts: { countAttempt: boolean; failedAnswer: boolean }
       case "greeting": {
         if (!s.greeted) {
           t.say("greeting", render(c, config.greeting));
+          discloseAi(c);
           const hours = config.workingHours;
           if (hours && hours.offHours === "take_message" && !isOpen(hours, c.ctx.now))
             t.say("notice", render(c, hours.offHoursMessage));

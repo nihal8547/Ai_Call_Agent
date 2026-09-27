@@ -1,12 +1,14 @@
 "use client";
 
-import { AGENT_LANGUAGES, voiceForLanguage, voicesFor } from "@platform/shared";
+import { AGENT_LANGUAGES, systemLines, voiceForLanguage, voicesFor } from "@platform/shared";
 import { SelectField, TextField } from "@/components/ui/field";
 import { Check, Section, TextArea } from "@/components/ui/inputs";
 import { useDraft } from "./draft-context";
 
 export function ProfileTab() {
   const { config, update, errorFor } = useDraft();
+  // Agents saved before this setting existed don't have it
+  const disclosure = config.disclosure ?? { ai: false, message: "" };
   return (
     <div className="space-y-6">
       <Section title="Identity" description="How the agent introduces itself on every call.">
@@ -31,6 +33,26 @@ export function ProfileTab() {
             hint="Placeholders: {{agent_name}}, {{business_name}}, and any question key such as {{customer_name}}."
             onChange={(e) => update((c) => void (c.greeting = e.target.value))}
           />
+          <div className="space-y-3 md:col-span-2">
+            <Check
+              label="Say it's an AI assistant, right after the greeting"
+              hint="Callers and WhatsApp customers should know they're talking to an AI (Qatar PDPPL, India DPDP)."
+              checked={disclosure.ai}
+              onChange={(ai) => update((c) => void (c.disclosure = { ...disclosure, ai }))}
+            />
+            {disclosure.ai ? (
+              <TextField
+                label="In your own words (optional)"
+                value={disclosure.message}
+                placeholder={systemLines(config.language).aiDisclosure}
+                error={errorFor("disclosure.message")}
+                hint="Empty: the sentence shown here, in the agent's language."
+                onChange={(e) =>
+                  update((c) => void (c.disclosure = { ...disclosure, message: e.target.value }))
+                }
+              />
+            ) : null}
+          </div>
           <SelectField
             label="Language"
             value={config.language}

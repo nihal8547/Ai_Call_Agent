@@ -28,6 +28,7 @@ const TABS = [
       "businessName",
       "agentName",
       "greeting",
+      "disclosure",
       "language",
       "voice",
       "persona",

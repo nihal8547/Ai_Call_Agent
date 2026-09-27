@@ -65,7 +65,13 @@ export class AuthService {
     }
 
     const user = await this.prisma.client.user.create({
-      data: { email: body.email, name: body.name, passwordHash: await hashPassword(body.password) },
+      data: {
+        email: body.email,
+        name: body.name,
+        passwordHash: await hashPassword(body.password),
+        termsAcceptedAt: new Date(),
+        termsVersion: this.env.TERMS_VERSION,
+      },
     });
 
     let tenant: Awaited<ReturnType<AuthService["provisionWithUniqueSlug"]>>;

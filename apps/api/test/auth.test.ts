@@ -1,6 +1,15 @@
 import { type NestFastifyApplication } from "@nestjs/platform-fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { Client, createTestApp, hasTestDb, registerOwner, STRONG_PASSWORD, uniqueEmail } from "./support/app";
+import { PrismaService } from "../src/infra/prisma.service";
+import {
+  Client,
+  createTestApp,
+  hasTestDb,
+  registerOwner,
+  roleId,
+  STRONG_PASSWORD,
+  uniqueEmail,
+} from "./support/app";
 
 describe.skipIf(!hasTestDb)("auth", () => {
   let app: NestFastifyApplication;
@@ -17,6 +26,7 @@ describe.skipIf(!hasTestDb)("auth", () => {
         name: "Asha",
         email: email.toUpperCase(),
         password: STRONG_PASSWORD,
+        acceptTerms: true,
         businessName: "Asha Dental Clinic",
         industry: "healthcare",
       });
@@ -46,6 +56,7 @@ describe.skipIf(!hasTestDb)("auth", () => {
         name: "X",
         email,
         password: STRONG_PASSWORD,
+        acceptTerms: true,
         businessName: "Another",
       });
       expect(res.statusCode).toBe(409);
@@ -57,7 +68,56 @@ describe.skipIf(!hasTestDb)("auth", () => {
       expect(res.statusCode).toBe(400);
       expect(res.headers["content-type"]).toContain("application/problem+json");
       const paths = res.json().errors.map((e: { path: string }) => e.path);
-      expect(paths).toEqual(expect.arrayContaining(["name", "email", "password", "businessName"]));
+      expect(paths).toEqual(
+        expect.arrayContaining(["name", "email", "password", "businessName", "acceptTerms"]),
+      );
+    });
+
+    it("needs the terms accepted, and records when and which version", async () => {
+      const email = uniqueEmail("terms");
+      const body = { name: "T", email, password: STRONG_PASSWORD, businessName: "Terms Co" };
+      for (const acceptTerms of [undefined, false]) {
+        const res = await new Client(app).post("/api/v1/auth/register", { ...body, acceptTerms });
+        expect(res.statusCode).toBe(400);
+        expect(res.json().errors).toEqual([
+          expect.objectContaining({
+            path: "acceptTerms",
+            message: "Accept the terms and privacy policy to continue",
+          }),
+        ]);
+      }
+      const before = Date.now();
+      expect(
+        (await new Client(app).post("/api/v1/auth/register", { ...body, acceptTerms: true })).statusCode,
+      ).toBe(201);
+      const user = await app.get(PrismaService).client.user.findUniqueOrThrow({ where: { email } });
+      expect(user.termsVersion).toBe("1");
+      expect(user.termsAcceptedAt!.getTime()).toBeGreaterThanOrEqual(before - 1000);
+    });
+
+    it("a new account joining by invitation accepts the terms too", async () => {
+      const owner = await registerOwner(app, "terms-invite");
+      const email = uniqueEmail("terms-member");
+      const invite = await owner.client.post("/api/v1/invitations", {
+        email,
+        roleId: await roleId(owner, "STAFF"),
+      });
+      const token = String(invite.json().inviteUrl).split("/invite/")[1];
+      const accept = (acceptTerms?: boolean) =>
+        new Client(app).post("/api/v1/invitations/accept", {
+          token,
+          name: "M",
+          password: STRONG_PASSWORD,
+          acceptTerms,
+        });
+      const refused = await accept();
+      expect(refused.statusCode).toBe(400);
+      expect(refused.json().errors).toEqual([
+        { path: "acceptTerms", message: "Accept the terms and privacy policy to continue" },
+      ]);
+      expect((await accept(true)).statusCode).toBe(200);
+      const user = await app.get(PrismaService).client.user.findUniqueOrThrow({ where: { email } });
+      expect(user.termsVersion).toBe("1");
     });
   });
 

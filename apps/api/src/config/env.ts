@@ -63,6 +63,11 @@ export const ApiEnvSchema = z
      * connecting WhatsApp or SIP, or creating API keys. "off" for installs without email.
      */
     EMAIL_VERIFICATION: z.enum(["required", "off"]).default("required"),
+    /** Recorded with each acceptance at sign-up; change it when the terms change */
+    TERMS_VERSION: z
+      .string()
+      .regex(/^[\w.-]{1,40}$/)
+      .default("1"),
     MAIL_FROM: z.string().min(3).max(200).default("Voice Agent Platform <no-reply@localhost>"),
     /** HMAC key for access tokens (≥ 32 characters) */
     JWT_SECRET: z.string().min(32, "must be at least 32 characters"),

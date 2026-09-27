@@ -25,16 +25,16 @@ or more.
 | Streaming voice (Twilio ConversationRelay, per agent)                                | Built, not on real line |
 | Platform console: businesses, usage and cost, plans and limits, suspend / reactivate | Built                   |
 | Email verification at sign-up (numbers, WhatsApp, SIP, API keys, invites wait)       | Built                   |
+| Terms accepted at sign-up; agents say they're an AI assistant (EN / AR)              | Built                   |
 | Billing                                                                              | **Not built**           |
 
 ## 1. Before launch: must build (P1)
 
-| Item                                | Size | What to build                                                                                                                                                                                                                |
-| ----------------------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Billing**                         | L    | Plans, subscriptions and invoices (Stripe; Razorpay for India), payment webhooks, usage from `usage_records` charged as overage, trial period, "payment failed" grace period then calls refused. A Billing page in Settings. |
-| **Twilio subaccount per business**  | M    | Every number is on the platform account today; subaccounts separate billing, limits and suspension.                                                                                                                          |
-| **Terms, privacy, consent wording** | S    | Accept terms at sign-up; greeting templates that say the caller is talking to an AI assistant (and recorded, once recordings exist), as Qatar PDPPL and India DPDP require.                                                  |
-| **Browser tests in CI**             | M    | The Playwright checks are run by hand today; put the main flows (sign up, create agent, test call, connect an integration) in CI.                                                                                            |
+| Item                               | Size | What to build                                                                                                                                                                                                                |
+| ---------------------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Billing**                        | L    | Plans, subscriptions and invoices (Stripe; Razorpay for India), payment webhooks, usage from `usage_records` charged as overage, trial period, "payment failed" grace period then calls refused. A Billing page in Settings. |
+| **Twilio subaccount per business** | M    | Every number is on the platform account today; subaccounts separate billing, limits and suspension.                                                                                                                          |
+| **Browser tests in CI**            | M    | The Playwright checks are run by hand today; put the main flows (sign up, create agent, test call, connect an integration) in CI.                                                                                            |
 
 ## 2. Before launch: prove on real services (P1)
 
@@ -136,8 +136,7 @@ Still open:
 ## 8. Suggested order
 
 1. Operations basics and real-service checks (sections 2 and 3), so problems show up early.
-2. Terms and consent wording (the platform console and email verification are built).
-3. Billing and Twilio subaccounts.
-4. Browser tests in CI; then launch to the first businesses.
-5. P2 items by customer demand (recordings, outbound calls and WhatsApp are usually asked for
+2. Billing and Twilio subaccounts (the platform console, email verification and terms are built).
+3. Browser tests in CI; then launch to the first businesses.
+4. P2 items by customer demand (recordings, outbound calls and WhatsApp are usually asked for
    first), then streaming voice on real calls and its next phases (section 5).

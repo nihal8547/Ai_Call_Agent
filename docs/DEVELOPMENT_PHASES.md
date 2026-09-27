@@ -1634,6 +1634,21 @@ Plan and review: [WPIntegration.md](WPIntegration.md); operator guide:
   replaces the link, used once, any browser, audit entry, invitations and resets confirm,
   `off`); browser: sign-up banner, the link opened in another browser, the banner going away.
 
+### Terms at sign-up and saying it's an AI ✅
+
+- **Terms:** signing up (and joining by invitation with a new account) needs the "I accept the
+  terms of service and privacy policy" checkbox; when and which version (`TERMS_VERSION`) is
+  stored on the user. The links come from `TERMS_URL` and `PRIVACY_URL` on the web app.
+- **AI disclosure:** an agent setting (Profile) says "Just so you know, I'm an AI assistant." (or
+  the Gulf Arabic line, or the business's own words) right after the greeting, on calls, streaming
+  calls and the first WhatsApp reply. On for agents created in the app; agents from before keep
+  their behaviour until turned on. The text is its own segment, never rephrased by the LLM.
+- **Verified:** core tests (after the greeting, English and Arabic, own words, placeholders
+  checked); API tests (sign-up and invitation refuse without the checkbox, version stored; new
+  agents say it in the test console, turning it off stops it); browser: the checkbox, the editor
+  setting.
+- **Legal wording itself** (the terms and privacy policy pages) is the business's to write.
+
 ### WhatsApp: connection and Inbox, checked and completed ✅
 
 - **Connection:** numbers that stay on the WhatsApp Business app (Meta coexistence: not

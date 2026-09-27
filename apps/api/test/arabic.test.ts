@@ -18,6 +18,7 @@ describe.skipIf(!hasTestDb)("Arabic agents on real phone calls (Twilio webhooks)
       name: "Noura",
       email: uniqueEmail("qatar"),
       password: STRONG_PASSWORD,
+      acceptTerms: true,
       businessName: "Doha Homes",
       country: "QA",
     });

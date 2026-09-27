@@ -159,6 +159,14 @@ keys or invite people (they can build and test agents meanwhile). The email need
   `psql "$DATABASE_MIGRATION_URL" -c "UPDATE users SET email_verified_at = now() WHERE email = 'owner@example.com'"`
 - **No email on this install:** `EMAIL_VERIFICATION=off` (then anyone who signs up can buy numbers).
 
+## Terms of service and the AI disclosure
+
+- Sign-up records when the terms were accepted and which `TERMS_VERSION`. When the terms change,
+  raise `TERMS_VERSION`; who accepted an older version (to notify them):
+  `psql "$DATABASE_MIGRATION_URL" -c "SELECT email, terms_version, terms_accepted_at FROM users WHERE terms_version IS DISTINCT FROM '2'"`
+- Agents created in the app say they're an AI assistant after the greeting (Profile → "Say it's an
+  AI assistant"). Agents created earlier don't until a business turns it on.
+
 ## Platform console (businesses, limits, suspending)
 
 Platform owners see **Platform → Businesses** in the sidebar: every business with its calls,

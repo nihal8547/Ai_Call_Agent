@@ -34,6 +34,9 @@ export const Timezone = z
     }
   }, "Unknown time zone");
 
+/** The sign-up checkbox: the terms of service and privacy policy */
+const AcceptTerms = z.literal(true, { error: "Accept the terms and privacy policy to continue" });
+
 export const RegisterBody = z.object({
   name: PersonName,
   email: Email,
@@ -44,6 +47,7 @@ export const RegisterBody = z.object({
   /** Sets the calling code, currency and (unless given) the time zone */
   country: z.enum(COUNTRY_CODES).default("IN"),
   timezone: Timezone.optional(),
+  acceptTerms: AcceptTerms,
 });
 export type RegisterBody = z.input<typeof RegisterBody>;
 
@@ -150,6 +154,8 @@ export const AcceptInvitationBody = z.object({
   /** Required when the invited email has no account yet */
   name: PersonName.optional(),
   password: z.string().min(1).max(128),
+  /** Required with a new account, like at sign-up */
+  acceptTerms: z.boolean().optional(),
 });
 
 // ── API keys ────────────────────────────────────────────────────────────────

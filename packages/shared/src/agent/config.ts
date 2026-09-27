@@ -154,6 +154,16 @@ export const FallbackMessages = z.object({
   declined: Template.default("No problem, let's change that."),
 });
 
+/**
+ * Telling callers they're talking to an AI assistant, right after the greeting (Qatar's PDPPL and
+ * India's DPDP expect people to know). On for agents created in the app.
+ */
+export const DisclosureConfig = z.object({
+  ai: z.boolean().default(false),
+  /** Own wording; empty = the platform's sentence in the agent's language */
+  message: z.string().trim().max(300).default(""),
+});
+
 export const AgentConfig = z
   .object({
     businessName: z.string().trim().min(2).max(120),
@@ -180,6 +190,7 @@ export const AgentConfig = z
     llm: LLMConfig.default(LLMConfig.parse({})),
     limits: CallLimits.default(CallLimits.parse({})),
     messages: FallbackMessages.default(FallbackMessages.parse({})),
+    disclosure: DisclosureConfig.default(DisclosureConfig.parse({})),
   })
   .superRefine((c, ctx) => {
     const fieldKeys = new Set<string>();
@@ -311,6 +322,7 @@ export const AgentConfig = z
       });
     }
     checkTemplate(["greeting"], c.greeting);
+    checkTemplate(["disclosure", "message"], c.disclosure.message);
   });
 export type AgentConfig = z.infer<typeof AgentConfig>;
 export type AgentConfigInput = z.input<typeof AgentConfig>;

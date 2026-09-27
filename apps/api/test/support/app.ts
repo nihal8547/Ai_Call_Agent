@@ -125,6 +125,7 @@ export async function registerOwner(
     name: `${label} owner`,
     email,
     password: STRONG_PASSWORD,
+    acceptTerms: true,
     businessName: `${label} Business`,
   });
   if (res.statusCode !== 201) throw new Error(`register failed: ${res.statusCode} ${res.body}`);
@@ -157,6 +158,7 @@ export async function addMember(app: NestFastifyApplication, owner: Owner, key: 
     token,
     name: key,
     password: STRONG_PASSWORD,
+    acceptTerms: true,
   });
   if (res.statusCode !== 200) throw new Error(`accept failed: ${res.statusCode} ${res.body}`);
   return { client, email, me: res.json() };

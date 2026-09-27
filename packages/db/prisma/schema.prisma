@@ -219,6 +219,9 @@ model User {
   isPlatformOwner    Boolean   @default(false) @map("is_platform_owner")
   /// Set when the owner of the address opened the emailed link (or accepted an emailed invitation)
   emailVerifiedAt    DateTime? @map("email_verified_at") @db.Timestamptz(3)
+  /// When the terms and privacy policy were accepted, and which version (TERMS_VERSION)
+  termsAcceptedAt    DateTime? @map("terms_accepted_at") @db.Timestamptz(3)
+  termsVersion       String?   @map("terms_version") @db.VarChar(40)
   totpSecretEnc      Bytes?    @map("totp_secret_enc")
   totpEnabledAt      DateTime? @map("totp_enabled_at") @db.Timestamptz(3)
   /// SHA-256 hashes of unused one-time recovery codes

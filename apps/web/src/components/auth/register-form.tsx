@@ -13,6 +13,8 @@ import { Alert, Card } from "@/components/ui/misc";
 import { api } from "@/lib/api/client";
 import { errorMessage } from "@/lib/api/errors";
 import { applyServerErrors } from "@/lib/forms";
+import type { LegalLinks } from "@/lib/legal";
+import { TermsCheckbox } from "./terms-checkbox";
 
 type Values = z.input<typeof RegisterBody>;
 
@@ -21,7 +23,7 @@ const browserZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || "A
 const guessCountry = (zone: string): CountryCode =>
   COUNTRY_CODES.find((c) => COUNTRIES[c].timezone === zone) ?? "IN";
 
-export function RegisterForm() {
+export function RegisterForm({ legal }: { legal: LegalLinks }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const form = useForm<Values>({
@@ -97,6 +99,7 @@ export function RegisterForm() {
           {...form.register("password")}
         />
         <input type="hidden" {...form.register("timezone")} />
+        <TermsCheckbox links={legal} error={errors.acceptTerms?.message} {...form.register("acceptTerms")} />
         <Button type="submit" className="w-full" loading={form.formState.isSubmitting}>
           Create account
         </Button>
