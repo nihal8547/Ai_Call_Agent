@@ -19,8 +19,16 @@ export function isOpen(hours: WorkingHours | undefined, now: Date): boolean {
     .reduce<Record<string, string>>((acc, p) => ({ ...acc, [p.type]: p.value }), {});
   const date = `${parts.year}-${parts.month}-${parts.day}`;
   if (hours.holidays.includes(date)) return false;
-  const day = DAY_KEYS.find((d) => d === parts.weekday?.toLowerCase().slice(0, 3));
-  const ranges = day ? hours.days[day] : undefined;
+  
+  let ranges;
+  const override = hours.dateRangeOverrides?.find((o) => date >= o.startDate && date <= o.endDate);
+  if (override) {
+    ranges = override.hours;
+  } else {
+    const day = DAY_KEYS.find((d) => d === parts.weekday?.toLowerCase().slice(0, 3));
+    ranges = day ? hours.days[day] : undefined;
+  }
+  
   const hhmm = `${parts.hour}:${parts.minute}`;
   return Boolean(ranges?.some((r) => hhmm >= r.start && hhmm < r.end));
 }

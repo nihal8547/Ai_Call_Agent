@@ -3,7 +3,7 @@ import type { MeResponse } from "@platform/shared";
 import { cookies } from "next/headers";
 import { toApiError } from "./errors";
 
-const API = process.env.API_INTERNAL_URL ?? "http://localhost:4000";
+const API = process.env.API_INTERNAL_URL ?? "http://127.0.0.1:4000";
 
 /** Server-side GET to the API, forwarding the user's cookies. Returns null on 401. */
 export async function serverGet<T>(path: string): Promise<T | null> {

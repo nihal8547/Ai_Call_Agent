@@ -59,7 +59,7 @@ export class JobProcessors {
       now: new Date(),
       timezone: d.timezone,
       callerNumber: d.callerNumber,
-      defaultCountryCode: this.env.DEFAULT_COUNTRY_CODE,
+      defaultCountryCode: d.callingCode,
     });
     const [run] = runner.drain();
     const transient = !result.ok && TRANSIENT.has(result.error);

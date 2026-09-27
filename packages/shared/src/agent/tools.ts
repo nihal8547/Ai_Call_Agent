@@ -14,6 +14,7 @@ export const TOOL_NAMES = [
   "email.send",
   "sms.send",
   "whatsapp.send",
+  "whatsapp.send_document",
   "webhook.post",
   "crm.create_lead",
   "crm.update_lead",
@@ -114,9 +115,16 @@ export const TOOL_SPECS: Record<ToolName, ToolSpec> = {
   },
   "whatsapp.send": {
     label: "Send WhatsApp message",
-    description: "Coming soon.",
+    description: "Send a text message via WhatsApp.",
     integration: "WHATSAPP",
-    available: false,
+    available: true,
+    sideEffect: true,
+  },
+  "whatsapp.send_document": {
+    label: "Send WhatsApp Document",
+    description: "Send a document (PDF, Image, etc.) via WhatsApp.",
+    integration: "WHATSAPP",
+    available: true,
     sideEffect: true,
   },
   "crm.create_lead": {

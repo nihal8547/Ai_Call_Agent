@@ -14,6 +14,7 @@ import { loadWorkerEnv } from "./env";
 import { analyticsProcessor } from "./processors/analytics";
 import { ingestionProcessor } from "./processors/ingestion";
 import { processSystemJob } from "./processors/system";
+import { whatsappProcessor } from "./processors/whatsapp";
 
 async function main(): Promise<void> {
   const env = loadWorkerEnv();
@@ -54,7 +55,13 @@ async function main(): Promise<void> {
       prefix: env.QUEUE_PREFIX,
       concurrency: 2,
     }),
+    new Worker(QUEUES.whatsapp_inbound, whatsappProcessor(deps, logger), {
+      connection,
+      prefix: env.QUEUE_PREFIX,
+      concurrency: Math.min(env.WORKER_CONCURRENCY, 4),
+    }),
   ];
+
 
   // Periodic roll-up refresh (a repeatable job: one schedule however many workers run)
   const analytics = new Queue(QUEUES.analytics, { connection, prefix: env.QUEUE_PREFIX });

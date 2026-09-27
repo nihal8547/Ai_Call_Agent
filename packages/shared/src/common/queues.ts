@@ -7,6 +7,7 @@ export const QUEUES = {
   notifications: "notifications",
   analytics: "analytics",
   webhooks: "webhooks",
+  whatsapp_inbound: "whatsapp_inbound",
   /** The platform's own emails (invitations, password resets); not tied to one business */
   mail: "mail",
 } as const;
@@ -30,6 +31,7 @@ export type ToolJob = TenantJob & {
   agentVersionId: string;
   callerNumber: string;
   timezone: string;
+  callingCode: string;
   call: {
     tool: string;
     input: Record<string, unknown>;
@@ -62,13 +64,20 @@ export type PlatformMailJob = {
   html: string;
 };
 
+/** Process an inbound WhatsApp message via AI */
+export type WhatsappInboundJob = TenantJob & {
+  kind: "whatsapp_inbound";
+  sessionId: string;
+  messageId: string;
+};
+
 /** Recompute analytics roll-ups (`analytics`) */
 export type AnalyticsJob =
   | { kind: "rollup"; tenantId: string; from: string; to: string }
   /** Periodic: every tenant with calls in the last hours */
   | { kind: "sweep"; hours: number };
 
-export type QueueJob = ToolJob | EmailJob | LeadSyncJob;
+export type QueueJob = ToolJob | EmailJob | LeadSyncJob | WhatsappInboundJob;
 
 /** Where a background tool's job goes: webhooks, messages to people, or records (leads, sheets, CRMs) */
 export function queueForTool(tool: string): "webhooks" | "notifications" | "crm" {
@@ -82,11 +91,13 @@ export function queueForTool(tool: string): "webhooks" | "notifications" | "crm"
  * Webhooks carry an idempotency key, so receivers can drop repeats; CRM upserts are idempotent.
  */
 export const QUEUE_RETRY: Record<
-  "webhooks" | "notifications" | "crm" | "analytics",
+  "webhooks" | "notifications" | "crm" | "analytics" | "whatsapp_inbound",
   { attempts: number; delayMs: number }
 > = {
   webhooks: { attempts: 6, delayMs: 5_000 },
   notifications: { attempts: 4, delayMs: 10_000 },
   crm: { attempts: 6, delayMs: 10_000 },
   analytics: { attempts: 3, delayMs: 5_000 },
+  whatsapp_inbound: { attempts: 3, delayMs: 2_000 },
 };
+

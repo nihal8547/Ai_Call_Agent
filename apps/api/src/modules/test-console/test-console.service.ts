@@ -21,6 +21,7 @@ type TestState = {
   version: number;
   config: AgentConfig;
   timezone: string;
+  callingCode: string;
   session: CallSession;
   /** Simulated clock: real elapsed time added to the chosen start moment */
   simulatedAt: string | null;
@@ -60,7 +61,7 @@ export class TestConsoleService {
     const db = this.tenantDb.db(auth.tenantId);
     const agent = await db.agent.findUnique({
       where: { id: agentId },
-      include: { tenant: { select: { timezone: true } } },
+      include: { tenant: { select: { timezone: true, callingCode: true } } },
     });
     if (!agent) throw new AppException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Agent not found");
     const version = opts.versionId
@@ -87,6 +88,7 @@ export class TestConsoleService {
       version: version.version,
       config,
       timezone: config.workingHours?.timezone ?? agent.tenant.timezone,
+      callingCode: agent.tenant.callingCode,
       simulatedAt: opts.simulatedAt?.toISOString() ?? null,
       startedAt: Date.now(),
       failTools: opts.failTools,
@@ -163,15 +165,15 @@ export class TestConsoleService {
     };
   }
 
-  private ctx(state: Pick<TestState, "timezone" | "simulatedAt" | "startedAt">): EngineContext {
+  private ctx(state: Pick<TestState, "timezone" | "simulatedAt" | "startedAt" | "callingCode">): EngineContext {
     const now = state.simulatedAt
       ? new Date(new Date(state.simulatedAt).getTime() + (Date.now() - state.startedAt))
       : new Date();
     return {
       now,
       timezone: state.timezone,
-      callerNumber: "+910000000000",
-      defaultCountryCode: this.env.DEFAULT_COUNTRY_CODE,
+      callerNumber: "+97400000000",
+      defaultCountryCode: state.callingCode,
     };
   }
 

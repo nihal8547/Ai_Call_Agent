@@ -51,6 +51,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
   {
     group: "Customers",
     items: [
+      { label: "Inbox", href: "inbox", icon: Bot, permission: "calls:read" }, // Reusing bot/calls icon for now
       { label: "Calls", href: "calls", icon: PhoneCall, permission: "calls:read" },
       { label: "Leads", href: "leads", icon: Users, permission: "leads:read" },
       { label: "Appointments", href: "appointments", icon: CalendarDays, permission: "appointments:read" },
@@ -97,7 +98,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const base = `/t/${me.tenant.slug}`;
 
   // The mobile menu closes when you go somewhere, and on Escape
-  useEffect(() => setOpen(false), [pathname]);
+  useEffect(() => { setOpen(false); }, [pathname]);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
