@@ -217,7 +217,16 @@ export function IntegrationsPage() {
                   <Card className="flex h-full flex-col p-5">
                     <p className="font-semibold">{c.label}</p>
                     <p className="mt-1 flex-1 text-sm text-slate-500">{c.description}</p>
-                    {c.available ? (
+                    {c.page ? (
+                      // A full page load: Settings → WhatsApp sets its own security headers for
+                      // Facebook's sign-in popup
+                      <a
+                        href={`/t/${me.tenant.slug}/${c.page}`}
+                        className="mt-4 inline-flex h-10 items-center justify-center rounded-lg border border-slate-300 px-4 text-sm font-medium hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                      >
+                        Set up
+                      </a>
+                    ) : c.available ? (
                       <Button
                         variant="secondary"
                         className="mt-4"

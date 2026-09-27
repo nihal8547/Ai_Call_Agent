@@ -16,7 +16,14 @@ export const ZOHO_DATA_CENTERS: { server: string; label: string }[] = [
   { server: "https://accounts.zohocloud.ca", label: "Canada (zohocloud.ca)" },
 ];
 
-export const CATALOG: { type: string; label: string; description: string; available: boolean }[] = [
+export const CATALOG: {
+  type: string;
+  label: string;
+  description: string;
+  available: boolean;
+  /** Set up on its own page instead of the connect dialog (path inside the tenant) */
+  page?: string;
+}[] = [
   {
     type: "GOOGLE_CALENDAR",
     label: "Google Calendar",
@@ -60,7 +67,13 @@ export const CATALOG: { type: string; label: string; description: string; availa
     description: "Book through your Cal.com event types.",
     available: false,
   },
-  { type: "WHATSAPP", label: "WhatsApp", description: "Send confirmations on WhatsApp.", available: false },
+  {
+    type: "WHATSAPP",
+    label: "WhatsApp",
+    description: "Connect your WhatsApp Business number: the agent answers chats and voice notes.",
+    available: true,
+    page: "settings/whatsapp",
+  },
 ];
 
 export const INTEGRATION_LABEL: Record<string, string> = Object.fromEntries(

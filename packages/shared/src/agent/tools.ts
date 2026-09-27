@@ -115,14 +115,16 @@ export const TOOL_SPECS: Record<ToolName, ToolSpec> = {
   },
   "whatsapp.send": {
     label: "Send WhatsApp message",
-    description: "Coming soon.",
+    description:
+      "Coming soon: sending during a call. WhatsApp chats are answered by connecting a number in Settings → WhatsApp.",
     integration: "WHATSAPP",
     available: false,
     sideEffect: true,
   },
   "whatsapp.send_document": {
     label: "Send WhatsApp document",
-    description: "Coming soon.",
+    description:
+      "Coming soon: sending during a call. WhatsApp chats are answered by connecting a number in Settings → WhatsApp.",
     integration: "WHATSAPP",
     available: false,
     sideEffect: true,
