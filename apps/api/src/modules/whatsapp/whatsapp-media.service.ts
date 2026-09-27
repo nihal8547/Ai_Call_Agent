@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from "@nestjs/common";
 import { GeminiSpeech, SpeechError } from "@platform/ai";
 import type { ConversationMessage, Prisma, WhatsAppNumber } from "@platform/db";
-import { decodeVoiceNote, encodeVoiceNote, voiceNoteSeconds, wav } from "@platform/whatsapp";
+import { decodeVoiceNote, encodeVoiceNote, voiceNoteSeconds, wav, WhatsAppError } from "@platform/whatsapp";
 import { API_ENV, type ApiEnv } from "../../config/env";
 import { StorageService } from "../../infra/storage.service";
 import { TenantDbService } from "../../infra/tenant-db.service";
@@ -14,6 +14,34 @@ export const VOICE_MIME = "audio/ogg; codecs=opus";
 /** Where a conversation's files live in object storage (private; served through the API) */
 export const mediaKey = (tenantId: string, conversationId: string, messageId: string, ext: string) =>
   `tenants/${tenantId}/whatsapp/${conversationId}/${messageId}.${ext}`;
+
+/** Received files kept for staff (and voice notes for the agent) */
+const STORED_TYPES: ReadonlySet<string> = new Set(["AUDIO", "IMAGE", "VIDEO", "DOCUMENT", "STICKER"]);
+
+const EXTENSIONS: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "video/mp4": "mp4",
+  "video/3gpp": "3gp",
+  "audio/ogg": "ogg",
+  "audio/mpeg": "mp3",
+  "audio/mp4": "m4a",
+  "audio/aac": "aac",
+  "audio/amr": "amr",
+  "application/pdf": "pdf",
+  "text/plain": "txt",
+  "text/csv": "csv",
+  "application/msword": "doc",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+  "application/vnd.ms-excel": "xls",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+  "application/vnd.ms-powerpoint": "ppt",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+};
+
+/** A file extension for a media type ("bin" when unknown; the stored type is what counts) */
+export const extensionFor = (mime: string) => EXTENSIONS[mime.split(";")[0]!.trim().toLowerCase()] ?? "bin";
 
 /** Spoken replies stay short: longer answers, links and lists are better read */
 const MAX_SPOKEN_CHARS = 700;
@@ -47,17 +75,22 @@ export class WhatsAppMediaService {
   }
 
   /**
-   * Download, store and transcribe the voice notes among these messages (once each). Returns the
-   * messages with their transcripts filled in.
+   * Download and store the files among these messages (once each; Meta's links expire), and
+   * transcribe voice notes. Returns the messages with their files and transcripts filled in.
    */
-  async prepareVoiceNotes(
+  async prepareMedia(
     tenantId: string,
     number: WhatsAppNumber,
     messages: ConversationMessage[],
     languageHint: string | undefined,
   ): Promise<ConversationMessage[]> {
     const todo = messages.filter(
-      (m) => m.type === "AUDIO" && m.direction === "INBOUND" && m.mediaId && !m.mediaKey,
+      (m) =>
+        STORED_TYPES.has(m.type) &&
+        m.direction === "INBOUND" &&
+        m.mediaId &&
+        !m.mediaKey &&
+        !(m.meta as { tooLarge?: boolean } | null)?.tooLarge,
     );
     if (!todo.length) return messages;
     const token = (await this.accounts.credentials(tenantId, number).catch(() => null))?.accessToken;
@@ -69,7 +102,7 @@ export class WhatsAppMediaService {
       } catch (err) {
         this.logger.warn(
           { tenantId, messageId: m.id, err: (err as Error).message },
-          "voice note not processed",
+          "received file not stored",
         );
         this.metrics.whatsappVoice.inc({ step: "download", result: "failed" });
       }
@@ -79,10 +112,30 @@ export class WhatsAppMediaService {
 
   private async prepare(tenantId: string, token: string, m: ConversationMessage, languageHint?: string) {
     const graph = this.accounts.graph;
+    const maxBytes = this.env.WHATSAPP_MEDIA_MAX_MB * 1024 * 1024;
+    const tooLarge = () =>
+      this.tenantDb.db(tenantId).conversationMessage.update({
+        where: { id: m.id },
+        data: { meta: { ...(m.meta as object), tooLarge: true } as Prisma.InputJsonObject },
+      });
     const info = await graph.mediaInfo(token, m.mediaId!);
-    const file = await graph.download(token, info.url, this.env.WHATSAPP_MEDIA_MAX_MB * 1024 * 1024);
-    const key = mediaKey(tenantId, m.conversationId, m.id, "ogg");
+    if (info.fileSize && info.fileSize > maxBytes) return tooLarge();
+    let file: Buffer;
+    try {
+      file = await graph.download(token, info.url, maxBytes);
+    } catch (err) {
+      if (err instanceof WhatsAppError && err.kind === "invalid") return tooLarge();
+      throw err;
+    }
+    const key = mediaKey(tenantId, m.conversationId, m.id, extensionFor(info.mimeType));
     await this.storage.storage.put(key, file, info.mimeType);
+    if (m.type !== "AUDIO") {
+      this.metrics.whatsappVoice.inc({ step: "store", result: "ok" });
+      return this.tenantDb.db(tenantId).conversationMessage.update({
+        where: { id: m.id },
+        data: { mediaKey: key, mediaMime: info.mimeType.slice(0, 100), mediaBytes: file.length },
+      });
+    }
     let seconds: number | null = null;
     try {
       seconds = Math.round(voiceNoteSeconds(file));
@@ -173,6 +226,33 @@ export class WhatsAppMediaService {
       this.metrics.whatsappVoice.inc({ step: "speak", result: "failed" });
       return null;
     }
+  }
+
+  /** Upload a stored photo, video or document to Meta and send it (the text is its caption) */
+  async sendFile(
+    token: string,
+    phoneNumberId: string,
+    to: string,
+    m: Pick<
+      ConversationMessage,
+      "type" | "mediaKey" | "mediaMime" | "mediaFilename" | "text" | "replyToWamid"
+    >,
+  ): Promise<{ wamid: string }> {
+    const file = await this.storage.storage.get(m.mediaKey!);
+    const mime = m.mediaMime ?? "application/octet-stream";
+    const mediaId = await this.accounts.graph.uploadMedia(
+      token,
+      phoneNumberId,
+      file,
+      mime,
+      m.mediaFilename ?? `file.${extensionFor(mime)}`,
+    );
+    const kind = m.type === "IMAGE" ? "image" : m.type === "VIDEO" ? "video" : "document";
+    return this.accounts.graph.sendMedia(token, phoneNumberId, to, kind, mediaId, {
+      caption: m.text,
+      filename: m.mediaFilename,
+      replyTo: m.replyToWamid,
+    });
   }
 
   /** Upload a stored voice note to Meta and send it */

@@ -124,6 +124,18 @@ It runs once automatically after connecting.
    transcript, and the agent answers with a voice note (or text, per **Voice notes** on the
    number's card in Settings → WhatsApp).
 
+### In the Inbox
+
+- Customers' photos, videos, stickers and documents are downloaded when they arrive (Meta's links
+  expire) and kept privately; photos and videos show in the chat, documents download. Files over
+  `WHATSAPP_MEDIA_MAX_MB` (default 16) are not kept.
+- Staff send JPEG/PNG photos (5 MB), MP4 videos (16 MB) and PDF, Word, Excel, PowerPoint or text
+  files with a caption (the paperclip). Files are checked by their content, not their name.
+- After 24 hours without a customer message, **Send a template** lists the number's approved
+  templates (created in WhatsApp Manager), asks for their values and shows a preview. Templates
+  with a photo/video/document header or named values aren't supported from the Inbox yet.
+- Opening a conversation sends blue ticks for the customer's last message.
+
 ## 6. Troubleshooting
 
 | What you see                                                    | Cause and fix                                                                                                                                           |
@@ -136,5 +148,7 @@ It runs once automatically after connecting.
 | "This WhatsApp number is already connected to another business" | A number belongs to one business on the platform; disconnect it there first                                                                             |
 | Voice notes get "Could you type your message?"                  | No `GEMINI_API_KEY`, Gemini refused the audio, or nothing was heard; API log "voice note not processed" shows why                                       |
 | The agent answers a voice note with text                        | The number's setting is "A text message", the reply was long or had a link, or Gemini speech failed (the message shows "sent as text" in the Inbox)     |
+| "Check connection" says the webhook wasn't subscribed           | Someone removed the app in WhatsApp Manager; the check subscribed it again. If it keeps happening, check who manages the account                        |
+| "Not registered for the WhatsApp Cloud API yet"                 | The number was added in WhatsApp Manager but never registered: **Finish registration**, with the two-step PIN if one was set                            |
 | Reply fails with "Re-engagement message"                        | More than 24 hours since the customer's last message: WhatsApp allows only templates (coming in W4)                                                     |
 | "Meta rejected the access token" on the number                  | The business removed the app's access or the token expired: reconnect with **Continue with Facebook**                                                   |

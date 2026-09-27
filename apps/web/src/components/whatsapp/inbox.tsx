@@ -8,25 +8,32 @@ import {
   Check,
   CheckCheck,
   Clock,
+  Download,
   FileText,
+  Film,
   Image as ImageIcon,
   MapPin,
   Mic,
+  Paperclip,
   Search,
   Send,
   UserRound,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useCan, useMe } from "@/components/app/me-context";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
+import { SelectField, TextField } from "@/components/ui/field";
 import { Alert } from "@/components/ui/misc";
-import { api } from "@/lib/api/client";
+import { api, upload } from "@/lib/api/client";
 import { errorMessage } from "@/lib/api/errors";
 import { cn } from "@/lib/cn";
 import type {
   ChatMessage,
+  ChatTemplate,
   ConversationDetail,
   ConversationMode,
   ConversationSummary,
@@ -466,7 +473,11 @@ function MessageRow({ m, conversationId }: { m: ChatMessage; conversationId: str
       >
         {out ? (
           <p className={cn("mb-0.5 text-[11px] font-medium", "text-slate-300")}>
-            {m.sender === "AI" ? "Agent" : (m.sentByName ?? "Staff")}
+            {m.sender === "AI"
+              ? "Agent"
+              : m.meta?.fromBusinessApp
+                ? "From the WhatsApp Business app"
+                : (m.sentByName ?? "Staff")}
           </p>
         ) : null}
         <Body m={m} out={out} conversationId={conversationId} />
@@ -520,17 +531,41 @@ const TOOL_LABEL: Record<string, string> = {
 };
 
 function Body({ m, out, conversationId }: { m: ChatMessage; out: boolean; conversationId: string }) {
-  const media = (Icon: typeof Mic, label: string, note?: string) => (
-    <div
-      className={cn("flex items-center gap-2 rounded-lg px-2.5 py-2", out ? "bg-white/10" : "bg-slate-50")}
-    >
-      <Icon className="size-4 shrink-0" aria-hidden />
-      <span className="min-w-0">
-        <span className="block truncate text-sm font-medium">{label}</span>
-        {note ? <span className="block text-xs opacity-70">{note}</span> : null}
-      </span>
-    </div>
-  );
+  const src = `/api/v1/chats/${conversationId}/messages/${m.id}/media`;
+  const unavailable = m.meta?.tooLarge
+    ? "Too large to keep here: see it on the phone"
+    : m.direction === "INBOUND"
+      ? "Loading…"
+      : "Not kept here";
+  const card = (Icon: typeof Mic, label: string, note?: string | null, href?: string) => {
+    const inner = (
+      <>
+        <Icon className="size-4 shrink-0" aria-hidden />
+        <span className="min-w-0">
+          <span className="block truncate text-sm font-medium">{label}</span>
+          {note ? <span className="block text-xs opacity-70">{note}</span> : null}
+        </span>
+        {href ? <Download className="ml-auto size-4 shrink-0 opacity-70" aria-hidden /> : null}
+      </>
+    );
+    const cls = cn(
+      "flex min-w-[14rem] items-center gap-2 rounded-lg px-2.5 py-2",
+      out ? "bg-white/10" : "bg-slate-50",
+      href && (out ? "hover:bg-white/15" : "hover:bg-slate-100"),
+    );
+    return href ? (
+      <a href={href} download className={cls} aria-label={`Download ${label}`}>
+        {inner}
+      </a>
+    ) : (
+      <div className={cls}>{inner}</div>
+    );
+  };
+  const caption = m.text ? (
+    <p className="mt-1.5 whitespace-pre-wrap" dir="auto">
+      {m.text}
+    </p>
+  ) : null;
   switch (m.type) {
     case "AUDIO":
       return <Voice m={m} out={out} conversationId={conversationId} />;
@@ -538,32 +573,85 @@ function Body({ m, out, conversationId }: { m: ChatMessage; out: boolean; conver
     case "STICKER":
       return (
         <>
-          {media(ImageIcon, m.type === "STICKER" ? "Sticker" : "Photo", "Previews arrive with media support")}
-          {m.text ? (
-            <p className="mt-1.5 whitespace-pre-wrap" dir="auto">
-              {m.text}
-            </p>
-          ) : null}
+          {m.hasMedia ? (
+            <a href={src} target="_blank" rel="noopener noreferrer" className="block">
+              <img
+                src={src}
+                alt={m.text ? `Photo: ${m.text}` : m.type === "STICKER" ? "Sticker" : "Photo"}
+                loading="lazy"
+                className={cn(
+                  "rounded-lg object-contain",
+                  m.type === "STICKER" ? "size-28" : "max-h-72 w-auto max-w-full bg-slate-100",
+                )}
+              />
+            </a>
+          ) : (
+            card(ImageIcon, m.type === "STICKER" ? "Sticker" : "Photo", unavailable)
+          )}
+          {caption}
         </>
       );
-    case "DOCUMENT":
     case "VIDEO":
       return (
         <>
-          {media(
-            FileText,
-            m.mediaFilename ?? (m.type === "VIDEO" ? "Video" : "Document"),
-            "Downloads arrive with media support",
+          {m.hasMedia ? (
+            <video
+              controls
+              preload="metadata"
+              src={src}
+              className="max-h-72 w-full max-w-80 rounded-lg bg-black"
+            >
+              <track kind="captions" />
+            </video>
+          ) : (
+            card(Film, "Video", unavailable)
           )}
-          {m.text ? (
-            <p className="mt-1.5 whitespace-pre-wrap" dir="auto">
-              {m.text}
-            </p>
-          ) : null}
+          {caption}
         </>
       );
-    case "LOCATION":
-      return media(MapPin, m.text ?? "Location");
+    case "DOCUMENT":
+      return (
+        <>
+          {card(
+            FileText,
+            m.mediaFilename ?? "Document",
+            m.hasMedia ? (m.mediaBytes ? fmtBytes(m.mediaBytes) : "Download") : unavailable,
+            m.hasMedia ? src : undefined,
+          )}
+          {caption}
+        </>
+      );
+    case "LOCATION": {
+      const at = /\((-?\d+(?:\.\d+)?), (-?\d+(?:\.\d+)?)\)$/.exec(m.text ?? "");
+      const label = (m.text ?? "Location").replace(/\s*\([^)]*\)$/, "") || "Location";
+      return at ? (
+        <a
+          href={`https://www.google.com/maps?q=${at[1]},${at[2]}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={cn(
+            "flex items-center gap-2 rounded-lg px-2.5 py-2",
+            out ? "bg-white/10" : "bg-slate-50 hover:bg-slate-100",
+          )}
+        >
+          <MapPin className="size-4 shrink-0" aria-hidden />
+          <span className="text-sm font-medium underline-offset-2 hover:underline">{label}</span>
+        </a>
+      ) : (
+        card(MapPin, label)
+      );
+    }
+    case "TEMPLATE":
+      return (
+        <>
+          <p className={cn("mb-1 text-[11px] font-medium", out ? "text-slate-300" : "text-slate-500")}>
+            Template{m.meta?.template ? ` · ${m.meta.template.name.replace(/_/g, " ")}` : ""}
+          </p>
+          <p className="break-words whitespace-pre-wrap" dir="auto">
+            {m.text}
+          </p>
+        </>
+      );
     case "REACTION":
       return <p className="text-2xl leading-none">{m.text}</p>;
     case "UNSUPPORTED":
@@ -580,6 +668,9 @@ function Body({ m, out, conversationId }: { m: ChatMessage; out: boolean; conver
       );
   }
 }
+
+const fmtBytes = (n: number) =>
+  n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${Math.round(n / 1024)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`;
 
 /** A voice note: player, length and what was said (the transcript, or the agent's words) */
 function Voice({ m, out, conversationId }: { m: ChatMessage; out: boolean; conversationId: string }) {
@@ -633,17 +724,36 @@ function Tick({ status }: { status: ChatMessage["status"] }) {
   return null;
 }
 
+const ACCEPT = "image/jpeg,image/png,video/mp4,video/3gpp,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv";
+
 function Composer({ conversation: c, onSent }: { conversation: ConversationDetail; onSent: () => void }) {
   const [text, setText] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [progress, setProgress] = useState<number | null>(null);
+  const [templating, setTemplating] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
   const [, tick] = useState(0);
   useEffect(() => {
     const t = setInterval(() => tick((x) => x + 1), 60_000);
     return () => clearInterval(t);
   }, []);
   const send = useMutation({
-    mutationFn: () => api(`/chats/${c.id}/messages`, { method: "POST", body: { text } }),
+    mutationFn: async () => {
+      if (!file) return api(`/chats/${c.id}/messages`, { method: "POST", body: { text } });
+      const form = new FormData();
+      // The caption goes before the file (the API reads fields that arrive first)
+      if (text.trim()) form.append("caption", text.trim());
+      form.append("file", file, file.name);
+      setProgress(0);
+      try {
+        return await upload(`/chats/${c.id}/attachments`, form, setProgress);
+      } finally {
+        setProgress(null);
+      }
+    },
     onSuccess: () => {
       setText("");
+      setFile(null);
       onSent();
     },
   });
@@ -651,7 +761,7 @@ function Composer({ conversation: c, onSent }: { conversation: ConversationDetai
   const disconnected = c.whatsappNumber.status !== "CONNECTED";
   const blocked = c.mode === "CLOSED" || !win.open || disconnected;
   const submit = () => {
-    if (text.trim() && !blocked && !send.isPending) send.mutate();
+    if ((text.trim() || file) && !blocked && !send.isPending) send.mutate();
   };
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -668,52 +778,253 @@ function Composer({ conversation: c, onSent }: { conversation: ConversationDetai
         </div>
       ) : null}
       {blocked ? (
-        <p className="py-2 text-sm text-slate-500">
-          {disconnected
-            ? "This WhatsApp number is disconnected. Reconnect it in Settings → WhatsApp to reply."
-            : c.mode === "CLOSED"
-              ? "This conversation is closed. It reopens when the customer writes again, or reopen it above."
-              : `${win.label}. WhatsApp only allows approved message templates now.`}
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-3 py-1">
+          <p className="text-sm text-slate-500">
+            {disconnected
+              ? "This WhatsApp number is disconnected. Reconnect it in Settings → WhatsApp to reply."
+              : c.mode === "CLOSED"
+                ? "This conversation is closed. It reopens when the customer writes again, or send a template."
+                : `${win.label}. WhatsApp only allows approved message templates now.`}
+          </p>
+          {!disconnected ? (
+            <Button variant="secondary" onClick={() => setTemplating(true)}>
+              Send a template
+            </Button>
+          ) : null}
+        </div>
       ) : (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            submit();
-          }}
-          className="flex items-end gap-2"
-        >
-          <label className="sr-only" htmlFor="reply">
-            Reply
-          </label>
-          <textarea
-            id="reply"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={onKey}
-            rows={Math.min(6, Math.max(1, text.split("\n").length))}
-            maxLength={4096}
-            dir="auto"
-            placeholder={c.mode === "AI" ? "Reply (you'll take over from the agent)" : "Reply"}
-            className="max-h-40 min-h-10 flex-1 resize-none rounded-xl border border-slate-200 px-3.5 py-2.5 text-[14px] outline-none focus:border-slate-400"
-          />
-          <Button
-            type="submit"
-            className="h-10 px-3"
-            loading={send.isPending}
-            disabled={!text.trim()}
-            aria-label="Send"
+        <>
+          {file ? (
+            <div className="mb-2 flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm ring-1 ring-slate-200">
+              <Paperclip className="size-4 shrink-0 text-slate-500" aria-hidden />
+              <span className="min-w-0 flex-1 truncate">{file.name}</span>
+              <span className="shrink-0 text-xs text-slate-500">
+                {progress !== null ? `${Math.round(progress * 100)}%` : fmtBytes(file.size)}
+              </span>
+              <button
+                type="button"
+                onClick={() => setFile(null)}
+                className="rounded p-0.5 text-slate-500 hover:bg-slate-200"
+                aria-label="Remove the file"
+              >
+                <X className="size-4" aria-hidden />
+              </button>
+            </div>
+          ) : null}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              submit();
+            }}
+            className="flex items-end gap-2"
           >
-            <Send className="size-4" aria-hidden />
-          </Button>
-        </form>
+            <input
+              ref={fileInput}
+              type="file"
+              accept={ACCEPT}
+              className="hidden"
+              onChange={(e) => {
+                setFile(e.target.files?.[0] ?? null);
+                e.target.value = "";
+              }}
+            />
+            <Button
+              type="button"
+              variant="secondary"
+              className="h-10 px-3"
+              onClick={() => fileInput.current?.click()}
+              aria-label="Attach a photo, video or document"
+            >
+              <Paperclip className="size-4" aria-hidden />
+            </Button>
+            <label className="sr-only" htmlFor="reply">
+              {file ? "Caption" : "Reply"}
+            </label>
+            <textarea
+              id="reply"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={onKey}
+              rows={Math.min(6, Math.max(1, text.split("\n").length))}
+              maxLength={file ? 1024 : 4096}
+              dir="auto"
+              placeholder={
+                file
+                  ? "Add a caption (optional)"
+                  : c.mode === "AI"
+                    ? "Reply (you'll take over from the agent)"
+                    : "Reply"
+              }
+              className="max-h-40 min-h-10 flex-1 resize-none rounded-xl border border-slate-200 px-3.5 py-2.5 text-[14px] outline-none focus:border-slate-400"
+            />
+            <Button
+              type="submit"
+              className="h-10 px-3"
+              loading={send.isPending}
+              disabled={!text.trim() && !file}
+              aria-label="Send"
+            >
+              <Send className="size-4" aria-hidden />
+            </Button>
+          </form>
+        </>
       )}
       {!blocked ? (
         <p className="mt-1.5 text-xs text-slate-400">
           {win.label} · Enter to send, Shift+Enter for a new line
+          <button
+            type="button"
+            onClick={() => setTemplating(true)}
+            className="ml-2 underline-offset-2 hover:underline"
+          >
+            Send a template
+          </button>
         </p>
       ) : null}
+      <TemplateDialog
+        open={templating}
+        conversationId={c.id}
+        onClose={() => setTemplating(false)}
+        onSent={() => {
+          setTemplating(false);
+          onSent();
+        }}
+      />
     </div>
+  );
+}
+
+/** Pick an approved template, fill in its values, preview, send */
+function TemplateDialog({
+  open,
+  conversationId,
+  onClose,
+  onSent,
+}: {
+  open: boolean;
+  conversationId: string;
+  onClose: () => void;
+  onSent: () => void;
+}) {
+  const list = useQuery({
+    queryKey: ["chat-templates", conversationId],
+    queryFn: () => api<{ items: ChatTemplate[] }>(`/chats/${conversationId}/templates`),
+    enabled: open,
+    staleTime: 60_000,
+  });
+  const [picked, setPicked] = useState("");
+  const [header, setHeader] = useState<string[]>([]);
+  const [body, setBody] = useState<string[]>([]);
+  const items = list.data?.items ?? [];
+  const t = items.find((x) => `${x.name}:${x.language}` === picked);
+  const fill = (text: string, values: string[]) =>
+    text.replace(/\{\{(\d+)\}\}/g, (all, n: string) => values[Number(n) - 1] || all);
+  const send = useMutation({
+    mutationFn: () =>
+      api(`/chats/${conversationId}/template`, {
+        method: "POST",
+        body: { name: t!.name, language: t!.language, header, body },
+      }),
+    onSuccess: () => {
+      setPicked("");
+      onSent();
+    },
+  });
+  const complete =
+    t &&
+    header.filter((v) => v.trim()).length === t.headerParams &&
+    body.filter((v) => v.trim()).length === t.bodyParams;
+  return (
+    <Dialog
+      open={open}
+      onClose={() => {
+        send.reset();
+        onClose();
+      }}
+      title="Send a template"
+    >
+      <p className="text-sm text-slate-600">
+        Templates are messages Meta approved in advance. They are the only messages WhatsApp allows more than
+        24 hours after the customer&apos;s last message. Create them in WhatsApp Manager.
+      </p>
+      {list.isError ? (
+        <div className="mt-3">
+          <Alert>{errorMessage(list.error)}</Alert>
+        </div>
+      ) : null}
+      {list.isSuccess && !items.length ? (
+        <p className="mt-4 text-sm text-slate-500">No approved templates yet.</p>
+      ) : null}
+      {items.length ? (
+        <div className="mt-4 space-y-4">
+          <SelectField
+            label="Template"
+            value={picked}
+            onChange={(e) => {
+              setPicked(e.target.value);
+              const next = items.find((x) => `${x.name}:${x.language}` === e.target.value);
+              setHeader(Array.from({ length: next?.headerParams ?? 0 }, () => ""));
+              setBody(Array.from({ length: next?.bodyParams ?? 0 }, () => ""));
+            }}
+          >
+            <option value="">Choose…</option>
+            {items.map((x) => (
+              <option
+                key={`${x.name}:${x.language}`}
+                value={`${x.name}:${x.language}`}
+                disabled={!x.supported}
+              >
+                {x.name.replace(/_/g, " ")} ({x.language})
+                {x.supported ? "" : " · not supported here (media header)"}
+              </option>
+            ))}
+          </SelectField>
+          {t ? (
+            <>
+              {header.map((v, i) => (
+                <TextField
+                  key={`h${i}`}
+                  label={`Header value {{${i + 1}}}`}
+                  value={v}
+                  maxLength={60}
+                  onChange={(e) => setHeader(header.map((x, j) => (j === i ? e.target.value : x)))}
+                />
+              ))}
+              {body.map((v, i) => (
+                <TextField
+                  key={`b${i}`}
+                  label={`Value {{${i + 1}}}`}
+                  value={v}
+                  onChange={(e) => setBody(body.map((x, j) => (j === i ? e.target.value : x)))}
+                />
+              ))}
+              <div
+                className="rounded-xl bg-slate-50 p-3 text-sm whitespace-pre-wrap ring-1 ring-slate-200"
+                dir="auto"
+              >
+                <p className="mb-1 text-xs font-medium text-slate-500">Preview</p>
+                {t.headerText ? <p className="font-semibold">{fill(t.headerText, header)}</p> : null}
+                <p>{fill(t.body, body)}</p>
+                {t.footer ? <p className="mt-1 text-xs text-slate-500">{t.footer}</p> : null}
+              </div>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+      {send.isError ? (
+        <div className="mt-3">
+          <Alert>{errorMessage(send.error)}</Alert>
+        </div>
+      ) : null}
+      <div className="mt-6 flex justify-end gap-2">
+        <Button variant="secondary" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button onClick={() => send.mutate()} loading={send.isPending} disabled={!complete}>
+          Send template
+        </Button>
+      </div>
+    </Dialog>
   );
 }
 

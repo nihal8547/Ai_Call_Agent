@@ -92,5 +92,18 @@ export const ChatReplyBody = z.object({
 
 export const ChatModeBody = z.object({ mode: z.enum(["AI", "HUMAN", "CLOSED"]) });
 
+/** Caption sent with a staff attachment (multipart field before the file) */
+export const ChatAttachmentFields = z.object({
+  caption: z.string().trim().max(1024).optional(),
+});
+
+/** An approved template, with its {{1}} {{2}} … values (the only message allowed after 24 hours) */
+export const ChatTemplateBody = z.object({
+  name: z.string().regex(/^[a-z0-9_]{1,512}$/, "Unknown template"),
+  language: z.string().regex(/^[A-Za-z_]{2,15}$/, "Unknown language"),
+  header: z.array(z.string().trim().min(1, "Fill in every value").max(60)).max(1).default([]),
+  body: z.array(z.string().trim().min(1, "Fill in every value").max(1024)).max(20).default([]),
+});
+
 /** Free-form messages are allowed for 24 hours after the customer's last message */
 export const WHATSAPP_WINDOW_MS = 24 * 60 * 60 * 1000;

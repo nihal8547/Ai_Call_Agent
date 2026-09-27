@@ -80,6 +80,19 @@ export class WhatsAppSenderService implements OnModuleInit {
           wamid = (await sendText()).wamid;
           sentAsText = true;
         }
+      } else if (m.type === "TEMPLATE") {
+        const t = (
+          m.meta as { template?: { name: string; language: string; header?: string[]; body?: string[] } }
+        ).template;
+        if (!t) throw new WhatsAppError("invalid", "The template details are missing");
+        wamid = (
+          await this.accounts.graph.sendTemplate(token, number.phoneNumberId, to, t.name, t.language, {
+            header: t.header ?? [],
+            body: t.body ?? [],
+          })
+        ).wamid;
+      } else if (["IMAGE", "VIDEO", "DOCUMENT"].includes(m.type) && m.mediaKey) {
+        wamid = (await this.media.sendFile(token, number.phoneNumberId, to, m)).wamid;
       } else {
         wamid = (await sendText()).wamid;
       }

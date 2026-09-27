@@ -43,6 +43,20 @@ export type WhatsAppOverview = {
 
 export type ConversationMode = "AI" | "HUMAN" | "CLOSED";
 
+export type ChatTemplate = {
+  id: string;
+  name: string;
+  language: string;
+  category: string | null;
+  headerFormat: string | null;
+  headerText: string | null;
+  body: string;
+  footer: string | null;
+  headerParams: number;
+  bodyParams: number;
+  supported: boolean;
+};
+
 export type ConversationSummary = {
   id: string;
   contactName: string | null;
@@ -77,6 +91,7 @@ export type ChatMessage = {
   text: string | null;
   mediaMime: string | null;
   mediaFilename: string | null;
+  mediaBytes?: number | null;
   transcript: string | null;
   status: "RECEIVED" | "QUEUED" | "SENT" | "DELIVERED" | "READ" | "FAILED";
   errorCode: number | null;
@@ -91,6 +106,11 @@ export type ChatMessage = {
   /** Agent replies: what they were based on (staff only) */
   meta?: {
     tooLong?: boolean;
+    /** The file was larger than the platform keeps */
+    tooLarge?: boolean;
+    /** Sent by the owner from the WhatsApp Business app */
+    fromBusinessApp?: boolean;
+    template?: { name: string; language: string };
     sentAsText?: boolean;
     voiceFallback?: string;
     sources?: { documentId: string; title: string; page?: number }[];

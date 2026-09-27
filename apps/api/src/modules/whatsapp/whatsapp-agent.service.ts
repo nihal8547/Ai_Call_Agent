@@ -201,9 +201,9 @@ export class WhatsAppAgentService implements OnModuleInit {
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     });
     if (!pending.length) return { replied: false, reason: "nothing new" };
-    // Voice notes first (download before Meta's link expires, transcript for staff and the agent)
+    // Files first (download before Meta's link expires; voice notes transcribed for staff and the agent)
     if (c.whatsappNumber.status === "CONNECTED")
-      pending = await this.media.prepareVoiceNotes(tenantId, c.whatsappNumber, pending, undefined);
+      pending = await this.media.prepareMedia(tenantId, c.whatsappNumber, pending, undefined);
     const cursor = pending[pending.length - 1]!.createdAt;
     const skip = async (reason: string) => {
       await db.conversation.update({ where: { id: c.id }, data: { agentHandledAt: cursor } });

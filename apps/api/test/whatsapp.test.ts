@@ -313,7 +313,8 @@ describe.skipIf(!hasTestDb)("WhatsApp: connect, webhook, Inbox and sending", () 
     const notes = (await owner.client.get(`/api/v1/chats/${conversationId}/messages`))
       .json()
       .items.filter((m: { sender: string }) => m.sender === "SYSTEM");
-    expect(notes.map((n: { text: string }) => n.text)).toEqual(["whatsapp owner took over from the agent"]);
+    // No agent answers this number, so there was nobody to take over from
+    expect(notes.map((n: { text: string }) => n.text)).toEqual([]);
 
     const status = (s: string, ts: number) =>
       post(

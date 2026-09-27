@@ -1605,6 +1605,28 @@ Plan and review: [WPIntegration.md](WPIntegration.md); operator guide:
   speech model is a preview name, configurable with `GEMINI_TTS_MODEL`. Quality for Malayalam and
   Gulf Arabic voice notes needs checking with real recordings.
 
+### WhatsApp: connection and Inbox, checked and completed ✅
+
+- **Connection:** numbers that stay on the WhatsApp Business app (Meta coexistence: not
+  registered again; the owner's replies from the app appear in the Inbox and the agent steps
+  back); **Check connection** (token, Cloud API registration, webhook subscription with automatic
+  re-subscribe, last webhook, display-name status, messaging limit); Finish registration with the
+  owner's two-step PIN; account and quality webhooks on the number's card.
+- **Bugs fixed:** another business's live number is refused before anything happens at Meta
+  (registering it changed its PIN); a number another business disconnected can be connected
+  again; two numbers with the same display collided on the integration name; on managed
+  Postgres the SECURITY DEFINER lookups (call and WhatsApp routing, sign-in) found nothing
+  because forced RLS filtered the non-superuser owner (`owner_access` policies, with a test).
+- **Inbox:** customers' photos, videos, stickers and documents kept and shown (documents as
+  downloads, never rendered), map links for locations; staff attachments checked by content;
+  approved templates after 24 hours (values, preview, reopens closed chats); blue ticks when
+  staff open a chat; "took over" notes only when an agent was answering.
+- **Verified:** package tests (echoes, account/quality news, health fields with fallback,
+  media and template sending); API: 3 connection tests and 4 Inbox tests with Meta faked, all
+  WhatsApp tests (31); browser with a Meta stand-in: photo and PDF from a customer, photo with
+  caption from staff, template after 24 hours, the connection check.
+- **Not verified:** real Meta (coexistence onboarding, templates, media) from this environment.
+
 ### Voice agent check and Qatar call guide ✅
 
 - **Checked with the call simulator and the development Gemini key:** the free-tier key was

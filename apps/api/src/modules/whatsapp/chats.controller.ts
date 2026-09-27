@@ -1,11 +1,31 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Req, Res } from "@nestjs/common";
-import { ChatListQuery, ChatMessagesQuery, ChatModeBody, ChatReplyBody } from "@platform/shared";
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+  Req,
+  Res,
+} from "@nestjs/common";
+import {
+  ChatAttachmentFields,
+  ChatListQuery,
+  ChatMessagesQuery,
+  ChatModeBody,
+  ChatReplyBody,
+  ChatTemplateBody,
+} from "@platform/shared";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { z } from "zod";
 import type { AuthContext } from "../../common/auth/auth.types";
 import { CurrentAuth, RequirePermissions } from "../../common/auth/decorators";
 import { requestMeta } from "../../common/http/request-meta";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
+import { AppException } from "../../common/filters/problem-details.filter";
 import { RateLimit } from "../../common/rate-limit/rate-limit";
 import { ChatsService } from "./chats.service";
 
@@ -57,6 +77,68 @@ export class ChatsController {
     return this.chats.reply(auth, id, body.text, requestMeta(req));
   }
 
+  /** multipart/form-data: caption (optional, before the file) + file */
+  @Post(":id/attachments")
+  @RequirePermissions("chats:reply")
+  @RateLimit({ name: "chat-attachment", limit: 20, windowSeconds: 60, by: "ip" })
+  async attach(
+    @CurrentAuth() auth: AuthContext,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Req() req: FastifyRequest,
+  ) {
+    if (!req.isMultipart())
+      throw new AppException(
+        HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+        "UNSUPPORTED_MEDIA_TYPE",
+        "Send the file as multipart/form-data",
+      );
+    const file = await req.file();
+    if (!file)
+      throw new AppException(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "Choose a file", [
+        { path: "file", message: "Choose a file" },
+      ]);
+    const buffer = await file.toBuffer(); // the upload size limit applies (413)
+    const captionField = file.fields.caption as { value?: unknown } | undefined;
+    const fields = ChatAttachmentFields.safeParse({
+      caption:
+        typeof captionField?.value === "string" && captionField.value.trim() ? captionField.value : undefined,
+    });
+    if (!fields.success)
+      throw new AppException(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "The caption is too long", [
+        { path: "caption", message: "Up to 1,024 characters" },
+      ]);
+    if (!buffer.length)
+      throw new AppException(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "The file is empty", [
+        { path: "file", message: "The file is empty" },
+      ]);
+    return this.chats.attach(
+      auth,
+      id,
+      { buffer, filename: file.filename || "file", mime: file.mimetype },
+      fields.data.caption,
+      requestMeta(req),
+    );
+  }
+
+  /** The number's approved message templates (for replies after 24 hours) */
+  @Get(":id/templates")
+  @RequirePermissions("chats:reply")
+  templates(@CurrentAuth() auth: AuthContext, @Param("id", ParseUUIDPipe) id: string) {
+    return this.chats.templates(auth.tenantId, id);
+  }
+
+  @Post(":id/template")
+  @RequirePermissions("chats:reply")
+  @RateLimit({ name: "chat-template", limit: 30, windowSeconds: 60, by: "ip" })
+  sendTemplate(
+    @CurrentAuth() auth: AuthContext,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(ChatTemplateBody)) body: z.output<typeof ChatTemplateBody>,
+    @Req() req: FastifyRequest,
+  ) {
+    return this.chats.sendTemplate(auth, id, body, requestMeta(req));
+  }
+
   @Post(":id/mode")
   @HttpCode(200)
   @RequirePermissions("chats:reply")
@@ -69,7 +151,7 @@ export class ChatsController {
     return this.chats.setMode(auth, id, body.mode, requestMeta(req));
   }
 
-  /** A conversation's stored voice note (staff play it in the Inbox) */
+  /** A conversation's stored file: photos, voice notes and videos play in the Inbox; others download */
   @Get(":id/messages/:messageId/media")
   @RequirePermissions("chats:read")
   async media(
@@ -83,7 +165,7 @@ export class ChatsController {
     const size = file.body.length;
     void reply
       .header("content-type", file.mime)
-      .header("content-disposition", "inline")
+      .header("content-disposition", file.disposition)
       .header("cache-control", "private, max-age=300")
       .header("x-content-type-options", "nosniff")
       .header("accept-ranges", "bytes");

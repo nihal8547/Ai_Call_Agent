@@ -11,7 +11,11 @@ runtime as calls (knowledge, questions, workflow, bookings, leads), written for 
 hand-over to staff. W3: customers' voice notes are downloaded, kept and transcribed (Gemini),
 the agent answers a voice note with a voice note (Gemini speech, encoded to Ogg / Opus in
 Node.js, so no ffmpeg), per-number reply mode and voice, text fallback, player and transcript in
-the Inbox. Next: W4 (images, documents, templates, opt-out).
+the Inbox. W4 (Inbox part): customers' photos, videos, documents and stickers kept and shown in
+the Inbox; staff send photos, videos and documents; approved templates after 24 hours (picker with
+values and preview, reopens closed chats); blue ticks when staff open a chat. Connection:
+numbers that stay on the WhatsApp Business app (coexistence), a connection check, Meta's account
+and quality news. Next: the agent sending documents (`whatsapp.send_document`), opt-out, and W5.
 
 **Goal:** a business connects its WhatsApp number (official WhatsApp Business Cloud API) with a
 few clicks. Customers' messages, text or voice, get answered automatically by the same agent that
