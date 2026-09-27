@@ -35,6 +35,9 @@ export type ExecutorDeps = {
   onIntegrationError?: (integrationId: string, error: ToolError) => Promise<void> | void;
   fetch?: typeof fetch;
   googleOAuth?: { clientId: string; clientSecret: string };
+  microsoftOAuth?: { clientId: string; clientSecret: string };
+  /** A provider issued a new refresh token (Microsoft rotates them): store it on the integration */
+  onRefreshToken?: (integrationId: string, refreshToken: string) => Promise<void> | void;
   /** Development/tests only: let webhooks and SMTP reach private addresses */
   allowPrivateNetwork?: boolean;
   /** Per attempt */
@@ -118,6 +121,14 @@ export function createToolExecutor(ctx: ToolContext, deps: ExecutorDeps) {
               bookings: deps.bookings,
               saveLead: deps.saveLead,
               google,
+              microsoft: {
+                fetch: deps.fetch ?? fetch,
+                timeoutMs,
+                ...(deps.microsoftOAuth ? { oauthClient: deps.microsoftOAuth } : {}),
+                ...(binding && deps.onRefreshToken
+                  ? { onRefreshToken: (t: string) => deps.onRefreshToken!(binding.integrationId, t) }
+                  : {}),
+              },
               allowPrivateNetwork: deps.allowPrivateNetwork ?? false,
               timeoutMs,
             },

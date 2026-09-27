@@ -1,5 +1,6 @@
 import { createHash, createSign } from "node:crypto";
 import { ToolError, kindForStatus } from "../errors";
+import { emailFromIdToken } from "../microsoft";
 
 export type GoogleCredentials =
   | { kind: "service_account"; clientEmail: string; privateKey: string }
@@ -17,6 +18,8 @@ export const SCOPES = {
   calendar:
     "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly",
   sheets: "https://www.googleapis.com/auth/spreadsheets",
+  /** Send email as the signed-in Gmail / Google Workspace account; openid email = which account */
+  gmail: "https://www.googleapis.com/auth/gmail.send openid email",
 } as const;
 
 const b64url = (b: Buffer | string) => Buffer.from(b).toString("base64url");
@@ -90,6 +93,15 @@ export async function exchangeGoogleCode(
   redirectUri: string,
   deps: GoogleDeps,
 ): Promise<string> {
+  return (await exchangeGoogleCodeWithEmail(code, redirectUri, deps)).refreshToken;
+}
+
+/** Same, plus the account's email when the "email" scope was granted (from the ID token) */
+export async function exchangeGoogleCodeWithEmail(
+  code: string,
+  redirectUri: string,
+  deps: GoogleDeps,
+): Promise<{ refreshToken: string; email: string | undefined }> {
   if (!deps.oauthClient) throw new ToolError("config", "Google sign-in is not configured on this platform");
   const res = await googleFetch(deps, GOOGLE_TOKEN_URL, {
     method: "POST",
@@ -102,10 +114,14 @@ export async function exchangeGoogleCode(
       client_secret: deps.oauthClient.clientSecret,
     }),
   });
-  const json = (await res.json().catch(() => ({}))) as { refresh_token?: string; error?: string };
+  const json = (await res.json().catch(() => ({}))) as {
+    refresh_token?: string;
+    id_token?: string;
+    error?: string;
+  };
   if (!res.ok || !json.refresh_token)
     throw new ToolError("auth", `Google sign-in failed (${json.error ?? "no refresh token"})`);
-  return json.refresh_token;
+  return { refreshToken: json.refresh_token, email: emailFromIdToken(json.id_token) };
 }
 
 export function googleAuthUrl(opts: {

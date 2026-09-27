@@ -16,7 +16,13 @@ import type { Integration } from "@/lib/types";
 import { IntegrationForm } from "./integration-form";
 import { CATALOG, type ConnectableType, describeConfig, isCrm } from "./catalog";
 
-type ListResponse = { items: Integration[]; googleOAuth: boolean; hubspotOAuth: boolean; zohoOAuth: boolean };
+type ListResponse = {
+  items: Integration[];
+  googleOAuth: boolean;
+  hubspotOAuth: boolean;
+  zohoOAuth: boolean;
+  microsoftOAuth: boolean;
+};
 
 export function IntegrationsPage() {
   const me = useMe();
@@ -33,6 +39,7 @@ export function IntegrationsPage() {
     google: list.data?.googleOAuth ?? false,
     hubspot: list.data?.hubspotOAuth ?? false,
     zoho: list.data?.zohoOAuth ?? false,
+    microsoft: list.data?.microsoftOAuth ?? false,
   };
   const [connecting, setConnecting] = useState<ConnectableType | null>(null);
   const [editing, setEditing] = useState<Integration | null>(null);
@@ -134,7 +141,7 @@ export function IntegrationsPage() {
                       </div>
                       <StatusPill value={i.status} />
                     </div>
-                    <p className="mt-3 text-sm break-all text-slate-600 dark:text-slate-300">
+                    <p className="mt-3 text-sm break-words text-slate-600 dark:text-slate-300">
                       {describeConfig(i)}
                     </p>
                     {i.status === "ERROR" && i.lastError && !result ? (

@@ -13,6 +13,7 @@ hand leads to the team. One platform serves many businesses (multi-tenant).
 | [05-SECURITY.md](05-SECURITY.md)             | Tenant isolation, sign-in, encryption, abuse controls, web and supply-chain security |
 | [06-BUILD-AND-RUN.md](06-BUILD-AND-RUN.md)   | Setting up, running, testing, Docker, CI and releasing                               |
 | [../REMAINING_WORK.md](../REMAINING_WORK.md) | What is still to be built, and known limits                                          |
+| [../OAUTH_SETUP.md](../OAUTH_SETUP.md)       | Registering the Google, Microsoft, HubSpot and Zoho apps for one-click integrations  |
 
 Related documents:
 

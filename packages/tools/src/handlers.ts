@@ -9,7 +9,9 @@ import {
 } from "@platform/core";
 import type { AgentConfig, ToolName } from "@platform/shared";
 import { z } from "zod";
-import { type SmtpCredentials, type SmtpSettings, sendMail } from "./email";
+import type { SmtpSettings } from "./email";
+import { deliverMail, type MailCredentials } from "./mailer";
+import type { MicrosoftDeps } from "./microsoft";
 import type { GoogleCredentials, GoogleDeps } from "./google/auth";
 import { busyIntervals, deleteEvent, eventIdFor, insertEvent } from "./google/calendar";
 import { appendRow } from "./google/sheets";
@@ -81,6 +83,7 @@ export type HandlerEnv = {
   bookings: BookingStore;
   saveLead: (collected: Record<string, unknown>) => Promise<{ leadId: string }>;
   google: GoogleDeps;
+  microsoft: MicrosoftDeps;
   allowPrivateNetwork: boolean;
   timeoutMs: number;
 };
@@ -355,8 +358,8 @@ export const HANDLERS: Partial<Record<ToolName, Handler>> = {
     if (!to.length || to.some((a) => !z.email().safeParse(a).success))
       return { ok: false, error: "invalid_recipient" };
     const collected = collectedOf(input);
-    await sendMail(
-      b.credentials as unknown as SmtpCredentials,
+    await deliverMail(
+      b.credentials as unknown as MailCredentials,
       settings,
       {
         to: to.slice(0, 5),
@@ -367,6 +370,8 @@ export const HANDLERS: Partial<Record<ToolName, Handler>> = {
         allowPrivateNetwork: env.allowPrivateNetwork,
         timeoutMs: env.timeoutMs,
         idempotencyKey: env.call.idempotencyKey,
+        google: env.google,
+        microsoft: env.microsoft,
       },
     );
     return { ok: true };

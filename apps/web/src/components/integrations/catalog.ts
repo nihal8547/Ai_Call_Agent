@@ -31,8 +31,9 @@ export const CATALOG: { type: string; label: string; description: string; availa
   },
   {
     type: "EMAIL_SMTP",
-    label: "Email (SMTP)",
-    description: "Send call summaries and missed-transfer alerts from your own mail account.",
+    label: "Email",
+    description:
+      "Send call summaries and missed-transfer alerts from your Gmail, Outlook / Microsoft 365 or any mail server.",
     available: true,
   },
   {
@@ -71,11 +72,19 @@ export function describeConfig(i: Pick<Integration, "type" | "config">): string 
   const c = i.config as Record<string, string | number | string[] | undefined>;
   switch (i.type) {
     case "GOOGLE_CALENDAR":
-      return `Calendar: ${c.calendarId ?? "primary"}${c.account ? ` · shared with ${c.account}` : ""}`;
+      return `Calendar: ${c.calendarId ?? "primary"}${c.auth === "oauth" ? " · signed in with Google" : c.account ? ` · shared with ${c.account}` : ""}`;
     case "GOOGLE_SHEETS":
-      return `Sheet "${c.sheetName ?? "Sheet1"}" in ${String(c.spreadsheetId ?? "").slice(0, 12)}…${c.account ? ` · shared with ${c.account}` : ""}`;
-    case "EMAIL_SMTP":
-      return `${c.from ?? ""} via ${c.host ?? ""}:${c.port ?? ""} → ${Array.isArray(c.defaultTo) ? c.defaultTo.join(", ") : ""}`;
+      return `Sheet "${c.sheetName ?? "Sheet1"}" in ${String(c.spreadsheetId ?? "").slice(0, 12)}…${c.auth === "oauth" ? " · signed in with Google" : c.account ? ` · shared with ${c.account}` : ""}`;
+    case "EMAIL_SMTP": {
+      const to = Array.isArray(c.defaultTo) ? c.defaultTo.join(", ") : "";
+      const via =
+        c.provider === "google"
+          ? "Gmail"
+          : c.provider === "microsoft"
+            ? "Outlook"
+            : `${c.host ?? ""}:${c.port ?? ""}`;
+      return `${c.from ?? ""} via ${via} → ${to}`;
+    }
     case "WEBHOOK":
       return String(c.url ?? "");
     case "HUBSPOT":

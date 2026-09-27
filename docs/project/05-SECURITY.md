@@ -30,7 +30,7 @@
 
 - **Envelope encryption** (AES-256-GCM): each business has its own data key, wrapped by the
   platform master key (`MASTER_ENCRYPTION_KEY`). Integration credentials (Google, HubSpot, Zoho,
-  SMTP, webhook secrets), SIP passwords and TOTP secrets are stored encrypted, bound to what they
+  Microsoft, SMTP, webhook secrets), SIP passwords and TOTP secrets are stored encrypted, bound to what they
   belong to (additional authenticated data), so a value can't be moved to another record.
 - Platform emails go through a queue with retries; jobs holding links are deleted as soon as they
   are sent (failed ones within an hour), and logs record only the recipient.

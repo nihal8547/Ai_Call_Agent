@@ -1,6 +1,7 @@
 # Remaining work
 
-_Done since this list was written: password reset by email and emailed invitations (with resend)._
+_Done since this list was written: password reset by email and emailed invitations (with resend);
+one-click "Continue with …" integrations, including email through Gmail and Outlook._
 
 What is still to be built, what exists but hasn't been proven against the real service, and known
 limits. Priorities: **P1** needed before selling to real businesses, **P2** important soon after,
@@ -12,15 +13,15 @@ limits. Priorities: **P1** needed before selling to real businesses, **P2** impo
 Everything below is built and tested against fakes or simulations; this environment could not
 reach the real service.
 
-| Item                         | What to do                                                                                                         |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Real Twilio calls end to end | Buy a number, call it from a phone: speech recognition quality, voices, transfers with whisper, status callbacks   |
-| Existing numbers in Qatar    | Forward a real Ooredoo and a real Vodafone line; confirm the codes, whether the caller's number is kept, and costs |
-| SIP connections              | Connect a real carrier SIP trunk or PBX to a Twilio SIP domain                                                     |
-| Arabic on phone audio        | Measure Gulf Arabic recognition (`ar-QA`) and the Polly Arabic voices with real callers                            |
-| Integrations                 | Real Google Calendar/Sheets, HubSpot, Zoho and SMTP accounts                                                       |
-| Gemini at production load    | Paid quota (the free tier hit its per-minute limit during one call); latency from the Gulf region                  |
-| Load                         | Repeat the 50-call load test on production-like infrastructure, with the AI on                                     |
+| Item                         | What to do                                                                                                                                    |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Real Twilio calls end to end | Buy a number, call it from a phone: speech recognition quality, voices, transfers with whisper, status callbacks                              |
+| Existing numbers in Qatar    | Forward a real Ooredoo and a real Vodafone line; confirm the codes, whether the caller's number is kept, and costs                            |
+| SIP connections              | Connect a real carrier SIP trunk or PBX to a Twilio SIP domain                                                                                |
+| Arabic on phone audio        | Measure Gulf Arabic recognition (`ar-QA`) and the Polly Arabic voices with real callers                                                       |
+| Integrations                 | Real Google Calendar/Sheets/Gmail, Microsoft, HubSpot, Zoho and SMTP accounts; Google app verification (see [OAUTH_SETUP.md](OAUTH_SETUP.md)) |
+| Gemini at production load    | Paid quota (the free tier hit its per-minute limit during one call); latency from the Gulf region                                             |
+| Load                         | Repeat the 50-call load test on production-like infrastructure, with the AI on                                                                |
 
 ## 2. Product gaps (P1–P2)
 
@@ -59,7 +60,8 @@ Today each turn waits for the caller to stop, then Twilio recognises speech and 
 - **RAG**: re-ranking, query rewriting from the conversation, FAQ fast path, per-collection
   chunking, background re-embedding when the embedding model changes.
 - **Telephony**: Telnyx / Plivo adapters.
-- **Integrations**: Salesforce, Cal.com, WhatsApp Business, a no-code REST tool builder.
+- **Integrations**: Outlook / Microsoft 365 Calendar (the Microsoft sign-in exists; calendar scopes and
+  booking are to add), Salesforce, Cal.com, WhatsApp Business, a no-code REST tool builder.
 - **Enterprise**: SSO (SAML / OIDC), white-labelling, data residency (e.g. Gulf region),
   custom retention per data type, sentiment-based escalation.
 - **Languages**: Hindi and Malayalam agents (rules and templates like Arabic), bilingual agents

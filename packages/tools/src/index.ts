@@ -6,6 +6,8 @@ export * from "./google/auth";
 export * from "./google/calendar";
 export * from "./google/sheets";
 export * from "./handlers";
+export * from "./mailer";
+export * from "./microsoft";
 export * from "./net";
 export * from "./slots";
 export * from "./webhook";

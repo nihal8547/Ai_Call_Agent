@@ -48,6 +48,12 @@ export const ApiEnvSchema = z
      * SMTP integrations): smtp://user:pass@host:587 (STARTTLS) or smtps://user:pass@host:465.
      * Without it, invitation links are shown to copy and reset links are only logged in development.
      */
+    /**
+     * "Connect with Microsoft" for Outlook / Microsoft 365 email (Entra ID app registration,
+     * redirect URI <WEB_BASE_URL>/api/v1/integrations/oauth/microsoft/callback)
+     */
+    MICROSOFT_CLIENT_ID: z.string().min(10).optional(),
+    MICROSOFT_CLIENT_SECRET: z.string().min(10).optional(),
     SMTP_URL: z
       .string()
       .regex(/^smtps?:\/\/.+/, "smtp:// or smtps:// URL")

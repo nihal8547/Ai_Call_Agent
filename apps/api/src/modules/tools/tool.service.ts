@@ -65,6 +65,8 @@ export class ToolService {
         onIntegrationError: (integrationId, err) =>
           this.integrations.markError(t.tenantId, integrationId, err.message),
         ...this.integrations.toolNetwork,
+        onRefreshToken: (integrationId: string, token: string) =>
+          this.integrations.saveRefreshToken(t.tenantId, integrationId, token),
       },
     );
     return {

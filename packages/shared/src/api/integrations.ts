@@ -183,10 +183,21 @@ export const UpdateIntegrationBody = z
   .partial()
   .refine((b) => Object.keys(b).length > 0, "Nothing to update");
 
+/** Email connected by signing in: the address comes from the account, so only recipients and a name */
+export const EmailOAuthConfig = SmtpConfig.omit({ from: true });
+
 export const GoogleOAuthStartQuery = z.object({
-  type: z.enum(["GOOGLE_CALENDAR", "GOOGLE_SHEETS"]),
+  /** EMAIL_SMTP = send email from the signed-in Gmail / Google Workspace account */
+  type: z.enum(["GOOGLE_CALENDAR", "GOOGLE_SHEETS", "EMAIL_SMTP"]),
   name: Name,
   /** Calendar id or spreadsheet settings, as JSON */
+  config: z.string().max(2000).optional(),
+});
+
+/** "Connect with Microsoft": Outlook / Microsoft 365 email */
+export const MicrosoftOAuthStartQuery = z.object({
+  type: z.literal("EMAIL_SMTP").default("EMAIL_SMTP"),
+  name: Name,
   config: z.string().max(2000).optional(),
 });
 

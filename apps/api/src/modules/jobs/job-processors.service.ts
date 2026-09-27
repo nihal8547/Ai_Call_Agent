@@ -1,7 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { ToolCall } from "@platform/core";
 import type { EmailJob, QueueJob, ToolJob } from "@platform/shared";
-import { sendMail, type SmtpCredentials, type SmtpSettings, ToolError } from "@platform/tools";
+import { deliverMail, type MailCredentials, type SmtpSettings, ToolError } from "@platform/tools";
 import { type Job, UnrecoverableError } from "bullmq";
 import { API_ENV, type ApiEnv } from "../../config/env";
 import { TenantDbService } from "../../infra/tenant-db.service";
@@ -99,14 +99,23 @@ export class JobProcessors {
     const mail = await this.integrations.firstOfType(d.tenantId, "EMAIL_SMTP");
     if (!mail) throw new UnrecoverableError("No email integration is connected");
     try {
-      return await sendMail(
-        mail.credentials as unknown as SmtpCredentials,
+      const net = this.integrations.toolNetwork;
+      return await deliverMail(
+        mail.credentials as unknown as MailCredentials,
         mail.config as unknown as SmtpSettings,
         { to: d.to, subject: d.subject, text: d.text },
         {
           allowPrivateNetwork: this.env.ALLOW_PRIVATE_NETWORK_TOOLS,
           timeoutMs: 10_000,
           idempotencyKey: d.idempotencyKey,
+          google: { fetch, timeoutMs: 10_000, ...(net.googleOAuth ? { oauthClient: net.googleOAuth } : {}) },
+          microsoft: {
+            fetch,
+            timeoutMs: 10_000,
+            ...(net.microsoftOAuth ? { oauthClient: net.microsoftOAuth } : {}),
+            onRefreshToken: (t: string) =>
+              this.integrations.saveRefreshToken(d.tenantId, mail.integrationId, t),
+          },
         },
       );
     } catch (err) {

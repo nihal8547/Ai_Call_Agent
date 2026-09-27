@@ -126,13 +126,39 @@ export class IntegrationsService {
       : undefined;
   }
 
+  get microsoftOAuth() {
+    return this.env.MICROSOFT_CLIENT_ID && this.env.MICROSOFT_CLIENT_SECRET
+      ? { clientId: this.env.MICROSOFT_CLIENT_ID, clientSecret: this.env.MICROSOFT_CLIENT_SECRET }
+      : undefined;
+  }
+
   get toolNetwork() {
     return {
       allowPrivateNetwork: this.env.ALLOW_PRIVATE_NETWORK_TOOLS,
       ...(this.googleOAuth ? { googleOAuth: this.googleOAuth } : {}),
       ...(this.hubspotOAuth ? { hubspotOAuth: this.hubspotOAuth } : {}),
       ...(this.zohoOAuth ? { zohoOAuth: this.zohoOAuth } : {}),
+      ...(this.microsoftOAuth ? { microsoftOAuth: this.microsoftOAuth } : {}),
     };
+  }
+
+  /**
+   * A provider issued a new refresh token (Microsoft rotates them on use): keep the newest, so the
+   * connection keeps working after the old token expires.
+   */
+  async saveRefreshToken(tenantId: string, id: string, refreshToken: string): Promise<void> {
+    const row = await this.tenantDb.db(tenantId).integration.findUnique({ where: { id } });
+    if (!row) return;
+    const creds = await this.keys.open<Record<string, unknown>>(
+      tenantId,
+      purpose(id),
+      row.credentialsEncrypted,
+    );
+    if (creds.refreshToken === refreshToken) return;
+    const sealed = await this.keys.seal(tenantId, purpose(id), { ...creds, refreshToken });
+    await this.tenantDb
+      .db(tenantId)
+      .integration.update({ where: { id }, data: { credentialsEncrypted: sealed } });
   }
 
   async list(tenantId: string) {
@@ -155,10 +181,12 @@ export class IntegrationsService {
     input:
       | CreateIntegrationBody
       | {
-          type: "GOOGLE_CALENDAR" | "GOOGLE_SHEETS" | "HUBSPOT" | "ZOHO";
+          type: "GOOGLE_CALENDAR" | "GOOGLE_SHEETS" | "HUBSPOT" | "ZOHO" | "EMAIL_SMTP";
           name: string;
           config: Record<string, unknown>;
           stored: Record<string, unknown>;
+          /** Shown on the integration (e.g. which mailbox), not secret */
+          publicConfig?: Record<string, unknown>;
         },
     meta: Meta,
   ) {
@@ -167,7 +195,7 @@ export class IntegrationsService {
       "stored" in input
         ? {
             credentials: input.stored,
-            publicConfig: { auth: "oauth" } as Record<string, unknown>,
+            publicConfig: { auth: "oauth", ...(input.publicConfig ?? {}) } as Record<string, unknown>,
             revealOnce: undefined,
           }
         : storedCredentials(input.type, input.credentials as Record<string, unknown>);
@@ -283,7 +311,7 @@ export class IntegrationsService {
           existing.type,
           existing.config as Record<string, unknown>,
           credentials,
-          this.toolNetwork,
+          { ...this.toolNetwork, onRefreshToken: (t: string) => this.saveRefreshToken(auth.tenantId, id, t) },
         ),
       };
     } catch (err) {

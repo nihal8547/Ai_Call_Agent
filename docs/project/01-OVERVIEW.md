@@ -63,7 +63,11 @@ others, each with its own users, agents, numbers, data and settings.
 
 ### Integrations and tools
 
-- Webhooks, email (SMTP), Google Calendar, Google Sheets, HubSpot, Zoho CRM.
+- Webhooks, email (Gmail, Outlook / Microsoft 365 or any SMTP server), Google Calendar, Google
+  Sheets, HubSpot, Zoho CRM.
+- **One-click connect**: "Continue with Google / Microsoft / HubSpot / Zoho" opens the provider's
+  sign-in page; after allowing access the business comes back already connected. Manual keys,
+  tokens and SMTP remain as "other ways to connect".
 - Tools run during calls (check availability, book, cancel, save lead, notify staff …) or in the
   background through queues, with retries and a **failed deliveries** list.
 

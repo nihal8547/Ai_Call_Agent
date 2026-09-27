@@ -1489,6 +1489,30 @@ an overloaded model (503) gets one retry on `gemini-flash-lite-latest` within th
 - **Not verified:** delivery through a real mail provider (SPF/DKIM/DMARC for the sending domain
   must be set up in production).
 
+### One-click integrations: "Continue with …" ✅
+
+- Integrations → Add now starts with **Sign in to connect**: "Continue with Google / Microsoft /
+  HubSpot / Zoho" opens the provider's page; after allowing, the browser returns to Integrations
+  with the connection created and connected. Manual keys, tokens and SMTP are under "Other ways to
+  connect". A provider the operator hasn't configured shows its button disabled with a note.
+- **Email by sign-in**: Gmail (`gmail.send`, sent through the Gmail API as the signed-in account,
+  RFC 2047 headers for Arabic names and subjects) and Outlook / Microsoft 365 (`Mail.Send` through
+  Microsoft Graph, `common` endpoint for work and personal accounts). The account address comes
+  from the ID token. Recipients and sender name are asked before sign-in and validated first.
+- Microsoft rotates refresh tokens: every new one is re-encrypted and saved (tools, background
+  jobs and Test). Only refresh tokens are stored, encrypted per business.
+- New env: `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`. Operator guide:
+  [OAUTH_SETUP.md](OAUTH_SETUP.md) (redirect URIs, scopes, Google verification).
+- **Verified:** tools tests (Gmail raw message with Arabic subject, Graph send with rotation,
+  revoked token → auth error, sign-in URL, ID-token email); API tests with Google and Microsoft
+  token endpoints faked (start scope and redirect, forged callback from another browser refused,
+  connected row, sealed token, Test, rotation m-rt-0 → m-rt-1, decline message, invalid settings
+  refused before sign-in). Browser: Continue with Microsoft → provider page stand-in → allow → back
+  connected "via Outlook" → Test; Google Calendar the same; decline message; unconfigured HubSpot
+  disabled with the manual form available; no CSP violations.
+- **Not verified:** real Google and Microsoft consent pages and sending (network policy). Gmail
+  for customers needs Google app verification.
+
 ### ✅ M3 — Level 3 milestone
 
 - The production readiness checklist (plan §18) passes.

@@ -1,7 +1,7 @@
 import { checkHubspot } from "./crm/hubspot";
 import type { CrmCredentials } from "./crm/types";
 import { checkZoho } from "./crm/zoho";
-import { verifySmtp, type SmtpCredentials } from "./email";
+import { type MailCredentials, verifyMail } from "./mailer";
 import { ToolError } from "./errors";
 import type { GoogleCredentials, GoogleDeps } from "./google/auth";
 import { checkCalendar } from "./google/calendar";
@@ -13,6 +13,8 @@ export type ConnectionTestDeps = {
   googleOAuth?: { clientId: string; clientSecret: string };
   hubspotOAuth?: { clientId: string; clientSecret: string };
   zohoOAuth?: { clientId: string; clientSecret: string };
+  microsoftOAuth?: { clientId: string; clientSecret: string };
+  onRefreshToken?: (refreshToken: string) => Promise<void> | void;
   allowPrivateNetwork?: boolean;
   timeoutMs?: number;
 };
@@ -55,8 +57,17 @@ export async function testConnection(
       return `Connected to spreadsheet "${s.title}"`;
     }
     case "EMAIL_SMTP":
-      await verifySmtp(credentials as unknown as SmtpCredentials, { allowPrivateNetwork, timeoutMs });
-      return "Logged in to the mail server";
+      return verifyMail(credentials as unknown as MailCredentials, {
+        allowPrivateNetwork,
+        timeoutMs,
+        google,
+        microsoft: {
+          fetch: deps.fetch ?? fetch,
+          timeoutMs,
+          ...(deps.microsoftOAuth ? { oauthClient: deps.microsoftOAuth } : {}),
+          ...(deps.onRefreshToken ? { onRefreshToken: deps.onRefreshToken } : {}),
+        },
+      });
     case "WEBHOOK": {
       const r = await postWebhook(
         String(config.url),
