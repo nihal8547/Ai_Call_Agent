@@ -10,6 +10,7 @@ import {
   parseDate,
   parseEmail,
   parseName,
+  recogniseOption,
   parseNumber,
   parsePhone,
   parseTime,
@@ -189,9 +190,31 @@ describe("contact details", () => {
     ["I'm Anand here", "Anand"],
     ["Meera", "Meera"],
     ["yes it's john d'souza", "John D'Souza"],
+    ["Hi, Ahmed Al Kuwari", "Ahmed Al Kuwari"],
+    // Requests and answers to other questions are not names
+    ["Hi I need a cleaning", undefined],
+    ["I'm looking for an apartment", undefined],
+    ["tomorrow at 10 am", undefined],
+    ["yes that's fine", undefined],
+    ["book for tomorrow", undefined],
   ])("name %s → %s", (input, expected) => {
     expect(parseName(input)).toBe(expected);
   });
+});
+
+it("recognises dental services by their everyday names", () => {
+  const services = ["General consultation", "Dental cleaning", "Root canal", "Dental implants"];
+  expect(recogniseOption("Hi I need a cleaning", services)).toBe("Dental cleaning");
+  expect(recogniseOption("just a checkup please", services)).toBe("General consultation");
+  expect(recogniseOption("I want an implant", services)).toBe("Dental implants");
+});
+
+it("maps a day to 'within a week' when asked how urgent", () => {
+  const urgency = ["Emergency", "Within a week", "Flexible"];
+  expect(matchOption("tomorrow at 10 am", urgency)).toBe("Within a week");
+  expect(matchOption("next monday", urgency)).toBe("Within a week");
+  expect(matchOption("severe pain today", urgency)).toBe("Emergency");
+  expect(matchOption("any time is fine", urgency)).toBe("Flexible");
 });
 
 describe("intent signals", () => {

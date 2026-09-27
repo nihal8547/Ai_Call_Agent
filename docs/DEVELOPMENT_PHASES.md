@@ -1605,6 +1605,23 @@ Plan and review: [WPIntegration.md](WPIntegration.md); operator guide:
   speech model is a preview name, configurable with `GEMINI_TTS_MODEL`. Quality for Malayalam and
   Gulf Arabic voice notes needs checking with real recordings.
 
+### Voice agent check and Qatar call guide ✅
+
+- **Checked with the call simulator and the development Gemini key:** the free-tier key was
+  rate-limited or timed out on almost every AI request, so calls ran on the rules alone, and the
+  rules had gaps: "Hi, I need a cleaning" became the patient's name; "tomorrow at 10" wasn't an
+  answer to "emergency, within a week or flexible?"; "cleaning" didn't choose "Dental cleaning".
+- **Fixed:** requests, questions and answers ("tomorrow", "that's fine") are never taken as names
+  (English and Arabic, greetings stripped); a day or "next week" means "within a week" (English
+  and Gulf Arabic); everyday names for dental services; early answers are not read from
+  questions. English and Arabic bookings now complete even with the AI down.
+- `npm run simulate -- --debug` shows every AI call and why it failed.
+- [QATAR_CALL_SETUP.md](QATAR_CALL_SETUP.md): forwarding vs PBX over SIP vs carrier SIP trunk,
+  step by step, and what makes the agent sound right (paid Gemini key, hosting near Twilio,
+  streaming next).
+- Tests: core 184 (new name, option and question cases); two order-dependent API test checks made
+  deterministic (background tool events; health test without queue workers).
+
 ### ✅ M3 — Level 3 milestone
 
 - The production readiness checklist (plan §18) passes.

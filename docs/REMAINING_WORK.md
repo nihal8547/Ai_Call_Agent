@@ -41,18 +41,18 @@ or more.
 Everything below is built and tested against fakes or simulations; this environment could not
 reach the real service.
 
-| Item                         | What to do                                                                                                                                          |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Real Twilio calls end to end | Buy a number, call it from a phone: speech recognition quality, voices, transfers with whisper, status callbacks                                    |
-| Existing numbers in Qatar    | Forward a real Ooredoo and a real Vodafone line; confirm the codes, whether the caller's number is kept, and costs                                  |
-| SIP connections              | Connect a real carrier SIP trunk or PBX to a Twilio SIP domain                                                                                      |
-| Arabic on phone audio        | Measure Gulf Arabic recognition (`ar-QA`) and the Polly Arabic voices with real callers                                                             |
-| Integrations                 | Register the OAuth apps ([OAUTH_SETUP.md](OAUTH_SETUP.md)); connect real Google Calendar / Sheets / Gmail, Outlook, HubSpot, Zoho and SMTP accounts |
-| Google app verification      | Needed before customers can use Google sign-in outside "Testing" mode (sensitive scopes, including `gmail.send`)                                    |
-| Platform email delivery      | A real mail provider for `SMTP_URL`; SPF, DKIM and DMARC for the sending domain                                                                     |
-| WhatsApp on real Meta        | Connect a real number; text, voice notes (Gemini transcription and speech in Arabic, Malayalam, English), delivery ticks, App Review                |
-| Gemini at production load    | Paid quota (the free tier hit its per-minute limit during one call); latency from the Gulf region                                                   |
-| Load                         | Repeat the 50-call load test on production-like infrastructure, with the AI on                                                                      |
+| Item                         | What to do                                                                                                                                                      |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Real Twilio calls end to end | Buy a number, call it from a phone: speech recognition quality, voices, transfers with whisper, status callbacks                                                |
+| Existing numbers in Qatar    | Forward a real Ooredoo and a real Vodafone line; confirm the codes, whether the caller's number is kept, and costs ([QATAR_CALL_SETUP.md](QATAR_CALL_SETUP.md)) |
+| SIP connections              | Connect a real carrier SIP trunk or PBX to a Twilio SIP domain                                                                                                  |
+| Arabic on phone audio        | Measure Gulf Arabic recognition (`ar-QA`) and the Polly Arabic voices with real callers                                                                         |
+| Integrations                 | Register the OAuth apps ([OAUTH_SETUP.md](OAUTH_SETUP.md)); connect real Google Calendar / Sheets / Gmail, Outlook, HubSpot, Zoho and SMTP accounts             |
+| Google app verification      | Needed before customers can use Google sign-in outside "Testing" mode (sensitive scopes, including `gmail.send`)                                                |
+| Platform email delivery      | A real mail provider for `SMTP_URL`; SPF, DKIM and DMARC for the sending domain                                                                                 |
+| WhatsApp on real Meta        | Connect a real number; text, voice notes (Gemini transcription and speech in Arabic, Malayalam, English), delivery ticks, App Review                            |
+| Gemini at production load    | Paid quota (the free tier hit its per-minute limit during one call); latency from the Gulf region                                                               |
+| Load                         | Repeat the 50-call load test on production-like infrastructure, with the AI on                                                                                  |
 
 ## 3. Operations before launch (P1)
 

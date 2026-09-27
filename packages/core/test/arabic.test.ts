@@ -109,6 +109,9 @@ describe("Arabic understanding (no AI)", () => {
     expect(parseName("معك أحمد، لو سمحت")).toBe("أحمد");
     expect(parseName("خالد")).toBe("خالد");
     expect(parseName("أنا أبي شقة")).toBeUndefined();
+    expect(parseName("مرحبا، أحمد الكواري")).toBe("أحمد الكواري");
+    expect(parseName("مرحبا أبغى موعد")).toBeUndefined();
+    expect(parseName("بكرة الساعة عشرة")).toBeUndefined();
   });
 
   it("matches Arabic options, synonyms and English answers", () => {
@@ -122,6 +125,11 @@ describe("Arabic understanding (no AI)", () => {
     expect(matchOption("الحين على طول", timeline)).toBe("فوراً");
     expect(matchOption("خلال ثلاث شهور", timeline)).toBe("خلال 3 شهور");
     expect(mentionsOption("ابي الفيلا", "فيلا")).toBe(true);
+    // Asked how urgent, callers often just name a day
+    const urgency = ["طوارئ", "خلال أسبوع", "مرن"];
+    expect(matchOption("بكرة الساعة عشرة الصبح", urgency)).toBe("خلال أسبوع");
+    expect(matchOption("يوم الأحد", urgency)).toBe("خلال أسبوع");
+    expect(matchOption("عندي ألم شديد اليوم", urgency)).toBe("طوارئ");
   });
 });
 

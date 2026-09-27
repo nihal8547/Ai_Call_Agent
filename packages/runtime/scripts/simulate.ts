@@ -4,6 +4,7 @@
  *   npm run simulate -- --template clinic-reception                 # deterministic (no LLM)
  *   npm run simulate -- --template clinic-reception --llm gemini    # needs GEMINI_API_KEY
  *   npm run simulate -- --template real-estate-ava --say "Rahul|apartment|80 lakh"
+ *   npm run simulate -- --template qatar-clinic-ar --llm gemini --debug   # show each LLM call
  *
  * Blocking tools succeed automatically; --fail-tools simulates an outage.
  */
@@ -22,6 +23,7 @@ const { values } = parseArgs({
     say: { type: "string" },
     "fail-tools": { type: "boolean", default: false },
     timezone: { type: "string", default: "Asia/Kolkata" },
+    debug: { type: "boolean", default: false },
   },
 });
 
@@ -55,6 +57,10 @@ function dim(s: string): string {
 }
 
 function show(t: RuntimeTurn): void {
+  if (values.debug)
+    for (const e of t.runtimeEvents)
+      if (e.type === "llm_call")
+        console.log(dim(`  · ${e.purpose} ${e.ok ? "ok" : `FAILED ${e.error}`} ${e.latencyMs}ms`));
   for (const call of t.output.backgroundTools) console.log(dim(`  ⚙ background ${call.tool}`));
   console.log(`\x1b[36m${config.agentName}:\x1b[0m ${t.speech}`);
   const m = t.metrics;

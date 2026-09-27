@@ -546,9 +546,10 @@ function understandWithRules(c: Ctx, text: string): Understanding {
       if (candidate !== undefined) fields[f.key] = candidate;
     }
     // Answers to this step's other questions, given early ("a villa, budget about 2 crore, cash"):
-    // choices named outright or by a known synonym, and amounts said with a scale or currency
+    // choices named outright or by a known synonym, and amounts said with a scale or currency.
+    // Not from questions: "what are your consultation charges?" doesn't choose a consultation.
     const step = s.stepId ? stepById(c, s.stepId) : undefined;
-    if (step?.type === "collect_fields") {
+    if (step?.type === "collect_fields" && !question) {
       for (const key of step.fields) {
         const other = fieldByKey(c, key);
         if (!other || key === f?.key || s.collected[key] !== undefined) continue;

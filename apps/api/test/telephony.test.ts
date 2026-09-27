@@ -2,6 +2,7 @@ import { type NestFastifyApplication } from "@nestjs/platform-fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { RedisService } from "../src/infra/redis.service";
 import { TenantDbService } from "../src/infra/tenant-db.service";
+import { BACKGROUND_SEQ_START } from "../src/modules/jobs/call-timeline";
 import { Client, createTestApp, hasTestDb, registerOwner, STRONG_PASSWORD, uniqueEmail } from "./support/app";
 import { DEFAULT_CALLER, phoneCall, provisionAgent, twilioPost } from "./support/telephony";
 
@@ -79,7 +80,10 @@ describe.skipIf(!hasTestDb)("telephony: real phone calls through Twilio webhooks
     expect(types).toEqual(
       expect.arrayContaining(["USER_TURN", "AGENT_TURN", "EXTRACTION", "TOOL_CALL", "CALL_ENDED"]),
     );
-    expect(events.map((e) => e.seq)).toEqual(events.map((_, i) => i));
+    // The call's own events are numbered without gaps; background tools log from BACKGROUND_SEQ_START
+    // and may or may not have finished yet
+    const inCall = events.filter((e) => e.seq < BACKGROUND_SEQ_START);
+    expect(inCall.map((e) => e.seq)).toEqual(inCall.map((_, i) => i));
     // Personal data is redacted in the stored transcript
     const said = events
       .filter((e) => e.type === "USER_TURN")

@@ -1,4 +1,4 @@
-import { arabicNumberWords, hasArabic } from "./arabic";
+import { arabicNumberWords, foldArabic, hasArabic } from "./arabic";
 import { normalizeUtterance, titleCase } from "./text";
 
 /**
@@ -71,6 +71,23 @@ const AR_NAME_LEAD = /(?:^|\s)(?:اسمي|إسمي|أسمي|الاسم|انا|أ
 /** After "أنا …" these start a sentence, not a name ("أنا أبي شقة" = "I want a flat") */
 const AR_NOT_NAME = /^(?:[اأ]بي|[اأ]بغ[ىيا]|[اأ]ريد|ودي|مهتم|[اأ]تصل|[اأ]سأل|ساكن|من|في|عندي|محتاج)(?:\s|$)/;
 const AR_POLITE = /\s+(?:لو سمحت|من فضلك|تفضل|يا [اأ]خي|يا [اأ]ختي)$/;
+const AR_GREETING =
+  /^(?:مرحبا|مرحبتين|هلا(?: والله)?|اهلا|السلام عليكم|سلام عليكم|صباح الخير|مساء الخير|الو)\s+/;
+/** Words that make a sentence, never a name (checked after folding hamza, ى and ة) */
+const AR_SENTENCE_WORDS = new Set([
+  ...["ابي", "ابغي", "ابغا", "اريد", "ودي", "محتاج", "احتاج", "عندي", "ممكن", "موعد", "حجز", "احجز"],
+  ...["كم", "متي", "وين", "شو", "ايش", "ليش", "هل", "نعم", "لا", "ايوه", "بكره", "باكر", "اليوم"],
+]);
+/** English words that make a request or a question, never a name ("Hi, I need a cleaning") */
+const SENTENCE_WORDS = new Set([
+  ...["i", "me", "my", "we", "our", "you", "your", "a", "an", "the", "to", "of", "in", "on", "at"],
+  ...["is", "are", "am", "was", "be", "do", "does", "can", "could", "would", "will", "should", "have"],
+  ...["has", "need", "needs", "want", "wanted", "like", "looking", "book", "booking", "appointment"],
+  ...["help", "call", "calling", "about", "what", "when", "where", "why", "how", "which", "who"],
+  ...["yes", "no", "not", "please", "thanks", "thank", "it", "this", "that", "there", "some", "any"],
+  ...["today", "tomorrow", "morning", "evening", "afternoon", "tonight", "week", "time", "with"],
+  ...["fine", "ok", "okay", "sure", "good", "great", "right", "correct", "don", "can", "won", "isn"],
+]);
 
 /** "اسمي فاطمة الكواري" → "فاطمة الكواري" (spelling kept as heard) */
 function parseArabicName(input: string): string | undefined {
@@ -80,9 +97,10 @@ function parseArabicName(input: string): string | undefined {
     .trim()
     .replace(AR_POLITE, "");
   const m = text.match(AR_NAME_LEAD);
-  const candidate = (m ? m[1]! : text).trim();
+  const candidate = (m ? m[1]! : text.replace(AR_GREETING, "")).trim();
   if (AR_NOT_NAME.test(candidate)) return undefined;
   const words = candidate.split(" ").filter(Boolean);
+  if (words.some((w) => AR_SENTENCE_WORDS.has(foldArabic(w).replace(/^و(?=\S{3,})/, "")))) return undefined;
   const ok = words.length >= 1 && words.length <= 4 && words.every((w) => /^[\p{L}\u064B-\u0652]+$/u.test(w));
   return ok && candidate.length >= 2 ? candidate : undefined;
 }
@@ -95,15 +113,28 @@ export function parseName(input: string): string | undefined {
     .replace(/\s+(?:here|speaking)$/g, "");
   for (const re of NAME_PATTERNS) {
     const m = text.match(re);
-    if (m) return clean(m[1]!);
+    if (m) return looksLikeName(m[1]!) ? clean(m[1]!) : undefined;
   }
   const words = text
-    .replace(/^(?:hi|hello|hey|yes|yeah|ok|okay|sure|um+|uh+)[, ]+/g, "")
+    .replace(/^(?:(?:hi|hello|hey|yes|yeah|ok|okay|sure|um+|uh+)[, ]+)+/g, "")
     .split(" ")
     .filter(Boolean);
-  if (words.length >= 1 && words.length <= 4 && words.every((w) => /^[a-z][a-z.'-]*$/.test(w)))
+  if (
+    words.length >= 1 &&
+    words.length <= 4 &&
+    words.every((w) => /^[a-z][a-z.'-]*$/.test(w)) &&
+    looksLikeName(words.join(" "))
+  )
     return clean(words.join(" "));
   return undefined;
+}
+
+/** "rahul sharma" yes; "i need a cleaning", "for tomorrow" no */
+function looksLikeName(candidate: string): boolean {
+  return !candidate
+    .trim()
+    .split(/\s+/)
+    .some((w) => SENTENCE_WORDS.has(w.replace(/'(?:s|re|m|ll|d|ve|t)$/, "").replace(/[.,'-]+$/g, "")));
 }
 
 function clean(name: string): string | undefined {

@@ -7,6 +7,19 @@ const SYNONYMS: Record<string, string[]> = {
   "need assistance": ["help", "assistance", "not sure", "don't know", "guide"],
   immediately: ["immediately", "right away", "asap", "now", "urgent", "this month"],
   emergency: ["emergency", "urgent", "severe pain", "bleeding", "swelling", "right now"],
+  // Dental services, as callers say them
+  "general consultation": ["consultation", "checkup", "check up", "general checkup", "examination"],
+  "dental cleaning": ["cleaning", "clean my teeth", "scaling", "polishing"],
+  "root canal": ["root canal", "rct", "nerve treatment"],
+  "dental implants": ["implant", "implants"],
+  "teeth whitening": ["whitening", "whiten", "bleaching"],
+  braces: ["braces", "aligners", "invisalign", "orthodontic"],
+  // Asked "an emergency, within a week, or flexible?", callers often just name a day
+  "within a week": [
+    ...["within a week", "this week", "next week", "tomorrow", "today", "day after tomorrow"],
+    ...["in a few days", "few days", "couple of days", "soon", "sunday", "monday", "tuesday"],
+    ...["wednesday", "thursday", "friday", "saturday"],
+  ],
   flexible: ["flexible", "any time", "anytime", "whenever", "no rush"],
   "just exploring": ["exploring", "just looking", "browsing", "not sure yet", "no plan"],
   none: ["none", "no occasion", "nothing special", "no"],
@@ -23,7 +36,10 @@ const SYNONYMS: Record<string, string[]> = {
   "من 3 الي 6 شهور": ["6 شهور", "سته شهور", "ست شهور", "نص سنه"],
   "استكشف فقط": ["استكشف", "اتفرج", "بس اشوف", "اشوف بس", "مجرد استفسار", "مو الحين"],
   طواري: ["طواري", "طارئ", "طارئه", "طاريه", "الم شديد", "نزيف", "ورم", "انتفاخ", "emergency"],
-  "خلال اسبوع": ["اسبوع", "هالاسبوع", "الاسبوع هذا"],
+  "خلال اسبوع": [
+    ...["اسبوع", "هالاسبوع", "الاسبوع هذا", "الاسبوع الجاي", "بكره", "باكر", "بكرا", "اليوم", "بعد بكره"],
+    ...["كم يوم", "يومين", "قريب", "الاحد", "الاثنين", "الثلاثاء", "الاربعاء", "الخميس", "السبت"],
+  ],
   مرن: ["مرن", "اي وقت", "مو مستعجل", "على راحتي", "على راحتكم", "flexible"],
   "استشاره عامه": ["استشاره", "كشف", "فحص", "checkup"],
   "تنظيف اسنان": ["تنظيف", "تلميع", "cleaning"],

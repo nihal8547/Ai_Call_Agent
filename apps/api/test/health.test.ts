@@ -9,6 +9,8 @@ const env = loadApiEnv({
   DATABASE_URL: "postgresql://nobody@127.0.0.1:1/none?connect_timeout=1",
   REDIS_URL: "redis://127.0.0.1:1",
   LOG_LEVEL: "silent",
+  // No queue workers: they would keep retrying the unreachable Redis after the tests
+  QUEUE_CONSUMERS: "false",
   JWT_SECRET: "test-only-jwt-secret-0123456789abcdefghij",
   MASTER_ENCRYPTION_KEY: Buffer.alloc(32, 1).toString("base64"),
 });

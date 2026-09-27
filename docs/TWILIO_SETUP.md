@@ -120,6 +120,9 @@ If this works, the Twilio part is right. Only then connect an existing number.
 
 ## 8. Use the business's existing number (Ooredoo, Vodafone or other)
 
+For a Qatar number, which way to choose (forwarding, PBX over SIP or a carrier SIP trunk) and
+what makes the agent sound right: [QATAR_CALL_SETUP.md](QATAR_CALL_SETUP.md).
+
 Customers keep calling the number they already know; the carrier forwards to the Twilio number.
 
 1. **Settings → Phone numbers → Use my existing number**.
