@@ -151,6 +151,87 @@ describe("parseWebhook", () => {
     ).toEqual([]);
   });
 
+  it("reads messages the business sent from the WhatsApp Business app (echoes)", () => {
+    const events = parseWebhook({
+      object: "whatsapp_business_account",
+      entry: [
+        {
+          id: "WABA1",
+          changes: [
+            {
+              field: "smb_message_echoes",
+              value: {
+                metadata: { phone_number_id: "PN1" },
+                message_echoes: [
+                  {
+                    from: "97440005555",
+                    to: "97455123456",
+                    id: "wamid.E1",
+                    timestamp: "1700000000",
+                    type: "text",
+                    text: { body: "On my way" },
+                  },
+                  {
+                    from: "97440005555",
+                    id: "wamid.E2",
+                    timestamp: "1700000000",
+                    type: "text",
+                    text: { body: "no recipient" },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    });
+    expect(events).toEqual([
+      expect.objectContaining({
+        kind: "echo",
+        phoneNumberId: "PN1",
+        to: "97455123456",
+        wamid: "wamid.E1",
+        type: "TEXT",
+        text: "On my way",
+      }),
+    ]);
+  });
+
+  it("reads account and quality news for the WhatsApp Business account", () => {
+    const account = (field: string, value: Record<string, unknown>) =>
+      parseWebhook({
+        object: "whatsapp_business_account",
+        entry: [{ id: "WABA1", changes: [{ field, value }] }],
+      });
+    expect(account("account_update", { event: "PARTNER_REMOVED" })).toEqual([
+      { kind: "account", wabaId: "WABA1", number: null, event: "PARTNER_REMOVED", detail: null },
+    ]);
+    expect(
+      account("account_update", {
+        phone_number: "+974 4000 5555",
+        event: "ACCOUNT_VIOLATION",
+        violation_info: { violation_type: "SCAM" },
+      }),
+    ).toEqual([
+      { kind: "account", wabaId: "WABA1", number: "97440005555", event: "ACCOUNT_VIOLATION", detail: "SCAM" },
+    ]);
+    expect(
+      account("phone_number_quality_update", {
+        display_phone_number: "97440005555",
+        event: "DOWNGRADE",
+        current_limit: "TIER_250",
+      }),
+    ).toEqual([
+      {
+        kind: "quality",
+        wabaId: "WABA1",
+        number: "97440005555",
+        event: "DOWNGRADE",
+        currentLimit: "TIER_250",
+      },
+    ]);
+  });
+
   it("formats WhatsApp ids as E.164", () => {
     expect(waIdToE164("97455123456")).toBe("+97455123456");
   });
@@ -202,6 +283,114 @@ describe("GraphClient", () => {
     );
     expect(calls[1]!.url).toBe("https://graph.facebook.com/v23.0/WABA1/subscribed_apps");
     expect(JSON.parse(String(calls[2]!.init.body))).toEqual({ messaging_product: "whatsapp", pin: "123456" });
+  });
+
+  it("checks a number's readiness and the account's webhook subscriptions", async () => {
+    const { graph } = client((url) =>
+      url.includes("subscribed_apps")
+        ? json({ data: [{ whatsapp_business_api_data: { id: "APP1", name: "Platform" } }] })
+        : url.includes("platform_type")
+          ? json({
+              platform_type: "CLOUD_API",
+              status: "CONNECTED",
+              name_status: "APPROVED",
+              messaging_limit_tier: "TIER_1K",
+            })
+          : json({
+              id: "PN1",
+              display_phone_number: "+974 4000 5555",
+              verified_name: "Clinic",
+              quality_rating: "GREEN",
+            }),
+    );
+    expect(await graph.subscribedApps("tok", "WABA1")).toEqual(["APP1"]);
+    expect(await graph.phoneNumberHealth("tok", "PN1")).toMatchObject({
+      displayPhoneNumber: "+974 4000 5555",
+      platformType: "CLOUD_API",
+      nameStatus: "APPROVED",
+      messagingLimit: "TIER_1K",
+    });
+    // A field Meta no longer knows: the basic details still come back
+    const old = client((url) =>
+      url.includes("platform_type")
+        ? json(
+            {
+              error: {
+                code: 100,
+                message: "(#100) Tried accessing nonexisting field (messaging_limit_tier)",
+              },
+            },
+            400,
+          )
+        : json({ id: "PN1", display_phone_number: "+974 4000 5555" }),
+    );
+    expect(await old.graph.phoneNumberHealth("tok", "PN1")).toMatchObject({
+      platformType: null,
+      displayPhoneNumber: "+974 4000 5555",
+    });
+  });
+
+  it("sends media, templates with values, and lists templates", async () => {
+    const { graph, calls } = client((url) =>
+      url.includes("message_templates")
+        ? json({
+            data: [
+              {
+                id: "T1",
+                name: "appointment_reminder",
+                language: "en",
+                status: "APPROVED",
+                category: "UTILITY",
+                components: [
+                  { type: "HEADER", format: "TEXT", text: "Hi {{1}}" },
+                  { type: "BODY", text: "Your visit is on {{1}} at {{2}}." },
+                  { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "OK" }] },
+                ],
+              },
+            ],
+          })
+        : json({ messages: [{ id: "wamid.OUT" }] }),
+    );
+    await graph.sendMedia("tok", "PN1", "974551", "document", "M1", {
+      caption: "Price list",
+      filename: "prices.pdf",
+    });
+    expect(JSON.parse(String(calls[0]!.init.body))).toMatchObject({
+      type: "document",
+      document: { id: "M1", caption: "Price list", filename: "prices.pdf" },
+    });
+    await graph.sendTemplate("tok", "PN1", "974551", "appointment_reminder", "en", {
+      header: ["Aisha"],
+      body: ["Sunday", "10 AM"],
+    });
+    expect(JSON.parse(String(calls[1]!.init.body)).template).toEqual({
+      name: "appointment_reminder",
+      language: { code: "en" },
+      components: [
+        { type: "header", parameters: [{ type: "text", text: "Aisha" }] },
+        {
+          type: "body",
+          parameters: [
+            { type: "text", text: "Sunday" },
+            { type: "text", text: "10 AM" },
+          ],
+        },
+      ],
+    });
+    expect(await graph.messageTemplates("tok", "WABA1")).toEqual([
+      {
+        id: "T1",
+        name: "appointment_reminder",
+        language: "en",
+        status: "APPROVED",
+        category: "UTILITY",
+        headerFormat: "TEXT",
+        headerText: "Hi {{1}}",
+        body: "Your visit is on {{1}} at {{2}}.",
+        footer: null,
+        buttons: [{ type: "QUICK_REPLY", text: "OK", url: null }],
+      },
+    ]);
   });
 
   it("turns Meta errors into kinds the platform acts on", async () => {

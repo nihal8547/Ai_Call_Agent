@@ -32,6 +32,7 @@ export function WhatsAppSettingsPage() {
   const refresh = () => qc.invalidateQueries({ queryKey: ["whatsapp"] });
   const [manual, setManual] = useState(false);
   const [agentId, setAgentId] = useState("");
+  const [onBusinessApp, setOnBusinessApp] = useState(false);
   const [connected, setConnected] = useState<string | null>(null);
 
   const facebook = useMutation({
@@ -41,6 +42,7 @@ export function WhatsAppSettingsPage() {
         appId: p.appId!,
         configId: p.configId!,
         graphVersion: p.graphVersion,
+        onBusinessApp,
       });
       return api<WhatsAppNumber>("/whatsapp/connect/embedded-signup", {
         method: "POST",
@@ -110,12 +112,31 @@ export function WhatsAppSettingsPage() {
                 the number with a code. It uses the official WhatsApp Business API.
               </p>
               <ul className="mt-4 space-y-1.5 text-sm text-slate-600">
-                <li>
-                  • A number that isn&apos;t in use on the WhatsApp or WhatsApp Business app (delete it there
-                  first).
-                </li>
+                {onBusinessApp ? (
+                  <li>
+                    • Your number on the WhatsApp Business app (latest version). You keep using the app; in
+                    the popup you confirm with a QR code the app shows. Chats you answer on the phone appear
+                    in the Inbox and the agent steps back from them.
+                  </li>
+                ) : (
+                  <li>
+                    • A number that isn&apos;t in use on WhatsApp or the WhatsApp Business app (delete it
+                    there first), or a new number.
+                  </li>
+                )}
                 <li>• A Facebook account that can manage your business in Meta Business Suite.</li>
               </ul>
+              <label className="mt-4 flex max-w-xl items-start gap-2.5 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 size-4 rounded border-slate-300"
+                  checked={onBusinessApp}
+                  onChange={(e) => setOnBusinessApp(e.target.checked)}
+                />
+                <span>
+                  My number is on the <strong>WhatsApp Business app</strong> and I want to keep using the app
+                </span>
+              </label>
 
               <div className="mt-6 grid max-w-xl gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
                 <SelectField label="Answered by" value={agentId} onChange={(e) => setAgentId(e.target.value)}>
@@ -208,6 +229,8 @@ function NumberCard({
 }) {
   const [testing, setTesting] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [registering, setRegistering] = useState(false);
+  const [pin, setPin] = useState("");
   const assign = useMutation({
     mutationFn: (agentId: string | null) =>
       api(`/whatsapp/numbers/${n.id}`, { method: "PATCH", body: { agentId } }),
@@ -219,7 +242,15 @@ function NumberCard({
     onSuccess: onChanged,
   });
   const register = useMutation({
-    mutationFn: () => api(`/whatsapp/numbers/${n.id}/register`, { method: "POST" }),
+    mutationFn: () => api(`/whatsapp/numbers/${n.id}/register`, { method: "POST", body: pin ? { pin } : {} }),
+    onSuccess: () => {
+      setRegistering(false);
+      setPin("");
+      onChanged();
+    },
+  });
+  const check = useMutation({
+    mutationFn: () => api(`/whatsapp/numbers/${n.id}/check`, { method: "POST" }),
     onSuccess: onChanged,
   });
   const disconnect = useMutation({
@@ -243,15 +274,17 @@ function NumberCard({
           <p className="mt-0.5 text-sm text-slate-500" dir="auto">
             {n.verifiedName ?? "WhatsApp Business"} · connected {fmtDateTime(n.connectedAt)}
             {n.qualityRating ? ` · quality ${QUALITY[n.qualityRating] ?? n.qualityRating}` : ""}
+            {n.onBusinessApp ? " · also on the WhatsApp Business app" : ""}
           </p>
         </div>
         {canManage ? (
           <div className="flex shrink-0 flex-wrap gap-2">
-            {n.status === "PENDING" ? (
-              <Button onClick={() => register.mutate()} loading={register.isPending}>
-                Finish registration
-              </Button>
+            {n.status === "PENDING" && !n.onBusinessApp ? (
+              <Button onClick={() => setRegistering(true)}>Finish registration</Button>
             ) : null}
+            <Button variant="secondary" onClick={() => check.mutate()} loading={check.isPending}>
+              Check connection
+            </Button>
             <Button variant="secondary" onClick={() => setTesting(true)}>
               Send test message
             </Button>
@@ -267,11 +300,12 @@ function NumberCard({
           <Alert>{n.lastError}</Alert>
         </div>
       ) : null}
-      {register.isError ? (
+      {check.isError ? (
         <div className="mt-4">
-          <Alert>{errorMessage(register.error)}</Alert>
+          <Alert>{errorMessage(check.error)}</Alert>
         </div>
       ) : null}
+      <Health number={n} />
 
       <div className="mt-5 max-w-sm">
         {canManage ? (
@@ -342,6 +376,47 @@ function NumberCard({
       </div>
 
       <TestDialog open={testing} number={n} onClose={() => setTesting(false)} />
+      <Dialog
+        open={registering}
+        onClose={() => {
+          register.reset();
+          setRegistering(false);
+        }}
+        title={`Finish registering ${n.displayNumber}`}
+      >
+        <p className="text-sm text-slate-600">
+          Registers the number with the WhatsApp Cloud API so it can send and receive. If you set a two-step
+          verification PIN for this number before (in WhatsApp Manager or the app), enter it; otherwise leave
+          it empty and a new PIN is set.
+        </p>
+        <div className="mt-4 max-w-xs">
+          <TextField
+            label="Two-step verification PIN (optional)"
+            inputMode="numeric"
+            autoComplete="off"
+            maxLength={6}
+            value={pin}
+            onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
+          />
+        </div>
+        {register.isError ? (
+          <div className="mt-3">
+            <Alert>{errorMessage(register.error)}</Alert>
+          </div>
+        ) : null}
+        <div className="mt-6 flex justify-end gap-2">
+          <Button variant="secondary" onClick={() => setRegistering(false)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => register.mutate()}
+            loading={register.isPending}
+            disabled={pin.length > 0 && pin.length !== 6}
+          >
+            Register
+          </Button>
+        </div>
+      </Dialog>
       <Dialog open={confirming} onClose={() => setConfirming(false)} title={`Disconnect ${n.displayNumber}?`}>
         <p className="text-sm text-slate-600">
           Messages to this number stop arriving here and nobody can reply from the Inbox. Past conversations
@@ -362,6 +437,99 @@ function NumberCard({
         </div>
       </Dialog>
     </Card>
+  );
+}
+
+const LIMITS: Record<string, string> = {
+  TIER_50: "50 customers a day",
+  TIER_250: "250 customers a day",
+  TIER_1K: "1,000 customers a day",
+  TIER_10K: "10,000 customers a day",
+  TIER_100K: "100,000 customers a day",
+  TIER_UNLIMITED: "Unlimited",
+};
+
+/** The last connection check, as a short list the owner can act on */
+function Health({ number: n }: { number: WhatsAppNumber }) {
+  const h = n.health;
+  if (!h.checkedAt && !n.lastWebhookAt) return null;
+  const rows: { label: string; ok: boolean | null; value: string }[] = [];
+  if (h.token)
+    rows.push({
+      label: "Meta access",
+      ok: h.token === "ok",
+      value:
+        h.token === "ok"
+          ? "Working"
+          : h.token === "rejected"
+            ? "Token rejected: connect again"
+            : "Meta didn't answer",
+    });
+  if (h.checkedAt && h.token === "ok")
+    rows.push({
+      label: "Registered for the Cloud API",
+      ok: n.onBusinessApp ? true : (h.registered ?? null),
+      value: n.onBusinessApp
+        ? "Not needed (stays on the WhatsApp Business app)"
+        : h.registered === true
+          ? "Yes"
+          : h.registered === false
+            ? "No: use Finish registration"
+            : "Unknown",
+    });
+  if (h.checkedAt && h.token === "ok")
+    rows.push({
+      label: "Receives messages (webhooks)",
+      ok: h.webhookSubscribed ?? null,
+      value:
+        h.webhookSubscribed === true
+          ? h.resubscribed
+            ? "Subscribed again just now"
+            : "Subscribed"
+          : "Couldn't check",
+    });
+  rows.push({
+    label: "Last update from Meta",
+    ok: n.lastWebhookAt ? true : null,
+    value: n.lastWebhookAt
+      ? fmtDateTime(n.lastWebhookAt)
+      : "None yet: send a message to the number from another phone",
+  });
+  if (h.nameStatus)
+    rows.push({
+      label: "Display name",
+      ok: h.nameStatus === "APPROVED" ? true : h.nameStatus === "DECLINED" ? false : null,
+      value: h.nameStatus.toLowerCase().replace(/_/g, " "),
+    });
+  if (n.messagingLimit)
+    rows.push({ label: "Messaging limit", ok: null, value: LIMITS[n.messagingLimit] ?? n.messagingLimit });
+  return (
+    <div className="mt-5 rounded-lg border border-slate-200 p-4">
+      <p className="text-sm font-medium text-slate-900">
+        Connection{" "}
+        {h.checkedAt ? (
+          <span className="font-normal text-slate-500">· checked {fmtDateTime(h.checkedAt)}</span>
+        ) : null}
+      </p>
+      <dl className="mt-2 grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-[max-content_1fr]">
+        {rows.map((r) => (
+          <div key={r.label} className="contents">
+            <dt className="text-slate-500">{r.label}</dt>
+            <dd className="flex items-center gap-1.5 text-slate-900">
+              <span
+                aria-hidden
+                className={
+                  r.ok === true ? "text-green-600" : r.ok === false ? "text-red-600" : "text-slate-400"
+                }
+              >
+                {r.ok === true ? "✓" : r.ok === false ? "✕" : "•"}
+              </span>
+              {r.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </div>
   );
 }
 

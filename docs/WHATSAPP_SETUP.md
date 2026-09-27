@@ -36,7 +36,14 @@ answering, so several short messages get one reply.
      (e.g. `https://api.example.com/api/v1/webhooks/whatsapp`; Settings → WhatsApp shows it)
    - Verify token: the same token.
    - **Verify and save**. Meta calls the URL; the API answers only with the right token.
-4. **Webhook fields → messages → Subscribe.**
+4. **Webhook fields**, subscribe to:
+   - **messages**: customers' messages and delivery ticks
+   - **smb_message_echoes**: replies the owner types on the WhatsApp Business app (numbers that stay
+     on the app); they show in the Inbox and the agent steps back from that chat
+   - **account_update**: bans, restrictions, the business removing the app
+   - **phone_number_quality_update**: quality flags and messaging-limit changes
+
+   Settings → WhatsApp lists the same fields. Missing ones only lose those updates.
 
 Every webhook is checked with `X-Hub-Signature-256` (HMAC of the raw body with the app secret);
 anything unsigned is refused. Businesses' numbers are subscribed to the app automatically when
@@ -62,6 +69,16 @@ http://localhost:4000`) and use that address as `PUBLIC_BASE_URL` and in the cal
 
 Until App Review is approved, only people with a role on the app (and the test number) can
 connect.
+
+### Numbers on the WhatsApp Business app (coexistence)
+
+Most small businesses already answer customers on the **WhatsApp Business app**. They don't have
+to give it up: on Settings → WhatsApp they tick **"My number is on the WhatsApp Business app"**
+before **Continue with Facebook**. Meta's popup then asks them to scan a QR code in the app. The
+number is **not registered** again (that would log the app out); messages reach both the app and
+the platform. Needs a recent version of the app and a country where Meta offers it **(confirm for
+Qatar in Meta's coexistence documentation)**; the `smb_message_echoes` field above; and Meta
+limits such numbers to a lower message rate.
 
 ## 4. Environment variables (API)
 
@@ -90,6 +107,12 @@ Voice notes are encoded and decoded in Node.js (libopus in WebAssembly): no ffmp
 Without `GEMINI_API_KEY` customers who send a voice note are asked to type.
 
 ## 5. Checking it
+
+Each number's card has **Check connection**: Meta still accepts the token, the number is
+registered for the Cloud API (else **Finish registration**, with the owner's two-step PIN if they
+set one), the platform's app still receives the account's webhooks (it subscribes again if
+someone removed it), the last update from Meta, the display-name status and the messaging limit.
+It runs once automatically after connecting.
 
 1. As a business owner: **Settings → WhatsApp → Continue with Facebook**, finish the popup, pick
    the agent. The number shows **Connected** with its quality rating.

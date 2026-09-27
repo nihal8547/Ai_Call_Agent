@@ -9,7 +9,22 @@ export type WhatsAppNumber = {
   lastError: string | null;
   connectedAt: string;
   settings: { voiceReplies?: "voice" | "text" | "both"; voice?: string };
+  onBusinessApp: boolean;
+  messagingLimit: string | null;
+  lastWebhookAt: string | null;
+  health: Partial<NumberHealth>;
   agent: { id: string; name: string; status: string } | null;
+};
+
+export type NumberHealth = {
+  checkedAt: string;
+  token: "ok" | "rejected" | "unreachable";
+  registered: boolean | null;
+  platformType: string | null;
+  phoneStatus: string | null;
+  nameStatus: string | null;
+  webhookSubscribed: boolean | null;
+  resubscribed: boolean;
 };
 
 export type WhatsAppOverview = {
@@ -20,6 +35,7 @@ export type WhatsAppOverview = {
     graphVersion: string;
     webhookUrl: string;
     webhookReady: boolean;
+    webhookFields: string[];
     speech: boolean;
   };
   numbers: WhatsAppNumber[];

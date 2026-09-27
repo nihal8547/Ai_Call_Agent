@@ -1001,6 +1001,14 @@ model WhatsAppNumber {
   lastError     String?              @map("last_error")
   /// zod: WhatsAppNumberSettings (reply mode, voice, greeting …)
   settings      Json                 @default("{}")
+  /// The number stays on the WhatsApp Business app too (coexistence): never registered by us
+  onBusinessApp Boolean              @default(false) @map("on_business_app")
+  /// Meta's messaging limit (e.g. TIER_1K), from checks and quality webhooks
+  messagingLimit String?             @map("messaging_limit") @db.VarChar(32)
+  /// Last webhook Meta sent about this number (proves webhooks arrive)
+  lastWebhookAt DateTime?            @map("last_webhook_at") @db.Timestamptz(3)
+  /// Result of the last connection check (registration, webhook subscription, name status …)
+  health        Json                 @default("{}")
   connectedAt   DateTime             @default(now()) @map("connected_at") @db.Timestamptz(3)
   createdAt     DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt     DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)

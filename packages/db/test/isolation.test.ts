@@ -138,6 +138,29 @@ describe.skipIf(!hasDb)("tenant isolation (Row-Level Security)", () => {
   });
 
   describe("pre-tenant lookups (SECURITY DEFINER)", () => {
+    it("work where the schema owner isn't a superuser: every forced-RLS table lets the owner in", async () => {
+      // Managed Postgres (RDS, Cloud SQL) owners are filtered by FORCE ROW LEVEL SECURITY too;
+      // without owner_access the definer lookups would find nothing there
+      const owner = ownerClient();
+      try {
+        const missing = await owner.$queryRaw<{ relname: string }[]>`
+          SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relforcerowsecurity
+            AND NOT EXISTS (
+              SELECT 1 FROM pg_policies p
+              WHERE p.schemaname = 'public' AND p.tablename = c.relname AND p.policyname = 'owner_access'
+            )`;
+        expect(missing.map((r) => r.relname)).toEqual([]);
+        // …and it is the owner's alone: the runtime role gets no such policy
+        const forApp = await owner.$queryRaw<{ n: bigint }[]>`
+          SELECT count(*) AS n FROM pg_policies
+          WHERE policyname = 'owner_access' AND 'app_user' = ANY (roles)`;
+        expect(Number(forApp[0]!.n)).toBe(0);
+      } finally {
+        await owner.$disconnect();
+      }
+    });
+
     it("routes a phone number to its tenant and agent", async () => {
       await expect(resolvePhoneNumber(prisma, A.phone)).resolves.toMatchObject({
         tenantId: A.tenantId,

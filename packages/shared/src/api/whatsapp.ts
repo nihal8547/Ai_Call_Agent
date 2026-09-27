@@ -12,8 +12,22 @@ export const WhatsAppEmbeddedSignupBody = z.object({
   wabaId: MetaId,
   phoneNumberId: MetaId,
   agentId: z.uuid().nullish(),
+  /**
+   * The number stays on the WhatsApp Business app (Meta's "coexistence" onboarding): the owner
+   * keeps chatting on the phone, and the number isn't registered again.
+   */
+  onBusinessApp: z.boolean().default(false),
 });
 export type WhatsAppEmbeddedSignupBody = z.infer<typeof WhatsAppEmbeddedSignupBody>;
+
+/** Finish registering a number; the owner's two-step verification PIN if they set one */
+export const RegisterWhatsAppNumberBody = z.object({
+  pin: z
+    .string()
+    .trim()
+    .regex(/^\d{6}$/, "The PIN has 6 digits")
+    .optional(),
+});
 
 /** Other way to connect: a permanent System User token from the business's own Meta setup */
 export const WhatsAppManualConnectBody = z.object({

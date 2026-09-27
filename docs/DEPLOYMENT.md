@@ -27,6 +27,10 @@ Database roles (the same as [`infra/postgres/init.sql`](../infra/postgres/init.s
   tenant table, so one business can never read another's rows even through a bug.
 - The migration creates the `vector` extension: on managed Postgres, allow it for the owner first
   (e.g. `rds_superuser`, or enable it in the provider's extension list).
+- Tables force Row-Level Security, which also filters the owner when it isn't a superuser (the
+  usual case on managed Postgres). The pre-sign-in lookups (phone and WhatsApp routing, sign-in,
+  API keys) run as the owner, so every tenant table has an `owner_access` policy for the role
+  that ran the migrations. Run migrations as that same owner; never as `voice_app`.
 
 ## 2. Where to run the containers
 

@@ -19,6 +19,32 @@ export type PhoneNumberInfo = {
 
 export type MediaInfo = { url: string; mimeType: string; fileSize: number | null };
 
+/** A message template as the Inbox shows it */
+export type MessageTemplate = {
+  id: string;
+  name: string;
+  language: string;
+  status: string;
+  category: string | null;
+  /** TEXT, IMAGE, VIDEO, DOCUMENT, LOCATION or null (no header) */
+  headerFormat: string | null;
+  headerText: string | null;
+  body: string;
+  footer: string | null;
+  buttons: { type: string; text: string; url: string | null }[];
+};
+
+/** What Meta says about a number's readiness (fields Meta may not return are null) */
+export type PhoneNumberHealth = PhoneNumberInfo & {
+  /** CLOUD_API once registered; NOT_APPLICABLE before */
+  platformType: string | null;
+  /** CONNECTED, PENDING, DISCONNECTED, FLAGGED, RESTRICTED … */
+  status: string | null;
+  /** APPROVED, PENDING_REVIEW, DECLINED … (the display name) */
+  nameStatus: string | null;
+  messagingLimit: string | null;
+};
+
 type GraphErrorBody = {
   error?: { message?: string; code?: number; error_user_msg?: string; error_data?: { details?: string } };
 };
@@ -60,6 +86,48 @@ export class GraphClient {
       qualityRating: r.quality_rating ?? null,
       codeVerificationStatus: r.code_verification_status ?? null,
     };
+  }
+
+  /**
+   * Readiness details for the connection check. Falls back to the basic fields if Meta refuses
+   * one of the extra ones (field names change between API versions).
+   */
+  async phoneNumberHealth(token: string, phoneNumberId: string): Promise<PhoneNumberHealth> {
+    type Raw = {
+      platform_type?: string;
+      status?: string;
+      name_status?: string;
+      messaging_limit_tier?: string;
+    };
+    let extra: Raw = {};
+    try {
+      extra = await this.call<Raw>(
+        "GET",
+        `/${enc(phoneNumberId)}?fields=platform_type,status,name_status,messaging_limit_tier`,
+        token,
+      );
+    } catch (err) {
+      if (!(err instanceof WhatsAppError) || err.kind !== "invalid") throw err;
+    }
+    return {
+      ...(await this.phoneNumber(token, phoneNumberId)),
+      platformType: extra.platform_type ?? null,
+      status: extra.status ?? null,
+      nameStatus: extra.name_status ?? null,
+      messagingLimit: extra.messaging_limit_tier ?? null,
+    };
+  }
+
+  /** Apps receiving this WhatsApp Business account's webhooks (ids) */
+  async subscribedApps(token: string, wabaId: string): Promise<string[]> {
+    const r = await this.call<{ data?: { whatsapp_business_api_data?: { id?: string } }[] }>(
+      "GET",
+      `/${enc(wabaId)}/subscribed_apps`,
+      token,
+    );
+    return (r.data ?? []).flatMap((a) =>
+      a.whatsapp_business_api_data?.id ? [a.whatsapp_business_api_data.id] : [],
+    );
   }
 
   /** The phone number ids in a WhatsApp Business account (proves the token can use them) */
@@ -106,18 +174,88 @@ export class GraphClient {
     });
   }
 
-  /** An approved template (the only kind allowed outside the 24-hour window) */
+  /**
+   * An approved template (the only kind allowed outside the 24-hour window), with its {{n}}
+   * values for the header and body.
+   */
   async sendTemplate(
     token: string,
     phoneNumberId: string,
     to: string,
     name: string,
     languageCode: string,
+    values: { header?: string[]; body?: string[] } = {},
   ): Promise<{ wamid: string }> {
+    const params = (list: string[]) => list.map((text) => ({ type: "text", text }));
+    const components = [
+      ...(values.header?.length ? [{ type: "header", parameters: params(values.header) }] : []),
+      ...(values.body?.length ? [{ type: "body", parameters: params(values.body) }] : []),
+    ];
     return this.send(token, phoneNumberId, {
       to,
       type: "template",
-      template: { name, language: { code: languageCode } },
+      template: { name, language: { code: languageCode }, ...(components.length ? { components } : {}) },
+    });
+  }
+
+  /** The account's message templates (all statuses; callers keep the approved ones) */
+  async messageTemplates(token: string, wabaId: string): Promise<MessageTemplate[]> {
+    const r = await this.call<{
+      data?: {
+        id: string;
+        name: string;
+        language: string;
+        status: string;
+        category?: string;
+        components?: {
+          type: string;
+          format?: string;
+          text?: string;
+          buttons?: { type: string; text?: string; url?: string }[];
+        }[];
+      }[];
+    }>(
+      "GET",
+      `/${enc(wabaId)}/message_templates?fields=name,language,status,category,components&limit=200`,
+      token,
+    );
+    return (r.data ?? []).map((t) => {
+      const header = t.components?.find((c) => c.type === "HEADER");
+      const body = t.components?.find((c) => c.type === "BODY");
+      const footer = t.components?.find((c) => c.type === "FOOTER");
+      const buttons = t.components?.find((c) => c.type === "BUTTONS")?.buttons ?? [];
+      return {
+        id: t.id,
+        name: t.name,
+        language: t.language,
+        status: t.status,
+        category: t.category ?? null,
+        headerFormat: header?.format ?? null,
+        headerText: header?.format === "TEXT" ? (header.text ?? null) : null,
+        body: body?.text ?? "",
+        footer: footer?.text ?? null,
+        buttons: buttons.map((b) => ({ type: b.type, text: b.text ?? "", url: b.url ?? null })),
+      };
+    });
+  }
+
+  /** An uploaded image, video, document or sticker sent to the customer */
+  async sendMedia(
+    token: string,
+    phoneNumberId: string,
+    to: string,
+    kind: "image" | "video" | "document" | "sticker",
+    mediaId: string,
+    opts: { caption?: string | null; filename?: string | null; replyTo?: string | null } = {},
+  ): Promise<{ wamid: string }> {
+    const media: Record<string, string> = { id: mediaId };
+    if (opts.caption && kind !== "sticker") media.caption = opts.caption.slice(0, 1024);
+    if (opts.filename && kind === "document") media.filename = opts.filename.slice(0, 240);
+    return this.send(token, phoneNumberId, {
+      to,
+      type: kind,
+      [kind]: media,
+      ...(opts.replyTo ? { context: { message_id: opts.replyTo } } : {}),
     });
   }
 

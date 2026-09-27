@@ -11,6 +11,7 @@ import {
   Req,
 } from "@nestjs/common";
 import {
+  RegisterWhatsAppNumberBody,
   UpdateWhatsAppNumberBody,
   WhatsAppEmbeddedSignupBody,
   WhatsAppManualConnectBody,
@@ -72,8 +73,23 @@ export class WhatsAppController {
 
   @Post("numbers/:id/register")
   @RequirePermissions("chats:manage")
-  register(@CurrentAuth() auth: AuthContext, @Param("id", ParseUUIDPipe) id: string) {
-    return this.accounts.retryRegistration(auth, id);
+  @RateLimit({ name: "whatsapp-register", limit: 10, windowSeconds: 600, by: "ip" })
+  register(
+    @CurrentAuth() auth: AuthContext,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(RegisterWhatsAppNumberBody))
+    body: z.output<typeof RegisterWhatsAppNumberBody>,
+  ) {
+    return this.accounts.retryRegistration(auth, id, body.pin);
+  }
+
+  /** Check the connection with Meta: token, registration, webhook subscription, limits */
+  @Post("numbers/:id/check")
+  @HttpCode(200)
+  @RequirePermissions("chats:manage")
+  @RateLimit({ name: "whatsapp-check", limit: 20, windowSeconds: 600, by: "ip" })
+  check(@CurrentAuth() auth: AuthContext, @Param("id", ParseUUIDPipe) id: string) {
+    return this.accounts.check(auth.tenantId, id);
   }
 
   @Post("numbers/:id/test")

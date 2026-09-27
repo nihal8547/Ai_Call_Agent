@@ -1,5 +1,5 @@
 import { HttpStatus, Inject, Injectable, Logger } from "@nestjs/common";
-import { Prisma, type WhatsAppNumber } from "@platform/db";
+import { Prisma, releaseWhatsAppNumber, resolveWhatsAppNumber, type WhatsAppNumber } from "@platform/db";
 import {
   type UpdateWhatsAppNumberBody,
   type WhatsAppEmbeddedSignupBody,
@@ -12,6 +12,7 @@ import type { z } from "zod";
 import type { AuthContext } from "../../common/auth/auth.types";
 import { AppException } from "../../common/filters/problem-details.filter";
 import { API_ENV, type ApiEnv } from "../../config/env";
+import { PrismaService } from "../../infra/prisma.service";
 import { TenantDbService } from "../../infra/tenant-db.service";
 import { TenantKeysService } from "../../infra/tenant-keys.service";
 import { AuditService } from "../audit/audit.service";
@@ -39,8 +40,30 @@ export const NUMBER_VIEW = {
   lastError: true,
   connectedAt: true,
   settings: true,
+  onBusinessApp: true,
+  messagingLimit: true,
+  lastWebhookAt: true,
+  health: true,
   agent: { select: { id: true, name: true, status: true } },
 } as const;
+
+/** The last connection check, stored on the number and shown on its card */
+export type NumberHealth = {
+  checkedAt: string;
+  /** Meta accepted the stored token */
+  token: "ok" | "rejected" | "unreachable";
+  /** Registered for the Cloud API (null: unknown, or a number on the WhatsApp Business app) */
+  registered: boolean | null;
+  platformType: string | null;
+  phoneStatus: string | null;
+  nameStatus: string | null;
+  /** The platform's app receives this account's webhooks (null: couldn't tell) */
+  webhookSubscribed: boolean | null;
+  /** It wasn't, and the check subscribed it again */
+  resubscribed: boolean;
+};
+
+const NOT_REGISTERED = "Not registered for the WhatsApp Cloud API yet. Use Finish registration.";
 
 /** Meta's error, said so a business owner can act on it */
 export function metaProblem(err: unknown, doing: string): AppException {
@@ -74,6 +97,7 @@ export class WhatsAppAccountsService {
 
   constructor(
     @Inject(API_ENV) private readonly env: ApiEnv,
+    private readonly prisma: PrismaService,
     private readonly tenantDb: TenantDbService,
     private readonly keys: TenantKeysService,
     private readonly audit: AuditService,
@@ -97,6 +121,8 @@ export class WhatsAppAccountsService {
       graphVersion: e.META_GRAPH_VERSION,
       webhookUrl: `${e.PUBLIC_BASE_URL}/api/v1/webhooks/whatsapp`,
       webhookReady: Boolean(e.META_APP_SECRET && e.WHATSAPP_VERIFY_TOKEN),
+      /** Webhook fields the Meta app must subscribe to */
+      webhookFields: ["messages", "smb_message_echoes", "account_update", "phone_number_quality_update"],
       /** Voice notes are transcribed and spoken with Gemini */
       speech: Boolean(e.GEMINI_API_KEY),
     };
@@ -140,11 +166,17 @@ export class WhatsAppAccountsService {
       phoneNumberId: string;
       agentId?: string | null | undefined;
       via: StoredCredentials["via"];
+      /** Stays on the WhatsApp Business app (coexistence): never registered by us */
+      onBusinessApp?: boolean;
     },
     meta: Meta,
   ) {
     const { token, wabaId, phoneNumberId } = input;
     if (input.agentId) await this.assertAgent(auth.tenantId, input.agentId);
+    // Another business answers on this number: refuse before touching it at Meta (registering
+    // would change its PIN)
+    const owner = await resolveWhatsAppNumber(this.prisma.client, phoneNumberId);
+    if (owner && owner.tenantId !== auth.tenantId) throw alreadyConnected();
 
     // The token must actually reach this number: nobody can claim a number they don't control
     let info;
@@ -165,10 +197,12 @@ export class WhatsAppAccountsService {
     }
 
     // Embedded Signup numbers are new to the Cloud API and must be registered (sets a two-step PIN).
-    // Pasted tokens belong to numbers the business already runs: their PIN is left alone.
+    // Pasted tokens belong to numbers the business already runs: their PIN is left alone. Numbers
+    // that stay on the WhatsApp Business app are never registered (it would log the app out).
     let pin: string | null = null;
     let registerError: string | null = null;
-    if (input.via === "embedded_signup") {
+    const onBusinessApp = Boolean(input.onBusinessApp);
+    if (input.via === "embedded_signup" && !onBusinessApp) {
       pin = String(randomInt(0, 1_000_000)).padStart(6, "0");
       try {
         await this.graph.register(token, phoneNumberId, pin);
@@ -190,7 +224,12 @@ export class WhatsAppAccountsService {
     } satisfies StoredCredentials);
 
     try {
-      return await this.tenantDb.tx(auth.tenantId, async (tx) => {
+      // Another business disconnected this number earlier: its row (and history) stays, the id moves aside
+      const mine = await this.tenantDb
+        .db(auth.tenantId)
+        .whatsAppNumber.findUnique({ where: { phoneNumberId } });
+      if (!mine) await releaseWhatsAppNumber(this.prisma.client, phoneNumberId);
+      const connected = await this.tenantDb.tx(auth.tenantId, async (tx) => {
         const existing = await tx.whatsAppNumber.findUnique({ where: { phoneNumberId } });
         if (existing?.integrationId) await tx.integration.delete({ where: { id: existing.integrationId } });
         await tx.integration.create({
@@ -198,7 +237,8 @@ export class WhatsAppAccountsService {
             id: integrationId,
             tenantId: auth.tenantId,
             type: "WHATSAPP",
-            name: `WhatsApp ${info.displayPhoneNumber || phoneNumberId}`.slice(0, 80),
+            // Unique per business: the id keeps two numbers with the same display apart
+            name: `WhatsApp ${info.displayPhoneNumber || "number"} · ${phoneNumberId}`.slice(0, 80),
             credentialsEncrypted: sealed,
             config: { phoneNumberId, wabaId, via: input.via },
           },
@@ -211,6 +251,7 @@ export class WhatsAppAccountsService {
           qualityRating: info.qualityRating,
           status: registerError ? ("PENDING" as const) : ("CONNECTED" as const),
           lastError: registerError ? `Meta registration: ${registerError}` : null,
+          onBusinessApp,
           connectedAt: new Date(),
           ...(input.agentId !== undefined ? { agentId: input.agentId } : {}),
         };
@@ -224,18 +265,23 @@ export class WhatsAppAccountsService {
           action: "whatsapp.connected",
           entityType: "whatsapp_number",
           entityId: number.id,
-          after: { displayNumber: number.displayNumber, wabaId, via: input.via, status: number.status },
+          after: {
+            displayNumber: number.displayNumber,
+            wabaId,
+            via: input.via,
+            status: number.status,
+            onBusinessApp,
+          },
           ...meta,
         });
         return number;
       });
+      // First connection check (registration, webhook subscription, limits); best effort
+      return await this.check(auth.tenantId, connected.id).catch(() => connected);
     } catch (err) {
+      // Two businesses connecting the same number at once: the unique phone_number_id keeps one
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002")
-        throw new AppException(
-          HttpStatus.CONFLICT,
-          "CONFLICT",
-          "This WhatsApp number is already connected to another business on this platform.",
-        );
+        throw alreadyConnected();
       throw err;
     }
   }
@@ -268,11 +314,20 @@ export class WhatsAppAccountsService {
     });
   }
 
-  /** Finish a registration that failed while connecting */
-  async retryRegistration(auth: AuthContext, id: string) {
+  /**
+   * Finish a registration that failed while connecting (or a pasted number that was never
+   * registered). `pin`: the number's existing two-step verification PIN, if the owner set one.
+   */
+  async retryRegistration(auth: AuthContext, id: string, ownerPin?: string) {
     const number = await this.find(auth.tenantId, id);
+    if (number.onBusinessApp)
+      throw new AppException(
+        HttpStatus.CONFLICT,
+        "CONFLICT",
+        "This number stays on the WhatsApp Business app, so it isn't registered here.",
+      );
     const creds = await this.credentials(auth.tenantId, number);
-    const pin = creds.pin ?? String(randomInt(0, 1_000_000)).padStart(6, "0");
+    const pin = ownerPin ?? creds.pin ?? String(randomInt(0, 1_000_000)).padStart(6, "0");
     try {
       await this.graph.register(creds.accessToken, number.phoneNumberId, pin);
     } catch (err) {
@@ -282,9 +337,97 @@ export class WhatsAppAccountsService {
       });
       throw metaProblem(err, "Registering the number");
     }
-    return this.tenantDb.db(auth.tenantId).whatsAppNumber.update({
+    // Keep the PIN that now protects the number (needed to register it again later)
+    if (pin !== creds.pin && number.integrationId) {
+      const sealed = await this.keys.seal(auth.tenantId, purpose(number.integrationId), { ...creds, pin });
+      await this.tenantDb
+        .db(auth.tenantId)
+        .integration.update({ where: { id: number.integrationId }, data: { credentialsEncrypted: sealed } });
+    }
+    await this.tenantDb.db(auth.tenantId).whatsAppNumber.update({
       where: { id },
       data: { status: "CONNECTED", lastError: null },
+    });
+    return this.check(auth.tenantId, id);
+  }
+
+  /**
+   * The connection check: Meta still accepts the token, the number is registered, the platform's
+   * app still receives the account's webhooks (subscribed again if not), and the latest quality,
+   * name status and messaging limit. Stored on the number for its card.
+   */
+  async check(tenantId: string, id: string) {
+    const number = await this.find(tenantId, id);
+    const db = this.tenantDb.db(tenantId);
+    const health: NumberHealth = {
+      checkedAt: new Date().toISOString(),
+      token: "ok",
+      registered: null,
+      platformType: null,
+      phoneStatus: null,
+      nameStatus: null,
+      webhookSubscribed: null,
+      resubscribed: false,
+    };
+    const creds = await this.credentials(tenantId, number);
+    let info;
+    try {
+      info = await this.graph.phoneNumberHealth(creds.accessToken, number.phoneNumberId);
+    } catch (err) {
+      const rejected = err instanceof WhatsAppError && (err.kind === "auth" || err.kind === "permission");
+      health.token = rejected ? "rejected" : "unreachable";
+      return db.whatsAppNumber.update({
+        where: { id },
+        data: {
+          health,
+          ...(rejected
+            ? {
+                lastError:
+                  "Meta rejected the access token. Reconnect this number with Continue with Facebook or a new token.",
+              }
+            : {}),
+        },
+        select: NUMBER_VIEW,
+      });
+    }
+    try {
+      const apps = await this.graph.subscribedApps(creds.accessToken, number.wabaId);
+      const ours = this.env.META_APP_ID ? apps.includes(this.env.META_APP_ID) : apps.length > 0;
+      if (!ours) {
+        await this.graph.subscribeApp(creds.accessToken, number.wabaId);
+        health.resubscribed = true;
+      }
+      health.webhookSubscribed = true;
+    } catch {
+      health.webhookSubscribed = null;
+    }
+    health.platformType = info.platformType;
+    health.phoneStatus = info.status;
+    health.nameStatus = info.nameStatus;
+    health.registered = number.onBusinessApp || !info.platformType ? null : info.platformType === "CLOUD_API";
+
+    const registrationProblem =
+      (number.lastError ?? "").startsWith("Meta registration") || number.lastError === NOT_REGISTERED;
+    const tokenProblem = (number.lastError ?? "").startsWith("Meta rejected the access token");
+    return db.whatsAppNumber.update({
+      where: { id },
+      data: {
+        health,
+        displayNumber: info.displayPhoneNumber || number.displayNumber,
+        verifiedName: info.verifiedName ?? number.verifiedName,
+        qualityRating: info.qualityRating ?? number.qualityRating,
+        messagingLimit: info.messagingLimit ?? number.messagingLimit,
+        ...(health.registered === false
+          ? {
+              status: "PENDING" as const,
+              lastError: number.lastError && registrationProblem ? number.lastError : NOT_REGISTERED,
+            }
+          : health.registered === true && number.status === "PENDING"
+            ? { status: "CONNECTED" as const, lastError: null }
+            : registrationProblem || tokenProblem
+              ? { lastError: null }
+              : {}),
+      },
       select: NUMBER_VIEW,
     });
   }
@@ -378,5 +521,12 @@ export class WhatsAppAccountsService {
       ]);
   }
 }
+
+const alreadyConnected = () =>
+  new AppException(
+    HttpStatus.CONFLICT,
+    "CONFLICT",
+    "This WhatsApp number is already connected to another business on this platform.",
+  );
 
 const numberNotFound = () => new AppException(HttpStatus.NOT_FOUND, "NOT_FOUND", "WhatsApp number not found");

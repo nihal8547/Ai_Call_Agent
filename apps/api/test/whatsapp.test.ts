@@ -50,6 +50,8 @@ function installGraph() {
         quality_rating: "GREEN",
         code_verification_status: "VERIFIED",
       });
+    if (path.endsWith("/subscribed_apps") && method === "GET")
+      return json({ data: [{ whatsapp_business_api_data: { id: "1234567890", name: "Platform" } }] });
     if (path.endsWith("/subscribed_apps") || path.endsWith("/register")) return json({ success: true });
     if (path.endsWith("/messages")) {
       if (body?.to === "97400000000")
@@ -149,6 +151,7 @@ describe.skipIf(!hasTestDb)("WhatsApp: connect, webhook, Inbox and sending", () 
         graphVersion: "v23.0",
         webhookUrl: "https://voice.test/api/v1/webhooks/whatsapp",
         webhookReady: true,
+        webhookFields: ["messages", "smb_message_echoes", "account_update", "phone_number_quality_update"],
         speech: false,
       },
       numbers: [],
@@ -191,6 +194,10 @@ describe.skipIf(!hasTestDb)("WhatsApp: connect, webhook, Inbox and sending", () 
       `GET /${PNID}`,
       `POST /${WABA}/subscribed_apps`,
       `POST /${PNID}/register`,
+      // The first connection check: readiness fields, then the webhook subscription
+      `GET /${PNID}`,
+      `GET /${PNID}`,
+      `GET /${WABA}/subscribed_apps`,
     ]);
     expect(String(seen[4]!.body?.pin)).toMatch(/^\d{6}$/);
 
@@ -394,6 +401,16 @@ describe.skipIf(!hasTestDb)("WhatsApp: connect, webhook, Inbox and sending", () 
 
     await post(webhookBody(textMessage("wamid.IN-after", "97455123456", "Anyone?")));
     expect(await db().conversationMessage.count({ where: { wamid: w("wamid.IN-after") } })).toBe(0);
+    expect((await owner.client.get("/api/v1/chats?filter=closed")).json().items.length).toBeGreaterThan(0);
+
+    // Now free: another business can connect the number, and the first keeps its history
+    const next = await registerOwner(app, "whatsapp-next");
+    const taken = await next.client.post("/api/v1/whatsapp/connect/manual", {
+      accessToken: "biz-token-manual-0123456789",
+      wabaId: WABA,
+      phoneNumberId: PNID,
+    });
+    expect(taken.statusCode).toBe(201);
     expect((await owner.client.get("/api/v1/chats?filter=closed")).json().items.length).toBeGreaterThan(0);
   });
 });

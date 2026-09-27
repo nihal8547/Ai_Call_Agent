@@ -59,7 +59,37 @@ export type StatusUpdate = {
   error: { code: number; title: string; detail: string | null } | null;
 };
 
-export type WebhookEvent = InboundMessage | StatusUpdate;
+/**
+ * A message the business sent from the WhatsApp Business app on a number that stays on the app
+ * (coexistence): shown in the Inbox, and the agent steps back from that conversation.
+ */
+export type EchoMessage = Omit<InboundMessage, "kind" | "profileName"> & {
+  kind: "echo";
+  /** The customer's WhatsApp id */
+  to: string;
+};
+
+/** Account-level news from Meta (bans, restrictions, the business removing the app) */
+export type AccountUpdate = {
+  kind: "account";
+  wabaId: string;
+  /** Digits of the number concerned, when Meta names one */
+  number: string | null;
+  event: string;
+  detail: string | null;
+};
+
+/** A number's quality or messaging limit changed */
+export type QualityUpdate = {
+  kind: "quality";
+  wabaId: string;
+  number: string | null;
+  /** FLAGGED, UNFLAGGED, UPGRADE, DOWNGRADE … */
+  event: string;
+  currentLimit: string | null;
+};
+
+export type WebhookEvent = InboundMessage | StatusUpdate | EchoMessage | AccountUpdate | QualityUpdate;
 
 // Lenient schemas: Meta adds fields over time; unknown fields are ignored, unknown types kept as UNSUPPORTED
 const Media = z.object({
@@ -145,6 +175,7 @@ const Payload = z.looseObject({
               .optional(),
             messages: z.array(z.unknown()).optional(),
             statuses: z.array(z.unknown()).optional(),
+            message_echoes: z.array(z.unknown()).optional(),
           }),
         }),
       ),
@@ -246,6 +277,22 @@ export function parseWebhook(body: unknown): WebhookEvent[] {
   const events: WebhookEvent[] = [];
   for (const entry of payload.data.entry) {
     for (const change of entry.changes) {
+      if (change.field === "account_update" || change.field === "phone_number_quality_update") {
+        const e = accountEvent(change.field, entry.id, change.value);
+        if (e) events.push(e);
+        continue;
+      }
+      if (change.field === "smb_message_echoes") {
+        const phoneNumberId = change.value.metadata?.phone_number_id;
+        if (!phoneNumberId) continue;
+        for (const raw of change.value.message_echoes ?? []) {
+          const m = RawMessage.extend({ to: z.string() }).safeParse(raw);
+          if (!m.success) continue;
+          const { kind: _k, profileName: _p, ...rest } = normaliseMessage(m.data, phoneNumberId, new Map());
+          events.push({ ...rest, kind: "echo", to: m.data.to });
+        }
+        continue;
+      }
       if (change.field !== "messages") continue;
       const v = change.value;
       const phoneNumberId = v.metadata?.phone_number_id;
@@ -280,6 +327,44 @@ export function parseWebhook(body: unknown): WebhookEvent[] {
     }
   }
   return events;
+}
+
+const AccountValue = z.looseObject({
+  event: z.string(),
+  phone_number: z.union([z.string(), z.number()]).optional(),
+  display_phone_number: z.union([z.string(), z.number()]).optional(),
+  current_limit: z.string().optional(),
+  ban_info: z.looseObject({ waba_ban_state: z.string().optional() }).optional(),
+  restriction_info: z.array(z.looseObject({ restriction_type: z.string().optional() })).optional(),
+  violation_info: z.looseObject({ violation_type: z.string().optional() }).optional(),
+});
+
+function accountEvent(
+  field: "account_update" | "phone_number_quality_update",
+  wabaId: string | undefined,
+  value: unknown,
+): AccountUpdate | QualityUpdate | null {
+  const v = AccountValue.safeParse(value);
+  if (!v.success || !wabaId) return null;
+  const raw = v.data.phone_number ?? v.data.display_phone_number;
+  const number = raw !== undefined ? String(raw).replace(/\D/g, "") || null : null;
+  if (field === "phone_number_quality_update")
+    return {
+      kind: "quality",
+      wabaId,
+      number,
+      event: v.data.event,
+      currentLimit: v.data.current_limit ?? null,
+    };
+  const detail =
+    v.data.violation_info?.violation_type ??
+    v.data.ban_info?.waba_ban_state ??
+    v.data.restriction_info
+      ?.map((r) => r.restriction_type)
+      .filter(Boolean)
+      .join(", ") ??
+    null;
+  return { kind: "account", wabaId, number, event: v.data.event, detail: detail || null };
 }
 
 /** A WhatsApp id ("97455123456") as E.164 ("+97455123456") */

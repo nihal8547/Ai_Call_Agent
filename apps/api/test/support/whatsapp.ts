@@ -17,8 +17,20 @@ export function fakeGraph(
   gemini?: (body: Record<string, unknown>) => Response | Promise<Response>,
 ) {
   const calls: GraphCall[] = [];
-  /** Files customers "sent": media id → bytes */
+  /** Files customers "sent": media id → bytes (and their type) */
   const media = new Map<string, Buffer>();
+  const mediaTypes = new Map<string, string>();
+  /** Meta's side of each account: whose webhooks go where, which numbers are registered … */
+  const state = {
+    appId: "1234567890",
+    subscribed: new Set<string>(),
+    /** Numbers added to an account but not registered for the Cloud API */
+    unregistered: new Set<string>(),
+    /** A two-step PIN the owner set: registering needs it */
+    pins: new Map<string, string>(),
+    revokedTokens: new Set<string>(),
+    templates: [] as Record<string, unknown>[],
+  };
   /** Files the platform uploaded to Meta */
   const uploads: { id: string; bytes: Buffer; type: string }[] = [];
   let sent = 0;
@@ -47,12 +59,36 @@ export function fakeGraph(
       return json({ id });
     }
     const body = typeof init.body === "string" ? (JSON.parse(init.body) as Record<string, unknown>) : null;
-    calls.push({
-      method,
-      path,
-      body,
-      auth: String((init.headers as Record<string, string>)?.authorization ?? ""),
-    });
+    const auth = String((init.headers as Record<string, string>)?.authorization ?? "");
+    calls.push({ method, path, body, auth });
+    if (path === "/oauth/access_token")
+      return json({ access_token: `biz-token-es-${url.searchParams.get("code")}` });
+    if (state.revokedTokens.has(auth.replace("Bearer ", "")))
+      return json(
+        { error: { code: 190, message: "Error validating access token: The session has been invalidated." } },
+        401,
+      );
+    const subs = /^\/(\d+)\/subscribed_apps$/.exec(path);
+    if (subs) {
+      if (method === "POST") state.subscribed.add(subs[1]!);
+      if (method === "DELETE") state.subscribed.delete(subs[1]!);
+      if (method !== "GET") return json({ success: true });
+      return json({
+        data: state.subscribed.has(subs[1]!)
+          ? [{ whatsapp_business_api_data: { id: state.appId, name: "Platform" } }]
+          : [],
+      });
+    }
+    const reg = /^\/(\d+)\/register$/.exec(path);
+    if (reg) {
+      const pin = state.pins.get(reg[1]!);
+      if (pin && body?.pin !== pin)
+        return json({ error: { code: 133005, message: "Two step verification PIN Mismatch" } }, 400);
+      state.unregistered.delete(reg[1]!);
+      state.pins.set(reg[1]!, String(body?.pin));
+      return json({ success: true });
+    }
+    if (/^\/\d+\/message_templates$/.test(path)) return json({ data: state.templates });
     const waba = Object.keys(numbers).find((w) => path === `/${w}/phone_numbers`);
     if (waba) return json({ data: numbers[waba]!.map((id) => ({ id })) });
     if (path.endsWith("/messages")) {
@@ -60,13 +96,20 @@ export function fakeGraph(
       sent += 1;
       return json({ messages: [{ id: `wamid.OUT-${sent}.${run}` }] });
     }
-    if (path.endsWith("/subscribed_apps") || path.endsWith("/register")) return json({ success: true });
     const mediaFile = media.get(path.slice(1));
     if (mediaFile)
       return json({
         url: `https://lookaside.test/${path.slice(1)}`,
-        mime_type: "audio/ogg; codecs=opus",
+        mime_type: mediaTypes.get(path.slice(1)) ?? "audio/ogg; codecs=opus",
         file_size: mediaFile.length,
+      });
+    if (/^\/\d+$/.test(path) && url.searchParams.get("fields")?.includes("platform_type"))
+      return json({
+        id: path.slice(1),
+        platform_type: state.unregistered.has(path.slice(1)) ? "NOT_APPLICABLE" : "CLOUD_API",
+        status: "CONNECTED",
+        name_status: "APPROVED",
+        messaging_limit_tier: "TIER_1K",
       });
     if (/^\/\d+$/.test(path))
       return json({
@@ -80,12 +123,36 @@ export function fakeGraph(
   return {
     calls,
     media,
+    mediaTypes,
+    state,
     uploads,
     /** Audio messages sent to customers: the uploaded media id */
     audios: () =>
       calls
         .filter((c) => c.path.endsWith("/messages") && c.body?.type === "audio")
         .map((c) => ({ to: String(c.body!.to), mediaId: String((c.body!.audio as { id: string }).id) })),
+    /** Images, documents, videos sent to customers */
+    files: () =>
+      calls
+        .filter(
+          (c) =>
+            c.path.endsWith("/messages") && ["image", "document", "video"].includes(String(c.body?.type)),
+        )
+        .map((c) => ({
+          to: String(c.body!.to),
+          type: String(c.body!.type),
+          ...(c.body![String(c.body!.type)] as object),
+        })),
+    /** Templates sent to customers */
+    templates: () =>
+      calls
+        .filter((c) => c.path.endsWith("/messages") && c.body?.type === "template")
+        .map((c) => ({ to: String(c.body!.to), ...(c.body!.template as object) })),
+    /** Blue ticks sent for customers' messages */
+    reads: () =>
+      calls
+        .filter((c) => c.path.endsWith("/messages") && c.body?.status === "read")
+        .map((c) => String(c.body!.message_id)),
     /** Text messages sent to customers, in order */
     texts: () =>
       calls
@@ -95,18 +162,18 @@ export function fakeGraph(
 }
 
 /** Posts webhooks signed like Meta does */
-export function webhookPoster(app: NestFastifyApplication, appSecret: string, phoneNumberId: string) {
+export function webhookPoster(
+  app: NestFastifyApplication,
+  appSecret: string,
+  phoneNumberId: string,
+  wabaId = "WABA",
+) {
   let seq = 0;
   const run = metaId();
-  const post = (value: Record<string, unknown>) => {
+  const postField = (field: string, value: Record<string, unknown>) => {
     const raw = JSON.stringify({
       object: "whatsapp_business_account",
-      entry: [
-        {
-          id: "WABA",
-          changes: [{ field: "messages", value: { metadata: { phone_number_id: phoneNumberId }, ...value } }],
-        },
-      ],
+      entry: [{ id: wabaId, changes: [{ field, value }] }],
     });
     return app.inject({
       method: "POST",
@@ -118,6 +185,8 @@ export function webhookPoster(app: NestFastifyApplication, appSecret: string, ph
       },
     });
   };
+  const post = (value: Record<string, unknown>) =>
+    postField("messages", { metadata: { phone_number_id: phoneNumberId }, ...value });
   const message = (from: string, name: string, m: Record<string, unknown>) =>
     post({
       contacts: [{ wa_id: from, profile: { name } }],
@@ -127,6 +196,23 @@ export function webhookPoster(app: NestFastifyApplication, appSecret: string, ph
     });
   return {
     post,
+    postField,
+    message,
+    /** The owner wrote from the WhatsApp Business app (coexistence echo) */
+    echo: (to: string, body: string) =>
+      postField("smb_message_echoes", {
+        metadata: { phone_number_id: phoneNumberId },
+        message_echoes: [
+          {
+            from: "97440005555",
+            to,
+            id: `wamid.ECHO-${++seq}.${run}`,
+            timestamp: String(Math.floor(Date.now() / 1000)),
+            type: "text",
+            text: { body },
+          },
+        ],
+      }),
     text: (from: string, name: string, body: string) => message(from, name, { type: "text", text: { body } }),
     voice: (from: string, name: string, mediaId = metaId()) =>
       message(from, name, {

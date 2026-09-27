@@ -144,3 +144,30 @@ export async function resolveWhatsAppNumber(
       }
     : null;
 }
+
+export type WhatsAppWabaNumber = { tenantId: string; whatsappNumberId: string; displayNumber: string };
+
+/** A WhatsApp Business account id (account-level webhooks) → the connected numbers in it */
+export async function resolveWhatsAppWaba(
+  prisma: PrismaClient,
+  wabaId: string,
+): Promise<WhatsAppWabaNumber[]> {
+  const rows = await prisma.$queryRaw<
+    { tenant_id: string; whatsapp_number_id: string; display_number: string }[]
+  >`
+    SELECT tenant_id, whatsapp_number_id, display_number FROM resolve_whatsapp_waba(${wabaId})`;
+  return rows.map((r) => ({
+    tenantId: r.tenant_id,
+    whatsappNumberId: r.whatsapp_number_id,
+    displayNumber: r.display_number,
+  }));
+}
+
+/**
+ * Free a phone number id held by another business's DISCONNECTED WhatsApp number (its history
+ * stays), so this business can connect it. Returns how many rows were moved aside.
+ */
+export async function releaseWhatsAppNumber(prisma: PrismaClient, phoneNumberId: string): Promise<number> {
+  const rows = await prisma.$queryRaw<{ n: number }[]>`SELECT release_whatsapp_number(${phoneNumberId}) AS n`;
+  return Number(rows[0]?.n ?? 0);
+}

@@ -43,7 +43,7 @@ function loadSdk(appId: string, version: string): Promise<FacebookSdk> {
   return loading;
 }
 
-export type SignupResult = { code: string; wabaId: string; phoneNumberId: string };
+export type SignupResult = { code: string; wabaId: string; phoneNumberId: string; onBusinessApp: boolean };
 
 const FACEBOOK_ORIGIN = /^https:\/\/([a-z0-9-]+\.)?facebook\.com$/;
 
@@ -51,9 +51,18 @@ export async function embeddedSignup(o: {
   appId: string;
   configId: string;
   graphVersion: string;
+  /** The number stays on the WhatsApp Business app (Meta's coexistence onboarding) */
+  onBusinessApp?: boolean;
 }): Promise<SignupResult> {
   const fb = await loadSdk(o.appId, o.graphVersion);
-  const session: { wabaId?: string; phoneNumberId?: string; error?: string; cancelledAt?: string } = {};
+  const session: {
+    wabaId?: string;
+    phoneNumberId?: string;
+    error?: string;
+    cancelledAt?: string;
+    onlyAccount?: boolean;
+    businessApp?: boolean;
+  } = {};
   const onMessage = (ev: MessageEvent) => {
     if (!FACEBOOK_ORIGIN.test(ev.origin)) return;
     let data: { type?: string; event?: string; data?: Record<string, string> };
@@ -63,9 +72,11 @@ export async function embeddedSignup(o: {
       return;
     }
     if (data?.type !== "WA_EMBEDDED_SIGNUP") return;
-    if (data.event?.startsWith("FINISH")) {
+    if (data.event === "FINISH_ONLY_WABA") session.onlyAccount = true;
+    else if (data.event?.startsWith("FINISH")) {
       session.wabaId = data.data?.waba_id;
       session.phoneNumberId = data.data?.phone_number_id;
+      session.businessApp = data.event === "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING";
     } else if (data.event === "CANCEL") session.cancelledAt = data.data?.current_step ?? "unknown";
     else if (data.event === "ERROR") session.error = data.data?.error_message ?? "Facebook reported an error";
   };
@@ -82,15 +93,28 @@ export async function embeddedSignup(o: {
           config_id: o.configId,
           response_type: "code",
           override_default_response_type: true,
-          extras: { setup: {}, featureType: "", sessionInfoVersion: "3" },
+          extras: {
+            setup: {},
+            featureType: o.onBusinessApp ? "whatsapp_business_app_onboarding" : "",
+            sessionInfoVersion: "3",
+          },
         },
       );
     });
     // The account and number ids arrive in a separate message, usually just before or after the code
     for (let i = 0; i < 50 && !session.phoneNumberId; i++) await new Promise((r) => setTimeout(r, 100));
+    if (session.onlyAccount && !session.phoneNumberId)
+      throw new Error(
+        "The WhatsApp Business account was set up, but no phone number was added. Continue with Facebook again and add your number.",
+      );
     if (!session.wabaId || !session.phoneNumberId)
       throw new Error("Facebook didn't say which WhatsApp number was chosen. Please try again.");
-    return { code, wabaId: session.wabaId, phoneNumberId: session.phoneNumberId };
+    return {
+      code,
+      wabaId: session.wabaId,
+      phoneNumberId: session.phoneNumberId,
+      onBusinessApp: Boolean(session.businessApp ?? o.onBusinessApp),
+    };
   } finally {
     window.removeEventListener("message", onMessage);
   }
