@@ -1621,6 +1621,19 @@ Plan and review: [WPIntegration.md](WPIntegration.md); operator guide:
   restores them; you can't suspend your own business); browser: list, search, limits, suspend,
   the customer's app and sign-in, reactivate.
 
+### Email verification at sign-up ✅
+
+- A new account gets a "Confirm your email" link (24 hours, single use, a newer link replaces the
+  older; only the token's SHA-256 is stored, in Redis). Until it's opened, the app shows a banner
+  with **Send the link again**, and buying or adding numbers, SIP trunks, connecting WhatsApp,
+  creating API keys and inviting people answer `EMAIL_NOT_VERIFIED`; building and testing agents
+  works. Accepting an emailed invitation or resetting a password also confirms the address.
+  Accounts that existed before are treated as confirmed. `EMAIL_VERIFICATION=off` for installs
+  without email.
+- **Verified:** API tests with a real SMTP catcher (the email, every blocked action, resend
+  replaces the link, used once, any browser, audit entry, invitations and resets confirm,
+  `off`); browser: sign-up banner, the link opened in another browser, the banner going away.
+
 ### WhatsApp: connection and Inbox, checked and completed ✅
 
 - **Connection:** numbers that stay on the WhatsApp Business app (Meta coexistence: not

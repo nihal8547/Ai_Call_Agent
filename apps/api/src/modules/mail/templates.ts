@@ -66,6 +66,29 @@ export function invitationEmail(o: {
   };
 }
 
+export function emailVerificationEmail(o: { name: string; url: string; hours: number }): Rendered {
+  return {
+    subject: "Confirm your email for Voice Agent Platform",
+    text: [
+      `Hi ${o.name},`,
+      "",
+      `Confirm this is your email address: ${o.url}`,
+      "",
+      `The link works for ${o.hours} hours. Until then you can set up agents, but not buy numbers or connect WhatsApp.`,
+      "If you didn't create an account, ignore this email.",
+    ].join("\n"),
+    html: layout(
+      "Confirm your email",
+      [
+        `Hi ${escapeHtml(o.name)},`,
+        "Confirm this is your email address. Until you do, you can set up and test agents, but not buy phone numbers or connect WhatsApp.",
+      ],
+      { label: "Confirm email", url: o.url },
+      `The link works for ${o.hours} hours. If you didn't create an account, ignore this email.`,
+    ),
+  };
+}
+
 export function passwordResetEmail(o: { name: string; url: string; minutes: number }): Rendered {
   return {
     subject: "Reset your Voice Agent Platform password",

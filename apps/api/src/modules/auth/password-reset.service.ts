@@ -9,6 +9,7 @@ import { RedisService } from "../../infra/redis.service";
 import { TenantDbService } from "../../infra/tenant-db.service";
 import { AuditService } from "../audit/audit.service";
 import { passwordResetEmail } from "../mail/templates";
+import { EmailVerificationService } from "./email-verification.service";
 import { PlatformMailService } from "../mail/platform-mail.service";
 
 export const RESET_TTL_MINUTES = 30;
@@ -32,6 +33,7 @@ export class PasswordResetService {
     private readonly tokens: TokenService,
     private readonly mail: PlatformMailService,
     private readonly audit: AuditService,
+    private readonly verification: EmailVerificationService,
   ) {}
 
   async request(email: string): Promise<void> {
@@ -85,6 +87,8 @@ export class PasswordResetService {
       data: { passwordHash: await hashPassword(password) },
       select: { id: true },
     });
+    // The link came by email, so the address is proven too
+    await this.verification.markVerified(user.id);
     // Whoever knew the old password is signed out everywhere
     for (const s of await this.tokens.listSessions(user.id)) await this.tokens.revokeFamily(s.id);
 

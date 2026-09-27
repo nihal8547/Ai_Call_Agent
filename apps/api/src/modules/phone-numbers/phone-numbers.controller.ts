@@ -32,6 +32,7 @@ import { TenantDbService } from "../../infra/tenant-db.service";
 import { TwilioRestService } from "../../infra/twilio-rest.service";
 import { AuditService } from "../audit/audit.service";
 import { assertAgent, PHONE_NUMBER_VIEW, PhoneNumbersService } from "./phone-numbers.service";
+import { RequireVerifiedEmail } from "../../common/auth/verified-email.guard";
 
 const RemoveQuery = z.object({ release: z.enum(["0", "1"]).default("0") });
 
@@ -54,6 +55,7 @@ export class PhoneNumbersController {
   /** Add a Twilio number by hand (development, or the platform operator) */
   @RequirePermissions("phone_numbers:write")
   @Post()
+  @RequireVerifiedEmail()
   create(
     @CurrentAuth() auth: AuthContext,
     @Body(new ZodValidationPipe(CreatePhoneNumberBody)) body: z.output<typeof CreatePhoneNumberBody>,
@@ -75,6 +77,7 @@ export class PhoneNumbersController {
   /** Numbers cost money every month, so buying needs billing access too */
   @RequirePermissions("phone_numbers:write", "billing:write")
   @Post("twilio/buy")
+  @RequireVerifiedEmail()
   @RateLimit({ name: "twilio-buy", limit: 10, windowSeconds: 3600, by: "ip" })
   buy(
     @CurrentAuth() auth: AuthContext,

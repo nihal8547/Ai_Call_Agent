@@ -32,6 +32,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { type AnchorHTMLAttributes, type ComponentProps, type ReactNode, useEffect, useState } from "react";
 import { api } from "@/lib/api/client";
 import { cn } from "@/lib/cn";
+import { VerifyEmailBanner } from "./verify-email-banner";
 import { useMe } from "./me-context";
 
 type NavItem = { label: string; href: string; icon: LucideIcon; permission?: string };
@@ -284,6 +285,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </button>
           <span className="truncate text-sm font-semibold text-slate-950">{me.tenant.name}</span>
         </header>
+        <VerifyEmailBanner />
         <main
           className={cn(
             "w-full flex-1",

@@ -11,6 +11,7 @@ import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import { TenantDbService } from "../../infra/tenant-db.service";
 import { AuditService } from "../audit/audit.service";
 import { assertCanGrant } from "../users/access-policy";
+import { RequireVerifiedEmail } from "../../common/auth/verified-email.guard";
 
 const keyView = {
   id: true,
@@ -45,6 +46,7 @@ export class ApiKeysController {
   /** The full key is returned only in this response */
   @RequirePermissions("api_keys:write")
   @Post()
+  @RequireVerifiedEmail()
   create(
     @CurrentAuth() auth: AuthContext,
     @Body(new ZodValidationPipe(CreateApiKeyBody)) body: z.output<typeof CreateApiKeyBody>,

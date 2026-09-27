@@ -28,9 +28,11 @@ import { PrismaService } from "../../infra/prisma.service";
 import { TenantDbService } from "../../infra/tenant-db.service";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
+import { EmailVerificationService } from "../auth/email-verification.service";
 import { PlatformMailService } from "../mail/platform-mail.service";
 import { invitationEmail } from "../mail/templates";
 import { assertCanGrant } from "./access-policy";
+import { RequireVerifiedEmail } from "../../common/auth/verified-email.guard";
 
 const INVITE_TTL_DAYS = 7;
 
@@ -44,6 +46,7 @@ export class InvitationsController {
     private readonly tokens: TokenService,
     private readonly authService: AuthService,
     private readonly mail: PlatformMailService,
+    private readonly verification: EmailVerificationService,
   ) {}
 
   /** Email the invitation (when the platform mail server is set up); the link is also returned */
@@ -96,6 +99,7 @@ export class InvitationsController {
   @RequirePermissions("users:write")
   @UserOnly()
   @Post()
+  @RequireVerifiedEmail()
   async create(
     @CurrentAuth() auth: AuthContext,
     @Body(new ZodValidationPipe(CreateInvitationBody)) body: z.output<typeof CreateInvitationBody>,
@@ -281,6 +285,8 @@ export class InvitationsController {
       );
     });
 
+    // The invitation went to this address (or a confirmed teammate passed the link on)
+    await this.verification.markVerified(userId);
     await this.tokens.issueSession(reply, req, { userId, tenantId: invite.tenantId });
     return this.authService.me(userId, invite.tenantId);
   }

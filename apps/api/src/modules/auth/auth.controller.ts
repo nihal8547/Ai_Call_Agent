@@ -8,6 +8,7 @@ import {
   RegisterBody,
   ResetPasswordBody,
   SwitchTenantBody,
+  VerifyEmailBody,
 } from "@platform/shared";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
@@ -22,6 +23,7 @@ import { AuditService } from "../audit/audit.service";
 import { TenantDbService } from "../../infra/tenant-db.service";
 import { AuthService } from "./auth.service";
 import { MfaService } from "./mfa.service";
+import { EmailVerificationService } from "./email-verification.service";
 import { PasswordResetService } from "./password-reset.service";
 
 const FamilyParam = z.object({ id: z.uuid() });
@@ -35,6 +37,7 @@ export class AuthController {
     private readonly audit: AuditService,
     private readonly tenantDb: TenantDbService,
     private readonly passwordReset: PasswordResetService,
+    private readonly verification: EmailVerificationService,
   ) {}
 
   /** Second step of sign-in, with the ticket the password step returned */
@@ -192,6 +195,28 @@ export class AuthController {
     @Req() req: FastifyRequest,
   ): Promise<void> {
     await this.passwordReset.reset(body.token, body.password, requestMeta(req));
+  }
+
+  /** Confirm the email address with the token from the link sent at sign-up (works in any browser) */
+  @Public()
+  @Post("verify-email")
+  @HttpCode(204)
+  @RateLimit({ name: "verify-email-ip", limit: 20, windowSeconds: 900, by: "ip" })
+  async verifyEmail(
+    @Body(new ZodValidationPipe(VerifyEmailBody)) body: z.output<typeof VerifyEmailBody>,
+    @Req() req: FastifyRequest,
+  ): Promise<void> {
+    await this.verification.verify(body.token, requestMeta(req));
+  }
+
+  /** Send the confirmation link again (a newer link replaces the older one) */
+  @AnyAuthenticated()
+  @UserOnly()
+  @Post("verify-email/resend")
+  @HttpCode(202)
+  @RateLimit({ name: "verify-email-resend", limit: 10, windowSeconds: 3600, by: "ip" })
+  resendVerification(@CurrentAuth() auth: AuthContext) {
+    return this.verification.send(userAuth(auth).userId);
   }
 
   /** Public because the access token may already be expired; authenticated by the refresh cookie + CSRF */

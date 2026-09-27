@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { createApp } from "../../src/bootstrap";
 import { loadApiEnv } from "../../src/config/env";
+import { PrismaService } from "../../src/infra/prisma.service";
 
 try {
   process.loadEnvFile(path.resolve(__dirname, "../../../../.env"));
@@ -112,7 +113,12 @@ export function uniqueEmail(label: string): string {
 
 export const STRONG_PASSWORD = "Str0ng-Passw0rd!";
 
-export async function registerOwner(app: NestFastifyApplication, label: string) {
+/** A new owner; their email counts as confirmed unless `verified: false` */
+export async function registerOwner(
+  app: NestFastifyApplication,
+  label: string,
+  { verified = true }: { verified?: boolean } = {},
+) {
   const client = new Client(app);
   const email = uniqueEmail(label);
   const res = await client.post("/api/v1/auth/register", {
@@ -122,6 +128,10 @@ export async function registerOwner(app: NestFastifyApplication, label: string) 
     businessName: `${label} Business`,
   });
   if (res.statusCode !== 201) throw new Error(`register failed: ${res.statusCode} ${res.body}`);
+  if (verified)
+    await app
+      .get(PrismaService)
+      .client.user.update({ where: { email }, data: { emailVerifiedAt: new Date() } });
   return {
     client,
     email,

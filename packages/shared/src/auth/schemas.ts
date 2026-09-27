@@ -68,6 +68,9 @@ export const ResetPasswordBody = z.object({
   password: Password,
 });
 
+/** The token from the emailed "confirm your email" link */
+export const VerifyEmailBody = z.object({ token: z.string().trim().min(20).max(200) });
+
 export const LoginMfaBody = z.object({ mfaToken: z.string().min(20).max(100), code: MfaCode });
 export const EnableTotpBody = z.object({
   code: z
@@ -91,6 +94,8 @@ export const MeResponse = z.object({
     name: z.string(),
     isPlatformOwner: z.boolean(),
     totpEnabled: z.boolean(),
+    /** Opened the link emailed at sign-up; needed for anything that costs money or reaches customers */
+    emailVerified: z.boolean(),
   }),
   tenant: z.object({
     id: z.uuid(),

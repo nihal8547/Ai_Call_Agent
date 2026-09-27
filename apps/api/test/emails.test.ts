@@ -28,16 +28,21 @@ const smtp = new SMTPServer({
   },
 });
 
+beforeAll(() => new Promise<void>((r) => smtp.listen(0, "127.0.0.1", r)));
+afterAll(() => new Promise<void>((r) => smtp.close(() => r())));
+const smtpUrl = () => `smtp://127.0.0.1:${(smtp.server.address() as AddressInfo).port}`;
+
 /** Quoted-printable soft breaks and =XX escapes, enough to read links back */
 const decode = (raw: string) =>
   raw
     .replace(/=\r?\n/g, "")
     .replace(/=([0-9A-F]{2})/g, (_, h: string) => String.fromCharCode(parseInt(h, 16)));
 
-async function mailTo(to: string, after = 0, timeoutMs = 5000): Promise<string> {
+/** The first email to `to` since `after`, optionally only one whose raw text matches `like` */
+async function mailTo(to: string, after = 0, like?: RegExp, timeoutMs = 5000): Promise<string> {
   const started = Date.now();
   for (;;) {
-    const found = mails.slice(after).find((m) => m.to.includes(to));
+    const found = mails.slice(after).find((m) => m.to.includes(to) && (!like || like.test(decode(m.raw))));
     if (found) return decode(found.raw);
     if (Date.now() - started > timeoutMs) throw new Error(`no email to ${to}`);
     await new Promise((r) => setTimeout(r, 50));
@@ -64,17 +69,12 @@ describe.skipIf(!hasTestDb)("platform emails: invitations and password reset", (
   let app: NestFastifyApplication;
 
   beforeAll(async () => {
-    await new Promise<void>((r) => smtp.listen(0, "127.0.0.1", r));
-    const port = (smtp.server.address() as AddressInfo).port;
     app = await createTestApp({
-      SMTP_URL: `smtp://127.0.0.1:${port}`,
+      SMTP_URL: smtpUrl(),
       MAIL_FROM: "Voice Agent Platform <no-reply@voice.test>",
     });
   });
-  afterAll(async () => {
-    await app?.close();
-    await new Promise<void>((r) => smtp.close(() => r()));
-  });
+  afterAll(() => app?.close());
 
   it("emails an invitation; resending sends a new link and the old one stops working", async () => {
     const owner = await registerOwner(app, "mailinv");
@@ -133,7 +133,8 @@ describe.skipIf(!hasTestDb)("platform emails: invitations and password reset", (
         email: owner.email.toUpperCase(),
       });
       expect(r.statusCode).toBe(202);
-      const mail = await mailTo(owner.email, at);
+      // Signing up also emailed a confirmation link, maybe still on its way
+      const mail = await mailTo(owner.email, at, /reset-password#/);
       expect(mail).toMatch(/Subject: Reset your Voice Agent Platform password/);
       return /\/reset-password#([A-Za-z0-9_-]+)/.exec(mail)![1]!;
     };
@@ -165,6 +166,110 @@ describe.skipIf(!hasTestDb)("platform emails: invitations and password reset", (
     await client.post("/api/v1/auth/login", { email: owner.email, password: "N3w-Passw0rd!!" });
     const audit = await client.get("/api/v1/audit-logs");
     expect(audit.json().items.map((e: { action: string }) => e.action)).toContain("user.password_reset");
+  });
+});
+
+describe.skipIf(!hasTestDb)("confirming the email address after sign-up", () => {
+  let app: NestFastifyApplication;
+
+  beforeAll(async () => {
+    app = await createTestApp({ SMTP_URL: smtpUrl() });
+  });
+  afterAll(() => app?.close());
+
+  const tokenIn = (mail: string) => /\/verify-email#([A-Za-z0-9_-]+)/.exec(mail)![1]!;
+
+  it("emails a link at sign-up; until it's opened, numbers, WhatsApp, SIP, API keys and invitations wait", async () => {
+    const at = mails.length;
+    const owner = await registerOwner(app, "verify", { verified: false });
+    const mail = await mailTo(owner.email, at, /verify-email#/);
+    expect(mail).toMatch(/Subject: Confirm your email for Voice Agent Platform/);
+    const me = await owner.client.get("/api/v1/auth/me");
+    expect(me.json().user.emailVerified).toBe(false);
+
+    // Setting up agents is fine; spending money or reaching people is not
+    expect((await owner.client.get("/api/v1/phone-numbers")).statusCode).toBe(200);
+    const blocked = [
+      await owner.client.post("/api/v1/phone-numbers/twilio/buy", { phoneNumber: "+12025550100" }),
+      await owner.client.post("/api/v1/whatsapp/connect/manual", {
+        accessToken: "biz-token-verify-0123456789",
+        wabaId: "123456789012345",
+        phoneNumberId: "123456789012346",
+      }),
+      await owner.client.post("/api/v1/sip-trunks", { name: "PBX" }),
+      await owner.client.post("/api/v1/api-keys", { name: "crm", scopes: ["tenant:read"] }),
+      await owner.client.post("/api/v1/invitations", {
+        email: uniqueEmail("team"),
+        roleId: await roleId(owner, "MANAGER"),
+      }),
+    ];
+    for (const res of blocked) {
+      expect(res.statusCode).toBe(403);
+      expect(res.json()).toMatchObject({ code: "EMAIL_NOT_VERIFIED" });
+    }
+
+    // Sending again replaces the link
+    const again = mails.length;
+    const resent = await owner.client.post("/api/v1/auth/verify-email/resend", {});
+    expect(resent.statusCode).toBe(202);
+    expect(resent.json()).toEqual({ sent: true });
+    const token = tokenIn(await mailTo(owner.email, again, /verify-email#/));
+    expect(token).not.toBe(tokenIn(mail));
+    const verify = (t: string) => new Client(app).post("/api/v1/auth/verify-email", { token: t });
+    expect((await verify(tokenIn(mail))).json()).toMatchObject({ code: "TOKEN_EXPIRED" });
+
+    // Opened in any browser (no session needed), once
+    expect((await verify(token)).statusCode).toBe(204);
+    expect((await verify(token)).json()).toMatchObject({ code: "TOKEN_EXPIRED" });
+    expect((await owner.client.get("/api/v1/auth/me")).json().user.emailVerified).toBe(true);
+    const key = await owner.client.post("/api/v1/api-keys", { name: "crm", scopes: ["tenant:read"] });
+    expect(key.statusCode).toBe(201);
+    expect(await owner.client.post("/api/v1/auth/verify-email/resend", {}).then((r) => r.json())).toEqual({
+      sent: false,
+      alreadyVerified: true,
+    });
+    const audit = await owner.client.get("/api/v1/audit-logs");
+    expect(audit.json().items.map((e: { action: string }) => e.action)).toContain("user.email_verified");
+  });
+
+  it("an accepted invitation or a password reset proves the address too", async () => {
+    const owner = await registerOwner(app, "verify-team");
+    const email = uniqueEmail("teammate");
+    const invite = await owner.client.post("/api/v1/invitations", {
+      email,
+      roleId: await roleId(owner, "MANAGER"),
+    });
+    const token = String(invite.json().inviteUrl).split("/invite/")[1];
+    const joined = await new Client(app).post("/api/v1/invitations/accept", {
+      token,
+      name: "Teammate",
+      password: STRONG_PASSWORD,
+    });
+    expect(joined.json().user.emailVerified).toBe(true);
+
+    const other = await registerOwner(app, "verify-reset", { verified: false });
+    const at = mails.length;
+    await new Client(app).post("/api/v1/auth/password/forgot", { email: other.email });
+    const reset = /\/reset-password#([A-Za-z0-9_-]+)/.exec(
+      await mailTo(other.email, at, /reset-password#/),
+    )![1]!;
+    await new Client(app).post("/api/v1/auth/password/reset", { token: reset, password: "N3w-Passw0rd!!" });
+    const login = new Client(app);
+    await login.post("/api/v1/auth/login", { email: other.email, password: "N3w-Passw0rd!!" });
+    expect((await login.get("/api/v1/auth/me")).json().user.emailVerified).toBe(true);
+  });
+
+  it("EMAIL_VERIFICATION=off: installs without email aren't held back", async () => {
+    const off = await createTestApp({ EMAIL_VERIFICATION: "off" });
+    try {
+      const owner = await registerOwner(off, "verify-off", { verified: false });
+      expect((await owner.client.get("/api/v1/auth/me")).json().user.emailVerified).toBe(true);
+      expect(
+        (await owner.client.post("/api/v1/api-keys", { name: "crm", scopes: ["tenant:read"] })).statusCode,
+      ).toBe(201);
+    } finally {
+      await off.close();
+    }
   });
 });
 

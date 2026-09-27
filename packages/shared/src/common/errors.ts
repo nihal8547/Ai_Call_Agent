@@ -23,6 +23,7 @@ export const ErrorCode = z.enum([
   "INTEGRATION_ERROR",
   /** WhatsApp: more than 24 hours since the customer's last message; only templates may be sent */
   "WHATSAPP_WINDOW_CLOSED",
+  "EMAIL_NOT_VERIFIED",
 ]);
 export type ErrorCode = z.infer<typeof ErrorCode>;
 

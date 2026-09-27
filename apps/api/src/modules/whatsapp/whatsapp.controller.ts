@@ -25,6 +25,7 @@ import { requestMeta } from "../../common/http/request-meta";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import { RateLimit } from "../../common/rate-limit/rate-limit";
 import { WhatsAppAccountsService } from "./whatsapp-accounts.service";
+import { RequireVerifiedEmail } from "../../common/auth/verified-email.guard";
 
 /** Settings → WhatsApp: connected numbers and connecting new ones */
 @Controller("whatsapp")
@@ -38,6 +39,7 @@ export class WhatsAppController {
   }
 
   @Post("connect/embedded-signup")
+  @RequireVerifiedEmail()
   @RequirePermissions("chats:manage")
   @RateLimit({ name: "whatsapp-connect", limit: 10, windowSeconds: 600, by: "ip" })
   connectEmbedded(
@@ -50,6 +52,7 @@ export class WhatsAppController {
   }
 
   @Post("connect/manual")
+  @RequireVerifiedEmail()
   @RequirePermissions("chats:manage")
   @RateLimit({ name: "whatsapp-connect", limit: 10, windowSeconds: 600, by: "ip" })
   connectManual(

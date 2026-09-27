@@ -61,7 +61,7 @@ export type LeadSyncJob = TenantJob & { kind: "lead_sync"; leadId: string; integ
 /** An email from the platform itself, sent through SMTP_URL (`mail`) */
 export type PlatformMailJob = {
   kind: "platform_mail";
-  purpose: "invitation" | "password_reset";
+  purpose: "invitation" | "password_reset" | "email_verification";
   to: string;
   subject: string;
   text: string;

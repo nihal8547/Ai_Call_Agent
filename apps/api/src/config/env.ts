@@ -58,6 +58,11 @@ export const ApiEnvSchema = z
       .string()
       .regex(/^smtps?:\/\/.+/, "smtp:// or smtps:// URL")
       .optional(),
+    /**
+     * "required": a new account confirms its email (the emailed link) before buying numbers,
+     * connecting WhatsApp or SIP, or creating API keys. "off" for installs without email.
+     */
+    EMAIL_VERIFICATION: z.enum(["required", "off"]).default("required"),
     MAIL_FROM: z.string().min(3).max(200).default("Voice Agent Platform <no-reply@localhost>"),
     /** HMAC key for access tokens (≥ 32 characters) */
     JWT_SECRET: z.string().min(32, "must be at least 32 characters"),

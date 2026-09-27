@@ -8,6 +8,7 @@ import { requestMeta } from "../../common/http/request-meta";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import { RateLimit } from "../../common/rate-limit/rate-limit";
 import { SipTrunksService } from "./sip-trunks.service";
+import { RequireVerifiedEmail } from "../../common/auth/verified-email.guard";
 
 /** SIP connections from the business's carrier or PBX */
 @Controller("sip-trunks")
@@ -22,6 +23,7 @@ export class SipTrunksController {
 
   @RequirePermissions("phone_numbers:write")
   @Post()
+  @RequireVerifiedEmail()
   @RateLimit({ name: "sip-trunk-create", limit: 10, windowSeconds: 3600, by: "ip" })
   create(
     @CurrentAuth() auth: AuthContext,
@@ -55,6 +57,7 @@ export class SipTrunksController {
 
   @RequirePermissions("phone_numbers:write")
   @Post(":id/provision")
+  @RequireVerifiedEmail()
   @HttpCode(200)
   provision(@CurrentAuth() auth: AuthContext, @Param(new ZodValidationPipe(IdParam)) { id }: { id: string }) {
     return this.trunks.reprovision(auth.tenantId, id);
@@ -62,6 +65,7 @@ export class SipTrunksController {
 
   @RequirePermissions("phone_numbers:write")
   @Post(":id/numbers")
+  @RequireVerifiedEmail()
   addNumber(
     @CurrentAuth() auth: AuthContext,
     @Param(new ZodValidationPipe(IdParam)) { id }: { id: string },

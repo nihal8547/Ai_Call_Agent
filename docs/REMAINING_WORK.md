@@ -24,6 +24,7 @@ or more.
 | Security hardening, observability, Docker deployment, backups, runbook               | Built                   |
 | Streaming voice (Twilio ConversationRelay, per agent)                                | Built, not on real line |
 | Platform console: businesses, usage and cost, plans and limits, suspend / reactivate | Built                   |
+| Email verification at sign-up (numbers, WhatsApp, SIP, API keys, invites wait)       | Built                   |
 | Billing                                                                              | **Not built**           |
 
 ## 1. Before launch: must build (P1)
@@ -31,7 +32,6 @@ or more.
 | Item                                | Size | What to build                                                                                                                                                                                                                |
 | ----------------------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Billing**                         | L    | Plans, subscriptions and invoices (Stripe; Razorpay for India), payment webhooks, usage from `usage_records` charged as overage, trial period, "payment failed" grace period then calls refused. A Billing page in Settings. |
-| **Email verification at sign-up**   | S    | Registration doesn't confirm the email today. Send a link (platform mail exists) and limit what an unverified account can do (e.g. no number purchase).                                                                      |
 | **Twilio subaccount per business**  | M    | Every number is on the platform account today; subaccounts separate billing, limits and suspension.                                                                                                                          |
 | **Terms, privacy, consent wording** | S    | Accept terms at sign-up; greeting templates that say the caller is talking to an AI assistant (and recorded, once recordings exist), as Qatar PDPPL and India DPDP require.                                                  |
 | **Browser tests in CI**             | M    | The Playwright checks are run by hand today; put the main flows (sign up, create agent, test call, connect an integration) in CI.                                                                                            |
@@ -136,8 +136,8 @@ Still open:
 ## 8. Suggested order
 
 1. Operations basics and real-service checks (sections 2 and 3), so problems show up early.
-2. Email verification (the platform console and suspending are built).
+2. Terms and consent wording (the platform console and email verification are built).
 3. Billing and Twilio subaccounts.
-4. Terms and consent wording, browser tests in CI; then launch to the first businesses.
+4. Browser tests in CI; then launch to the first businesses.
 5. P2 items by customer demand (recordings, outbound calls and WhatsApp are usually asked for
    first), then streaming voice on real calls and its next phases (section 5).

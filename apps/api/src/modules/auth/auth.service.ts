@@ -20,6 +20,7 @@ import { API_ENV, type ApiEnv } from "../../config/env";
 import { PrismaService } from "../../infra/prisma.service";
 import { TenantDbService } from "../../infra/tenant-db.service";
 import { AuditService } from "../audit/audit.service";
+import { EmailVerificationService } from "./email-verification.service";
 import { MfaService } from "./mfa.service";
 
 type RegisterInput = z.output<typeof RegisterBody>;
@@ -44,12 +45,13 @@ export class AuthService {
   private readonly masterKey: Buffer;
 
   constructor(
-    @Inject(API_ENV) env: ApiEnv,
+    @Inject(API_ENV) private readonly env: ApiEnv,
     private readonly prisma: PrismaService,
     private readonly tenantDb: TenantDbService,
     private readonly tokens: TokenService,
     private readonly audit: AuditService,
     private readonly mfa: MfaService,
+    private readonly verification: EmailVerificationService,
   ) {
     this.masterKey = parseMasterKey(env.MASTER_ENCRYPTION_KEY);
   }
@@ -66,28 +68,33 @@ export class AuthService {
       data: { email: body.email, name: body.name, passwordHash: await hashPassword(body.password) },
     });
 
+    let tenant: Awaited<ReturnType<AuthService["provisionWithUniqueSlug"]>>;
     try {
-      const tenant = await this.provisionWithUniqueSlug(body, user.id);
-      await this.tenantDb.tx(tenant.id, (tx) =>
+      tenant = await this.provisionWithUniqueSlug(body, user.id);
+      const created = tenant;
+      await this.tenantDb.tx(created.id, (tx) =>
         this.audit.record(
           tx,
-          { kind: "system", tenantId: tenant.id },
+          { kind: "system", tenantId: created.id },
           {
             action: "tenant.created",
             entityType: "tenant",
-            entityId: tenant.id,
-            after: { name: tenant.name, slug: tenant.slug },
+            entityId: created.id,
+            after: { name: created.name, slug: created.slug },
             ...requestMeta(req),
           },
         ),
       );
       await this.tokens.issueSession(reply, req, { userId: user.id, tenantId: tenant.id });
-      return this.me(user.id, tenant.id);
     } catch (err) {
       // Keep registration atomic from the user's point of view
       await this.prisma.client.user.delete({ where: { id: user.id } }).catch(() => undefined);
       throw err;
     }
+    // The account exists either way; a mail hiccup is fixed with "send again"
+    if (this.env.EMAIL_VERIFICATION === "required")
+      await this.verification.send(user.id).catch(() => undefined);
+    return this.me(user.id, tenant.id);
   }
 
   private async provisionWithUniqueSlug(body: RegisterInput, ownerUserId: string) {
@@ -221,6 +228,7 @@ export class AuthService {
         name: user.name,
         isPlatformOwner: user.isPlatformOwner,
         totpEnabled: Boolean(user.totpEnabledAt),
+        emailVerified: this.env.EMAIL_VERIFICATION === "off" || Boolean(user.emailVerifiedAt),
       },
       tenant: {
         id: membership.tenant.id,

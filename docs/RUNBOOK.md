@@ -148,6 +148,17 @@ Twilio number points at us without being added (Phone numbers → Add).
   alert when a connection that normally has calls had none for a day. Ask the carrier whether
   their side changed (IP addresses, credentials).
 
+## Email verification
+
+New accounts confirm their email before they can get numbers, connect WhatsApp or SIP, create API
+keys or invite people (they can build and test agents meanwhile). The email needs `SMTP_URL`.
+
+- **"I never got the email":** they choose **Send the link again** in the banner (a newer link
+  replaces the older; links last 24 hours). Check the mail provider's logs and the spam folder.
+- **Confirm someone by hand** (after checking who they are):
+  `psql "$DATABASE_MIGRATION_URL" -c "UPDATE users SET email_verified_at = now() WHERE email = 'owner@example.com'"`
+- **No email on this install:** `EMAIL_VERIFICATION=off` (then anyone who signs up can buy numbers).
+
 ## Platform console (businesses, limits, suspending)
 
 Platform owners see **Platform → Businesses** in the sidebar: every business with its calls,
