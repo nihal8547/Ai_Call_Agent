@@ -41,6 +41,24 @@ describe("slots", () => {
     expect(freeSlots(q({ date: "2026-10-04" }))).toEqual([]); // Sunday: closed
   });
 
+  it("books special-period hours (Ramadan) and nothing on a closed special day", () => {
+    const ramadan = {
+      ...hours!,
+      dateRangeOverrides: [
+        {
+          name: "Ramadan",
+          startDate: "2026-09-29",
+          endDate: "2026-09-30",
+          hours: [{ start: "20:00", end: "22:00" }],
+        },
+        { name: "Eid", startDate: "2026-10-01", endDate: "2026-10-01", hours: [] },
+      ],
+    };
+    expect(freeSlots(q({ hours: ramadan }))).toEqual(["20:00", "21:00"]);
+    expect(checkSlot(q({ hours: ramadan }), "10:00").problem).toBe("closed");
+    expect(freeSlots(q({ hours: ramadan, date: "2026-10-01" }))).toEqual([]);
+  });
+
   it("respects busy time, buffers and capacity", () => {
     const busy = [{ start: at("2026-09-29T04:30:00Z"), end: at("2026-09-29T05:00:00Z") }]; // 10:00–10:30 IST
     expect(freeSlots(q({ busy }))).not.toContain("10:00");

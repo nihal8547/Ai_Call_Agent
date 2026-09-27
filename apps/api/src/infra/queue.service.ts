@@ -63,7 +63,7 @@ export class QueueService implements OnModuleDestroy {
    * waiting or kept is a no-op.
    */
   async add(
-    queue: "webhooks" | "notifications" | "crm" | "whatsapp_inbound",
+    queue: "webhooks" | "notifications" | "crm",
     job: QueueJob,
     jobId: string,
     delayMs = 0,

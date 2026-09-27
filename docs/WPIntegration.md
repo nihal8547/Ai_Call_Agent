@@ -2,6 +2,9 @@
 
 _Written 27 September 2026, after reviewing commits `fb860a9` and `1d3c770`._
 
+**Status:** W0 done: every problem in section 1 fixed; the WhatsApp routes, worker stub and
+chat tables were removed until W1 rebuilds them safely. Next: W1.
+
 **Goal:** a business connects its WhatsApp number (official WhatsApp Business Cloud API) with a
 few clicks. Customers' messages, text or voice, get answered automatically by the same agent that
 answers the phone: the same questions, knowledge base (RAG), tools, working hours, leads and

@@ -4,3 +4,4 @@ node_modules
 pnpm-lock.yaml
 **/prisma/migrations/**
 coverage
+.vscode

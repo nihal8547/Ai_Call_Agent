@@ -115,16 +115,16 @@ export const TOOL_SPECS: Record<ToolName, ToolSpec> = {
   },
   "whatsapp.send": {
     label: "Send WhatsApp message",
-    description: "Send a text message via WhatsApp.",
+    description: "Coming soon.",
     integration: "WHATSAPP",
-    available: true,
+    available: false,
     sideEffect: true,
   },
   "whatsapp.send_document": {
-    label: "Send WhatsApp Document",
-    description: "Send a document (PDF, Image, etc.) via WhatsApp.",
+    label: "Send WhatsApp document",
+    description: "Coming soon.",
     integration: "WHATSAPP",
-    available: true,
+    available: false,
     sideEffect: true,
   },
   "crm.create_lead": {

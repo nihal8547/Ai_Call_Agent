@@ -165,7 +165,9 @@ export class TestConsoleService {
     };
   }
 
-  private ctx(state: Pick<TestState, "timezone" | "simulatedAt" | "startedAt" | "callingCode">): EngineContext {
+  private ctx(
+    state: Pick<TestState, "timezone" | "simulatedAt" | "startedAt" | "callingCode">,
+  ): EngineContext {
     const now = state.simulatedAt
       ? new Date(new Date(state.simulatedAt).getTime() + (Date.now() - state.startedAt))
       : new Date();

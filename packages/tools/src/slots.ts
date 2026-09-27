@@ -1,6 +1,7 @@
 import {
   formatDateForSpeech,
   formatTimeForSpeech,
+  hoursOn,
   isArabic,
   isOpen,
   zonedDateTimeToUtc,
@@ -12,7 +13,6 @@ export type SlotRules = ReturnType<typeof AppointmentConfig.parse>;
 
 /** Hours used to suggest times when the business has not configured any */
 const DEFAULT_DAY = [{ start: "09:00", end: "18:00" }];
-const DAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
 
 export const slotRules = (config: AgentConfig): SlotRules =>
   config.appointment ?? AppointmentConfig.parse({});
@@ -36,11 +36,7 @@ export type SlotQuery = {
 };
 
 function openingRanges(q: Pick<SlotQuery, "date" | "hours">): { start: string; end: string }[] {
-  if (!q.hours) return DEFAULT_DAY;
-  if (q.hours.holidays.includes(q.date)) return [];
-  const [y, m, d] = q.date.split("-").map(Number);
-  const day = DAY_KEYS[new Date(Date.UTC(y!, m! - 1, d!)).getUTCDay()]!;
-  return q.hours.days[day] ?? [];
+  return q.hours ? hoursOn(q.hours, q.date) : DEFAULT_DAY;
 }
 
 /** Why a specific time cannot be booked (null = bookable) */

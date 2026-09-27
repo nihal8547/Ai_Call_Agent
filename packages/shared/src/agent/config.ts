@@ -14,14 +14,15 @@ export const WorkingHours = z
     /** Days missing from the map are closed */
     days: z.partialRecord(Day, z.array(z.object({ start: HHMM, end: HHMM })).max(4)).default({}),
     holidays: z.array(z.iso.date()).max(100).default([]),
+    /** Special periods (Ramadan, Eid …): their hours replace the weekly ones on those dates; no hours = closed */
     dateRangeOverrides: z
       .array(
         z.object({
           name: z.string().min(1).max(80),
-          startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD"),
-          endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD"),
+          startDate: z.iso.date(),
+          endDate: z.iso.date(),
           hours: z.array(z.object({ start: HHMM, end: HHMM })).max(4),
-        })
+        }),
       )
       .max(20)
       .default([]),
@@ -40,11 +41,19 @@ export const WorkingHours = z
     }
     w.dateRangeOverrides.forEach((override, i) => {
       if (override.startDate > override.endDate) {
-        ctx.addIssue({ code: "custom", path: ["dateRangeOverrides", i, "endDate"], message: "endDate must be at or after startDate" });
+        ctx.addIssue({
+          code: "custom",
+          path: ["dateRangeOverrides", i, "endDate"],
+          message: "The end date must be on or after the start date",
+        });
       }
       override.hours.forEach((r, j) => {
         if (r.start >= r.end) {
-          ctx.addIssue({ code: "custom", path: ["dateRangeOverrides", i, "hours", j, "end"], message: "end must be after start" });
+          ctx.addIssue({
+            code: "custom",
+            path: ["dateRangeOverrides", i, "hours", j, "end"],
+            message: "end must be after start",
+          });
         }
       });
     });

@@ -1,73 +1,48 @@
-import { serverGet } from '@/lib/api/server';
+import { MessageCircle, Mic, UserRoundCheck } from "lucide-react";
+import type { Metadata } from "next";
+import { Card, PageHeader } from "@/components/ui/misc";
 
-export default async function InboxPage({ params }: { params: Promise<{ tenant: string }> }) {
-  await params; // Acknowledge params without extracting unused tenant
-  
-  // Fetch sessions
-  const sessionsRes = await serverGet<{ items: Record<string, unknown>[] }>(`/chats`);
-  const sessions = sessionsRes?.items || [];
+export const metadata: Metadata = { title: "Inbox" };
 
+const COMING = [
+  {
+    icon: MessageCircle,
+    title: "Automatic replies on WhatsApp",
+    text: "Your agent answers customers from your knowledge base, asks your questions and books appointments.",
+  },
+  {
+    icon: Mic,
+    title: "Voice notes",
+    text: "Voice messages are transcribed and answered with a voice note in the customer's language.",
+  },
+  {
+    icon: UserRoundCheck,
+    title: "Take over any conversation",
+    text: "See every chat with its full history, reply yourself, then hand it back to the agent.",
+  },
+];
+
+export default function InboxPage() {
   return (
-    <div className="flex h-[calc(100vh-100px)] w-full gap-4 p-4">
-      {/* Left Sidebar - Chat List */}
-      <div className="w-1/3 h-full flex flex-col border rounded-lg bg-white shadow-sm">
-        <div className="p-4 border-b font-semibold">
-          Inbox
-        </div>
-        <div className="flex-1 overflow-y-auto p-4">
-          {sessions.length === 0 ? (
-            <div className="text-sm text-slate-500 text-center py-4">No chats found.</div>
-          ) : (
-            sessions.map((session, index) => (
-              <div key={String(session.id)} className={`p-3 mb-2 border rounded-lg cursor-pointer transition-colors ${index === 0 ? 'bg-slate-50' : 'hover:bg-slate-50'}`}>
-                <div className="font-semibold text-sm">{String(session.customerNumber || "")}</div>
-                <div className="text-xs text-muted-foreground truncate">{String(session.latestMessage || "No messages yet")}</div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-
-      {/* Right Area - Chat Window */}
-      <div className="w-2/3 h-full flex flex-col border rounded-lg bg-white shadow-sm">
-        <div className="p-4 border-b font-semibold">
-          Chat: {sessions[0] ? String(sessions[0].customerNumber) : "Select a chat"}
-        </div>
-        <div className="flex-1 flex flex-col p-4 overflow-y-auto gap-3">
-            {sessions.length === 0 ? (
-              <div className="flex-1 flex items-center justify-center text-slate-500">
-                Inbox is empty.
-              </div>
-            ) : (
-              <>
-                {/* Outbound AI Message */}
-                <div className="flex w-full justify-end">
-                  <div className="bg-blue-600 text-white p-3 rounded-lg max-w-[80%] text-sm">
-                    Sure, here is the document you requested.
-                    <div className="mt-2 p-2 bg-blue-700/50 rounded flex items-center gap-2">
-                      📄 info-brochure.pdf
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-        </div>
-        {/* Input Area */}
-        <div className="p-3 border-t flex gap-2">
-          <input 
-            type="text" 
-            placeholder="Type a message to take over from AI..." 
-            className="flex-1 px-3 py-2 border rounded-md text-sm outline-none focus:border-blue-500"
-            disabled={sessions.length === 0}
-          />
-          <button 
-            disabled={sessions.length === 0}
-            className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-          >
-            Send
-          </button>
-        </div>
-      </div>
+    <div>
+      <PageHeader title="Inbox" description="WhatsApp conversations answered by your agents." />
+      <Card className="p-8">
+        <p className="text-sm font-medium text-slate-500">Coming soon</p>
+        <h2 className="mt-1 text-lg font-semibold text-slate-950">Connect WhatsApp to start</h2>
+        <p className="mt-1 max-w-xl text-[15px] text-slate-500">
+          Connecting your WhatsApp Business number with the official WhatsApp API is being built. Once
+          it&apos;s ready, you&apos;ll connect it in a few clicks and conversations will appear here.
+        </p>
+        <ul className="mt-8 grid gap-6 sm:grid-cols-3">
+          {COMING.map(({ icon: Icon, title, text }) => (
+            <li key={title}>
+              <Icon className="size-5 text-slate-900" aria-hidden />
+              <p className="mt-3 text-sm font-semibold text-slate-950">{title}</p>
+              <p className="mt-1 text-sm text-slate-500">{text}</p>
+            </li>
+          ))}
+        </ul>
+      </Card>
     </div>
   );
 }

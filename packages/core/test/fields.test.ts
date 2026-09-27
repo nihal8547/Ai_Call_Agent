@@ -85,4 +85,23 @@ describe("isOpen", () => {
     expect(isOpen({ ...hours!, holidays: ["2026-09-28"] }, new Date("2026-09-28T06:00:00Z"))).toBe(false);
     expect(isOpen(undefined, new Date())).toBe(true);
   });
+
+  it("uses special date ranges (Ramadan, Eid) instead of the weekly hours", () => {
+    const ramadan = {
+      ...hours!,
+      dateRangeOverrides: [
+        {
+          name: "Ramadan",
+          startDate: "2026-09-28",
+          endDate: "2026-09-30",
+          hours: [{ start: "20:00", end: "23:00" }],
+        },
+        { name: "Eid", startDate: "2026-10-01", endDate: "2026-10-01", hours: [] },
+      ],
+    };
+    expect(isOpen(ramadan, new Date("2026-09-28T06:00:00Z"))).toBe(false); // Mon 11:30 IST: normally open
+    expect(isOpen(ramadan, new Date("2026-09-28T15:30:00Z"))).toBe(true); // Mon 21:00 IST
+    expect(isOpen(ramadan, new Date("2026-10-01T06:00:00Z"))).toBe(false); // Eid: closed all day
+    expect(isOpen(ramadan, new Date("2026-10-02T06:00:00Z"))).toBe(true); // Fri: back to weekly hours
+  });
 });

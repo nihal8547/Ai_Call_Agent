@@ -16,3 +16,6 @@ dump.rdb
 
 # Local document storage
 .data/
+
+# Local one-off scripts
+scratch_*

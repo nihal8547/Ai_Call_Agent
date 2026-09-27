@@ -153,99 +153,124 @@ export function HoursTab() {
                 )
               }
             />
-            
-            <div className="space-y-4 pt-2 pb-2">
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-medium">Special Date Ranges (Ramadan, Eid, etc.)</h4>
-                <Button
-                  variant="secondary"
-                  onClick={() =>
-                    update((c) => {
-                      const overrides = c.workingHours!.dateRangeOverrides ?? [];
-                      overrides.push({
-                        name: "Ramadan",
-                        startDate: new Date().toISOString().split("T")[0]!,
-                        endDate: new Date().toISOString().split("T")[0]!,
-                        hours: [{ start: "10:00", end: "14:00" }],
-                      });
-                      c.workingHours!.dateRangeOverrides = overrides;
-                    })
-                  }
-                >
-                  Add Range
-                </Button>
+
+            <div className="space-y-3">
+              <div className="flex items-end justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium text-slate-900">Special periods</p>
+                  <p className="text-sm text-slate-500">
+                    Ramadan, Eid or other dates with different hours. They replace the weekly hours for calls
+                    and bookings; a period with no hours is closed.
+                  </p>
+                </div>
+                {(wh.dateRangeOverrides ?? []).length < 20 ? (
+                  <Button
+                    variant="secondary"
+                    className="shrink-0"
+                    onClick={() =>
+                      update((c) => {
+                        const today = new Date().toISOString().slice(0, 10);
+                        c.workingHours!.dateRangeOverrides = [
+                          ...(c.workingHours!.dateRangeOverrides ?? []),
+                          {
+                            name: "Ramadan",
+                            startDate: today,
+                            endDate: today,
+                            hours: [{ start: "10:00", end: "14:00" }],
+                          },
+                        ];
+                      })
+                    }
+                  >
+                    Add period
+                  </Button>
+                ) : null}
               </div>
-              {(wh.dateRangeOverrides ?? []).map((override, i) => (
-                <div key={i} className="rounded-md border border-slate-200 p-4 dark:border-slate-800 space-y-3">
-                  <div className="flex items-start justify-between">
-                    <div className="grid gap-4 md:grid-cols-3 flex-1 pr-4">
+              {(wh.dateRangeOverrides ?? []).map((period, i) => {
+                const path = `workingHours.dateRangeOverrides.${i}`;
+                const set = (
+                  fn: (p: NonNullable<AgentConfig["workingHours"]>["dateRangeOverrides"][number]) => void,
+                ) => update((c) => void fn(c.workingHours!.dateRangeOverrides[i]!));
+                return (
+                  <div key={i} className="space-y-3 rounded-lg border border-slate-200 p-4">
+                    <div className="grid gap-3 sm:grid-cols-[1fr_170px_170px_auto] sm:items-start">
                       <TextField
                         label="Name"
-                        value={override.name}
-                        onChange={(e) => update((c) => void (c.workingHours!.dateRangeOverrides![i]!.name = e.target.value))}
+                        value={period.name}
+                        maxLength={80}
+                        error={errorFor(`${path}.name`)}
+                        onChange={(e) => set((p) => void (p.name = e.target.value))}
                       />
                       <TextField
-                        label="Start Date (YYYY-MM-DD)"
-                        value={override.startDate}
-                        onChange={(e) => update((c) => void (c.workingHours!.dateRangeOverrides![i]!.startDate = e.target.value))}
+                        label="From"
+                        type="date"
+                        value={period.startDate}
+                        error={errorFor(`${path}.startDate`)}
+                        onChange={(e) => set((p) => void (p.startDate = e.target.value))}
                       />
                       <TextField
-                        label="End Date (YYYY-MM-DD)"
-                        value={override.endDate}
-                        onChange={(e) => update((c) => void (c.workingHours!.dateRangeOverrides![i]!.endDate = e.target.value))}
+                        label="To"
+                        type="date"
+                        value={period.endDate}
+                        min={period.startDate}
+                        error={errorFor(`${path}.endDate`)}
+                        onChange={(e) => set((p) => void (p.endDate = e.target.value))}
                       />
-                    </div>
-                    <Button
-                      variant="ghost"
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/50"
-                      onClick={() => update((c) => void c.workingHours!.dateRangeOverrides!.splice(i, 1))}
-                    >
-                      Remove
-                    </Button>
-                  </div>
-                  <div>
-                    <span className="text-sm font-medium mb-2 block">Working Hours</span>
-                    {override.hours.map((r, j) => (
-                      <div key={j} className="flex items-center gap-2 mb-2">
-                        <input
-                          type="time"
-                          value={r.start}
-                          onChange={(e) =>
-                            update((c) => void (c.workingHours!.dateRangeOverrides![i]!.hours[j]!.start = e.target.value))
-                          }
-                          className="h-9 rounded-md border border-slate-300 bg-white px-2 dark:border-slate-700 dark:bg-slate-900"
-                        />
-                        –
-                        <input
-                          type="time"
-                          value={r.end}
-                          onChange={(e) =>
-                            update((c) => void (c.workingHours!.dateRangeOverrides![i]!.hours[j]!.end = e.target.value))
-                          }
-                          className="h-9 rounded-md border border-slate-300 bg-white px-2 dark:border-slate-700 dark:bg-slate-900"
-                        />
-                        <Button
-                          variant="ghost"
-                          onClick={() => update((c) => void c.workingHours!.dateRangeOverrides![i]!.hours.splice(j, 1))}
-                        >
-                          ✕
-                        </Button>
-                      </div>
-                    ))}
-                    {override.hours.length < 4 && (
                       <Button
                         variant="ghost"
-                        className="text-sm"
-                        onClick={() =>
-                          update((c) => void c.workingHours!.dateRangeOverrides![i]!.hours.push({ start: "09:00", end: "18:00" }))
-                        }
+                        className="h-9 px-2 text-red-600 sm:mt-7"
+                        onClick={() => update((c) => void c.workingHours!.dateRangeOverrides.splice(i, 1))}
                       >
-                        + Add Shift
+                        Remove
                       </Button>
-                    )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+                      {period.hours.length === 0 ? (
+                        <span className="text-slate-500">Closed all day</span>
+                      ) : null}
+                      {period.hours.map((r, j) => (
+                        <span key={j} className="flex items-center gap-2">
+                          <input
+                            type="time"
+                            aria-label={`${period.name} shift ${j + 1} opens`}
+                            value={r.start}
+                            onChange={(e) => set((p) => void (p.hours[j]!.start = e.target.value))}
+                            className="h-9 rounded-md border border-slate-300 bg-white px-2"
+                          />
+                          –
+                          <input
+                            type="time"
+                            aria-label={`${period.name} shift ${j + 1} closes`}
+                            value={r.end}
+                            onChange={(e) => set((p) => void (p.hours[j]!.end = e.target.value))}
+                            className="h-9 rounded-md border border-slate-300 bg-white px-2"
+                          />
+                          <button
+                            type="button"
+                            aria-label={`Remove shift ${j + 1}`}
+                            onClick={() => set((p) => void p.hours.splice(j, 1))}
+                            className="rounded px-1 text-slate-400 hover:text-slate-900"
+                          >
+                            ✕
+                          </button>
+                          {errorFor(`${path}.hours.${j}.end`) ? (
+                            <span className="text-red-600">{errorFor(`${path}.hours.${j}.end`)}</span>
+                          ) : null}
+                        </span>
+                      ))}
+                      {period.hours.length < 4 ? (
+                        <Button
+                          variant="ghost"
+                          className="h-8 px-2"
+                          onClick={() => set((p) => void p.hours.push({ start: "09:00", end: "18:00" }))}
+                        >
+                          + Add shift
+                        </Button>
+                      ) : null}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
             <div className="grid gap-4 md:grid-cols-[240px_1fr]">
               <SelectField

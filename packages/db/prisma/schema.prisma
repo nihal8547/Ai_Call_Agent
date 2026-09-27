@@ -147,30 +147,6 @@ enum UsageKind {
   STORAGE_BYTES
 }
 
-enum ChatSessionStatus {
-  ACTIVE
-  CLOSED
-}
-
-enum MessageDirection {
-  INBOUND
-  OUTBOUND
-}
-
-enum MessageType {
-  TEXT
-  IMAGE
-  DOCUMENT
-  AUDIO
-}
-
-enum MessageStatus {
-  SENT
-  DELIVERED
-  READ
-  FAILED
-}
-
 // ─────────────────────── Tenancy, users, access ───────────────────────
 
 model Tenant {
@@ -221,7 +197,6 @@ model Tenant {
   sipTrunks      SipTrunk[]
   blockedCallers BlockedCaller[]
   alerts         TenantAlert[]
-  chatSessions   ChatSession[]
 
   @@map("tenants")
 }
@@ -365,7 +340,6 @@ model Agent {
   leads            Lead[]
   appointments     Appointment[]
   analytics        AnalyticsHourly[]
-  chatSessions     ChatSession[]
 
   @@unique([tenantId, name])
   @@index([tenantId, status])
@@ -936,37 +910,3 @@ model TenantAlert {
   @@map("tenant_alerts")
 }
 
-// ─────────────────────── WhatsApp Chat Automation ───────────────────────
-
-model ChatSession {
-  id             String            @id @default(uuid(7)) @db.Uuid
-  tenantId       String            @map("tenant_id") @db.Uuid
-  agentId        String?           @map("agent_id") @db.Uuid
-  customerNumber String            @map("customer_number") @db.VarChar(20)
-  status         ChatSessionStatus @default(ACTIVE)
-  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt      DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
-
-  tenant   Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  agent    Agent?        @relation(fields: [agentId], references: [id], onDelete: SetNull)
-  messages ChatMessage[]
-
-  @@index([tenantId, customerNumber])
-  @@index([tenantId, status])
-  @@map("chat_sessions")
-}
-
-model ChatMessage {
-  id        String           @id @default(uuid(7)) @db.Uuid
-  sessionId String           @map("session_id") @db.Uuid
-  direction MessageDirection
-  type      MessageType      @default(TEXT)
-  content   String
-  status    MessageStatus    @default(SENT)
-  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
-
-  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-
-  @@index([sessionId, createdAt(sort: Asc)])
-  @@map("chat_messages")
-}

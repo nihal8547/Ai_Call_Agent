@@ -48,7 +48,9 @@ export function TestTab() {
   const [last, setLast] = useState<TestReply | null>(null);
   const [text, setText] = useState("");
   const end = useRef<HTMLDivElement>(null);
-  useEffect(() => { end.current?.scrollIntoView({ block: "nearest" }); }, [lines]);
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: "nearest" });
+  }, [lines]);
 
   const record = (r: TestReply) => {
     const system: Line[] = [

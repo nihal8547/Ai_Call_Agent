@@ -253,7 +253,7 @@ export class TelephonyService {
       out.control === "transfer" &&
       out.transferTo &&
       state.businessNumber &&
-      (parsePhone(out.transferTo, state.callingCode) ?? out.transferTo) ===
+      (parsePhone(out.transferTo, state.callingCode ?? this.env.DEFAULT_COUNTRY_CODE) ?? out.transferTo) ===
         state.businessNumber;
     if (toOwnLine) {
       // The business line forwards to this agent: dialling it would ring straight back here
@@ -436,7 +436,7 @@ export class TelephonyService {
           agentVersionId: state.agentVersionId,
           callerNumber: state.callerNumber,
           timezone: state.timezone,
-          callingCode: state.callingCode ?? "974",
+          callingCode: state.callingCode ?? this.env.DEFAULT_COUNTRY_CODE,
           call,
         },
         `tool-${state.callId}-${call.idempotencyKey}`,
@@ -449,7 +449,7 @@ export class TelephonyService {
       now: new Date(),
       timezone: state.timezone,
       callerNumber: state.callerNumber,
-      defaultCountryCode: state.callingCode ?? "974",
+      defaultCountryCode: state.callingCode ?? this.env.DEFAULT_COUNTRY_CODE,
     };
   }
 
