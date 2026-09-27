@@ -1393,14 +1393,79 @@ number (forwarding or SIP), or buys a Twilio number in the app.
   is only known from the test call on a real line.
 - **Twilio has few or no Qatar numbers:** forwarding goes to a number abroad (the carrier charges
   its international rate) or the business connects over SIP.
-- **PII redaction:** retention removes transcripts and caller numbers; events are not redacted
-  while they are kept. Recordings aren't stored yet, so signed recording URLs wait for them.
+- **PII redaction:** the call timeline is redacted before it is stored (emails, phone numbers,
+  card numbers, PAN/Aadhaar), and retention later removes transcripts and caller numbers.
+  Recordings aren't stored yet, so signed recording URLs wait for them.
 - **Per-caller rate limits:** covered by the per-number cap, blocklist and volume alerts rather
   than a separate per-caller limiter.
 - The worker's quiet-SIP alerts show on the dashboard but are not emailed.
 - No virus scan of uploaded documents yet (the ClamAV hook deferred from P8); uploads are
   type-checked and size-limited, parsed in the worker and only downloaded back as attachments.
-- Arabic conversations (plan §4) are still to do.
+- Arabic conversations came right after P12 (see "Qatar localisation" below).
+
+### Qatar localisation: Arabic agents ✅
+
+Done after P12 (it is the rest of [the Qatar plan](QATAR_AND_EXISTING_NUMBERS_PLAN.md)). P13
+needs streaming speech services that this environment can't reach, so Arabic came first.
+
+**What an Arabic agent does**
+
+- Speaks Arabic, understands callers in Gulf Arabic, standard Arabic and English (mixed is fine).
+- Language `ar-QA` (also ar-AE, ar-SA, ar-KW) goes to Twilio speech recognition; the voice is
+  Polly Hala (Gulf Arabic), Zayd or Zeina. An Arabic agent left on an English voice is given an
+  Arabic one.
+- With the AI: the understanding prompt knows Gulf yes/no, "أبي أكلم موظف" and Arabic amounts;
+  phrasing replies in natural Gulf-friendly Arabic, with the same fact checks (numbers kept, the
+  question kept; Arabic "؟" counts).
+- Without the AI (no key, timeouts, rate limits), deterministic rules understand Arabic:
+  - yes/no (ايوه، إي، تمام، أكيد، لا بأس / لا، مو، غلط), asking for a person, not interested,
+    questions (كم، متى، وين، هل، شو …).
+  - Names ("اسمي فاطمة الكواري", kept as said; "أنا أبي شقة" is not a name).
+  - Amounts ("خمسين ألف", "مليون ونص", "٧٥٠ ألف ريال"), phone numbers said digit by digit.
+  - Dates (بكرة، بعد بكرة، الأحد الجاي، بعد ثلاث أيام، ١٥ أكتوبر) and times (خمس ونص العصر،
+    عشرة الصبح، ٤ م، سبعة إلا ربع).
+  - Choices by name or Gulf synonym (فله → فيلا، على طول → فوراً), spelling variants folded
+    (أ/إ/ا، ة/ه، ى/ي, diacritics).
+- Several answers in one sentence are taken together, in English too: choices named outright or
+  by a synonym, and amounts said with a scale ("a villa, around 2 crore, with a home loan";
+  "أبي فيلا في لوسيل، وميزانيتي حول مليونين ونص").
+- Says values in Arabic: "2.5 مليون ريال", "الأحد، 4 أكتوبر", "4:30 مساءً", acknowledgements
+  ("تمام، عدّلت الميزانية إلى …"), free-slot and booking messages, the call-length limit, and the
+  call summary.
+
+**Templates:** Qatar real estate (Arabic: Lusail, The Pearl, West Bay, Al Wakrah; QAR) and Qatar
+dental clinic (Arabic; Sunday–Thursday plus Saturday morning, emergencies to the front desk).
+Both use `gemini-flash-lite-latest`.
+
+**Editor:** language and voice lists (voices filtered by language), "Use Arabic wording" for the
+fallback sentences, right-to-left text in inputs, transcripts, lead values and summaries.
+Amounts are grouped by the business's currency (1,500,000 in Qatar, 15,00,000 in India).
+
+**Gemini adapter:** a model that rejects `thinkingBudget` is retried without it (and remembered);
+an overloaded model (503) gets one retry on `gemini-flash-lite-latest` within the turn's budget.
+
+**Verified**
+
+- Tests: core 174 (18 Arabic), API 133 (3 Arabic calls through signed Twilio webhooks: Arabic
+  greeting, `Polly.Hala-Neural`, `<Gather language="ar-QA">`, booking, Arabic summary, lead with
+  the +974 caller; voice fallback; Arabic transfer request), tools 47, rag 25, ai 13, shared 15.
+- A real call with Gemini: the multi-answer sentence, an unanswered price question (safe answer,
+  kept for the team), "بتمويل من البنك", "يوم الأحد الجاي", "الساعة أربعة ونص العصر",
+  "إي تمام، أكّد" → viewing booked, lead saved, 5 of 9 replies phrased by Gemini in Gulf Arabic.
+  The key then hit Gemini's per-minute limit (429) and the rules finished the call correctly.
+- Browser: Arabic transcript and editor inputs render right to left; voices filtered; switching
+  to English UK picks an English voice; no CSP violations.
+
+**Known limits**
+
+- Not tested with real callers or real Twilio Arabic speech recognition (network policy). Gulf
+  dialect recognition quality on phone audio must be measured on real calls; streaming speech
+  (P13) may be needed for good Arabic.
+- `gemini-flash-latest` was overloaded (503) during testing; the lite model was fast (~0.7 s).
+- One language per agent: a caller speaking English to an Arabic agent is understood, but the
+  agent answers in Arabic.
+- The rules path doesn't take corrections to earlier answers (English neither); the AI does.
+- Hijri dates, Ramadan hours and Levantine month names (تشرين …) are not handled.
 
 ### ✅ M3 — Level 3 milestone
 

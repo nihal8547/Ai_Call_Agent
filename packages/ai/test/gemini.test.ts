@@ -71,6 +71,46 @@ describe("GeminiProvider", () => {
     expect(r).toMatchObject({ ok: false, error });
   });
 
+  it("retries without thinkingBudget when a model rejects it, and remembers that", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(String(init!.body)) as { generationConfig: Record<string, unknown> };
+      bodies.push(body.generationConfig);
+      return body.generationConfig.thinkingConfig
+        ? json({ error: { code: 400, message: "Request contains an invalid argument." } }, 400)
+        : json({
+            candidates: [{ content: { parts: [{ text: '{"intent":"answer"}' }] }, finishReason: "STOP" }],
+          });
+    });
+    const provider = new GeminiProvider("k", fetchMock as unknown as typeof fetch);
+    const lite = { ...params, model: "gemini-flash-lite-latest" };
+    await expect(provider.generate(lite)).resolves.toMatchObject({ ok: true, json: { intent: "answer" } });
+    await expect(provider.generate(lite)).resolves.toMatchObject({ ok: true });
+    // Two requests the first time, one afterwards
+    expect(bodies.map((b) => Boolean(b.thinkingConfig))).toEqual([true, false, false]);
+  });
+
+  it("tries the lighter model once when the chosen one is overloaded", async () => {
+    const urls: string[] = [];
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      urls.push(String(url));
+      return String(url).includes("lite")
+        ? json({
+            candidates: [{ content: { parts: [{ text: '{"intent":"affirm"}' }] }, finishReason: "STOP" }],
+          })
+        : json({ error: { code: 503, status: "UNAVAILABLE" } }, 503);
+    });
+    const r = await new GeminiProvider("k", fetchMock as unknown as typeof fetch).generate({
+      ...params,
+      model: "gemini-flash-latest",
+    });
+    expect(r).toMatchObject({ ok: true, model: "gemini-flash-lite-latest", json: { intent: "affirm" } });
+    expect(urls.map((u) => u.split("/models/")[1]!.split(":")[0])).toEqual([
+      "gemini-flash-latest",
+      "gemini-flash-lite-latest",
+    ]);
+  });
+
   it("reports safety blocks, empty and non-JSON output as failures", async () => {
     const run = (body: unknown) =>
       new GeminiProvider("k", (async () => json(body)) as unknown as typeof fetch).generate(params);

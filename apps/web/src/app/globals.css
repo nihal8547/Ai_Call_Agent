@@ -1,30 +1,68 @@
 @import "tailwindcss";
+@import "@fontsource/ibm-plex-sans-arabic/400.css";
+@import "@fontsource/ibm-plex-sans-arabic/500.css";
+@import "@fontsource/ibm-plex-sans-arabic/600.css";
+
+/* White and black theme: dark-mode classes only apply under an explicit .dark ancestor (never set) */
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --color-brand-50: #eef6ff;
-  --color-brand-500: #2563eb;
-  --color-brand-600: #1d4ed8;
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  /* Black is the brand: primary buttons, active navigation, links */
+  --color-brand-50: #f5f5f5;
+  --color-brand-500: #262626;
+  --color-brand-600: #0a0a0a;
+
+  /* Neutral greys everywhere (the app's "slate" classes read as true greys, no blue cast) */
+  --color-slate-50: #fafafa;
+  --color-slate-100: #f5f5f5;
+  --color-slate-200: #e8e8e8;
+  --color-slate-300: #d4d4d4;
+  --color-slate-400: #a3a3a3;
+  --color-slate-500: #6b6b6b;
+  --color-slate-600: #525252;
+  --color-slate-700: #3a3a3a;
+  --color-slate-800: #262626;
+  --color-slate-900: #171717;
+  --color-slate-950: #0a0a0a;
+
+  /* Geist for Latin text, IBM Plex Sans Arabic for Arabic (browsers pick per character) */
+  --font-sans: var(--font-geist-sans), "IBM Plex Sans Arabic", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SFMono-Regular", monospace;
+
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.04), 0 1px 1px rgb(0 0 0 / 0.02);
 }
 
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
+  /* Checkboxes, radios and range inputs in the brand black */
+  accent-color: #0a0a0a;
+}
+
+html {
+  /* Room for the sticky header when jumping to an anchor */
+  scroll-padding-top: 4.5rem;
 }
 
 body {
-  @apply bg-slate-50 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100;
+  @apply bg-white text-slate-950 antialiased;
+  font-feature-settings: "ss01", "cv11";
+  text-rendering: optimizeLegibility;
 }
 
-/* Chart tokens: single-series bar colour validated against each mode's card surface */
-:root {
-  --chart-bar: #2563eb;
-  --chart-grid: #e2e8f0;
-  --chart-axis: #64748b;
+h1,
+h2,
+h3 {
+  letter-spacing: -0.015em;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --chart-bar: #3b82f6;
-    --chart-grid: #1e293b;
-    --chart-axis: #94a3b8;
-  }
+
+::selection {
+  background: #0a0a0a;
+  color: #fff;
+}
+
+/* Chart tokens: single series in near-black, grid and axis in quiet greys */
+:root {
+  --chart-bar: #171717;
+  --chart-grid: #ececec;
+  --chart-axis: #6b6b6b;
 }

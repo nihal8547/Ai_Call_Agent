@@ -20,16 +20,23 @@ export function Dialog({
     if (!d) return;
     if (open && !d.open) d.showModal();
     if (!open && d.open) d.close();
+    if (!open) return;
+    // A modal <dialog> doesn't stop the page behind it scrolling: lock it while open
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
   }, [open]);
   return (
     <dialog
       ref={ref}
       onClose={onClose}
       aria-labelledby="dialog-title"
-      className="m-auto w-[min(36rem,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white p-0 text-slate-900 shadow-xl backdrop:bg-slate-900/50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+      className="m-auto w-[min(36rem,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-white p-0 text-slate-950 shadow-2xl backdrop:bg-slate-950/25 backdrop:backdrop-blur-[2px]"
     >
       {open ? (
-        <div className="max-h-[85vh] overflow-y-auto p-6">
+        <div className="max-h-[85dvh] overflow-y-auto overscroll-contain p-6">
           <div className="mb-4 flex items-start justify-between gap-4">
             <h2 id="dialog-title" className="text-lg font-semibold">
               {title}

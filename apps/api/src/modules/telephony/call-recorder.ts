@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { type CallSession, type EngineEvent, redactDeep } from "@platform/core";
+import { type CallSession, type EngineEvent, formatFieldValue, isArabic, redactDeep } from "@platform/core";
 import type { CallEventType, Prisma } from "@platform/db";
 import type { RuntimeEvent, RuntimeTurn } from "@platform/runtime";
 import type { AgentConfig } from "@platform/shared";
@@ -242,14 +242,20 @@ export class CallRecorder {
   }
 }
 
-/** One-line deterministic summary for lists and notifications */
+/** One-line deterministic summary for lists and notifications, in the agent's language */
 function summarize(session: CallSession, config: AgentConfig): string {
-  const labels = new Map(config.qualificationFields.map((f) => [f.key, f.label]));
-  const parts = Object.entries(session.collected).map(
-    ([k, v]) => `${labels.get(k) ?? k}: ${Array.isArray(v) ? v.join(", ") : String(v)}`,
-  );
+  const ar = isArabic(config.language);
+  const fields = new Map(config.qualificationFields.map((f) => [f.key, f]));
+  const parts = Object.entries(session.collected).map(([k, v]) => {
+    const f = fields.get(k);
+    // Dates and times as people say them; everything else as stored
+    const shown =
+      f && (f.type === "date" || f.type === "time") ? formatFieldValue(f, v, config.language) : null;
+    return `${f?.label ?? k}: ${shown ?? (Array.isArray(v) ? v.join(", ") : String(v))}`;
+  });
   const questions = session.pendingQuestions.length
-    ? ` Open questions: ${session.pendingQuestions.join(" | ")}`
+    ? ` ${ar ? "أسئلة بانتظار الرد" : "Open questions"}: ${session.pendingQuestions.join(" | ")}`
     : "";
-  return `${parts.join("; ") || "No details collected"}.${questions}`.slice(0, 2000);
+  const none = ar ? "لم تُجمع أي تفاصيل" : "No details collected";
+  return `${parts.join(ar ? "؛ " : "; ") || none}.${questions}`.slice(0, 2000);
 }

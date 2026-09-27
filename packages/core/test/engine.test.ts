@@ -43,6 +43,23 @@ describe("fallback-only conversations (no LLM) complete every template", () => {
     expect(c.last.session).toMatchObject({ outcome: "APPOINTMENT_BOOKED", qualification: "QUALIFIED" });
   });
 
+  it("real estate: several answers in one sentence skip the questions already answered", () => {
+    const c = converse(realEstate(), [
+      "Rahul",
+      "a villa, budget around 2 crore, with a home loan",
+      "just exploring",
+      "Kharadi",
+    ]);
+    expect(c.last.session.collected).toMatchObject({
+      property_type: "Villa",
+      budget: 20_000_000,
+      financing: "Bank loan",
+      timeline: "Just exploring",
+    });
+    expect(c.transcript.some((l) => l.includes("What budget"))).toBe(false);
+    expect(c.transcript.some((l) => l.includes("bank loan, your own funds"))).toBe(false);
+  });
+
   it("real estate: an explorer skips the visit and is saved as a lead", () => {
     const c = converse(realEstate(), ["Anita", "villa", "2 crore", "just exploring", "Kharadi", "own funds"]);
     expect(c.last.speech).toContain("I'll have our team share project details in Kharadi with you.");

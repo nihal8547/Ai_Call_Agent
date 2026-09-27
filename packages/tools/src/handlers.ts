@@ -4,6 +4,7 @@ import {
   formatDateForSpeech,
   formatFieldValue,
   formatTimeForSpeech,
+  isArabic,
   zonedDateTimeToUtc,
 } from "@platform/core";
 import type { AgentConfig, ToolName } from "@platform/shared";
@@ -188,7 +189,7 @@ function unavailable(
   return {
     ok: false,
     error: problem === "taken" ? "slot_unavailable" : problem,
-    message: explainProblem(problem, q.date, time, alternatives),
+    message: explainProblem(problem, q.date, time, alternatives, env.ctx.config.language),
     retryFields: retry.filter((k): k is string => Boolean(k)),
   };
 }
@@ -238,12 +239,14 @@ export const HANDLERS: Partial<Record<ToolName, Handler>> = {
       return {
         ok: false,
         error: "no_slots",
-        message: "I don't have any free times on that day.",
+        message: isArabic(env.ctx.config.language)
+          ? "ما عندي أوقات فاضية ذاك اليوم."
+          : "I don't have any free times on that day.",
         retryFields: dateField ? [dateField] : [],
       };
     }
     const offer = spread(slots, slotRules(env.ctx.config).slotsToOffer);
-    return { ok: true, data: { slots }, message: describeSlots(date, offer) };
+    return { ok: true, data: { slots }, message: describeSlots(date, offer, env.ctx.config.language) };
   },
 
   "calendar.book": async (env, input) => {
@@ -302,7 +305,9 @@ export const HANDLERS: Partial<Record<ToolName, Handler>> = {
       return {
         ok: false,
         error: "no_appointment",
-        message: "I couldn't find an upcoming appointment for this phone number.",
+        message: isArabic(env.ctx.config.language)
+          ? "ما لقيت موعد قادم على هالرقم."
+          : "I couldn't find an upcoming appointment for this phone number.",
       };
     }
     if (next.externalRef && env.binding)
@@ -312,7 +317,9 @@ export const HANDLERS: Partial<Record<ToolName, Handler>> = {
     return {
       ok: true,
       data: { appointmentId: next.id },
-      message: `I've cancelled your appointment on ${describeWhen(date, time)}.`,
+      message: isArabic(env.ctx.config.language)
+        ? `ألغيت موعدك ${describeWhen(date, time, env.ctx.config.language)}.`
+        : `I've cancelled your appointment on ${describeWhen(date, time)}.`,
     };
   },
 
@@ -391,6 +398,8 @@ export const HANDLERS: Partial<Record<ToolName, Handler>> = {
   },
 };
 
-function describeWhen(date: string, time: string): string {
-  return `${formatDateForSpeech(date)} at ${formatTimeForSpeech(time)}`;
+function describeWhen(date: string, time: string, language?: string): string {
+  return isArabic(language)
+    ? `يوم ${formatDateForSpeech(date, language)} الساعة ${formatTimeForSpeech(time, language)}`
+    : `${formatDateForSpeech(date)} at ${formatTimeForSpeech(time)}`;
 }

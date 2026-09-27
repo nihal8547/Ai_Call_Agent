@@ -26,11 +26,14 @@ export const fmtPercent = (x: number) => `${Math.round(x * 100)}%`;
 export const humanize = (s: string) => s.charAt(0) + s.slice(1).toLowerCase().replace(/_/g, " ");
 
 /** Show collected values nicely: ISO dates, times, big amounts */
-export function fmtValue(v: unknown): string {
+/** Digit grouping for a business's currency: lakh-style (12,00,000) for INR, thousands elsewhere */
+export const numberLocale = (currency?: string) => (currency && currency !== "INR" ? "en-US" : "en-IN");
+
+export function fmtValue(v: unknown, locale = "en-IN"): string {
   if (v === null || v === undefined) return "—";
   if (Array.isArray(v)) return v.join(", ");
   if (typeof v === "boolean") return v ? "Yes" : "No";
-  if (typeof v === "number") return v >= 100000 ? new Intl.NumberFormat("en-IN").format(v) : String(v);
+  if (typeof v === "number") return v >= 100000 ? new Intl.NumberFormat(locale).format(v) : String(v);
   if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)) {
     const [y, m, d] = v.split("-").map(Number);
     return new Intl.DateTimeFormat(undefined, {

@@ -16,6 +16,9 @@
     "typecheck": {
       "dependsOn": ["^build"]
     },
+    "@platform/web#typecheck": {
+      "dependsOn": ["^build", "build"]
+    },
     "lint": {
       "dependsOn": ["^build"]
     },

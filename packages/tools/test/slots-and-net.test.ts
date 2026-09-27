@@ -2,6 +2,7 @@ import { AppointmentConfig } from "@platform/shared";
 import { describe, expect, it } from "vitest";
 import {
   checkSlot,
+  describeSlots,
   explainProblem,
   freeSlots,
   isPrivateAddress,
@@ -104,5 +105,19 @@ describe("network guard", () => {
     await expect(resolvePublic("localhost", false)).rejects.toMatchObject({ kind: "blocked" });
     await expect(resolvePublic("169.254.169.254", false)).rejects.toMatchObject({ kind: "blocked" });
     expect(await resolvePublic("127.0.0.1", true)).toBe("127.0.0.1");
+  });
+});
+
+describe("slot messages in Arabic", () => {
+  it("offers free times and explains a taken slot in the agent's language", () => {
+    expect(describeSlots("2026-10-04", ["11:00", "15:30"], "ar-QA")).toBe(
+      "يوم الأحد، 4 أكتوبر عندي 11 صباحًا أو 3:30 مساءً فاضي.",
+    );
+    expect(explainProblem("taken", "2026-10-04", "10:00", ["11:00"], "ar-QA")).toBe(
+      "الساعة 10 صباحًا يوم الأحد، 4 أكتوبر محجوزة. يوم الأحد، 4 أكتوبر عندي 11 صباحًا فاضي.",
+    );
+    expect(explainProblem("closed", "2026-10-02", "10:00", [], "ar-QA")).toBe(
+      "إحنا مسكّرين الساعة 10 صباحًا يوم الجمعة، 2 أكتوبر. ما عندي أوقات فاضية ذاك اليوم.",
+    );
   });
 });

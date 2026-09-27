@@ -1,6 +1,13 @@
 "use client";
 
-import { type AgentConfig, AppointmentConfig, type Day } from "@platform/shared";
+import {
+  type AgentConfig,
+  AppointmentConfig,
+  ARABIC_MESSAGES,
+  type Day,
+  FallbackMessages,
+} from "@platform/shared";
+import { Button } from "@/components/ui/button";
 import { useMe } from "@/components/app/me-context";
 import { SelectField, TextField } from "@/components/ui/field";
 import { Check, Section } from "@/components/ui/inputs";
@@ -307,6 +314,21 @@ export function HoursTab() {
       <Section
         title="Fallback sentences"
         description="Exactly what the agent says in each situation when it can't rely on the AI."
+        actions={
+          <Button
+            variant="secondary"
+            className="h-9"
+            onClick={() =>
+              update((c) => {
+                c.messages = config.language.startsWith("ar")
+                  ? { ...ARABIC_MESSAGES }
+                  : FallbackMessages.parse({});
+              })
+            }
+          >
+            {config.language.startsWith("ar") ? "Use Arabic wording" : "Use default wording"}
+          </Button>
+        }
       >
         <div className="grid gap-4 md:grid-cols-2">
           {(Object.keys(MESSAGE_LABELS) as (keyof AgentConfig["messages"])[]).map((k) => (

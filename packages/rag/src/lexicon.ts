@@ -10,7 +10,11 @@ export const STOPWORDS = new Set(
     "please should tell that the their them there these they this to was we what when where which who why will with " +
     "would you your about any also am just know like need want get got give much many there's what's i'm i'd we're " +
     "you're it's is it provide provides available right now currently actually really here okay ok yes hi hello " +
-    "sir madam maam one some kind sort thing things let us anything something stuff come comes leave work works"
+    "sir madam maam one some kind sort thing things let us anything something stuff come comes leave work works " +
+    // Arabic (standard and Gulf), in the common spellings: question words, pronouns, "I want", greetings
+    "في من على الى إلى عن مع هل كم بكم ما ماذا متى وين اين أين فين كيف شلون شو ايش إيش وش شنو ليش لماذا " +
+    "لو سمحت من فضلك ممكن عندكم عندك فيه هذا هذه هذي ذلك التي الذي اللي انا أنا احنا إحنا نحن هو هي انت أنت " +
+    "ابي أبي ابغى أبغى ابغي أبغي اريد أريد ودي نبي يعني طيب السلام عليكم مرحبا هلا اهلا أهلا يا و او أو"
   ).split(" "),
 );
 

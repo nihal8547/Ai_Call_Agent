@@ -4,6 +4,8 @@ import {
   formatAmount,
   formatDateForSpeech,
   formatTimeForSpeech,
+  hasArabic,
+  isArabic,
   matchOption,
   matchOptions,
   parseDate,
@@ -42,7 +44,11 @@ export function validateFieldValue(field: QualificationField, raw: unknown, ctx:
     case "text":
     case "name": {
       if (asText === undefined) return fail("expected text");
-      const value = field.type === "name" ? (parseName(asText) ?? nameFallback(asText)) : cleanText(asText);
+      // Arabic names come only from parseName, which knows "أنا أبي شقة" is not a name
+      const value =
+        field.type === "name"
+          ? (parseName(asText) ?? (hasArabic(asText) ? "" : nameFallback(asText)))
+          : cleanText(asText);
       if (!value) return fail("empty");
       if (value.length < (v.minLength ?? 1)) return fail("too short");
       if (value.length > (v.maxLength ?? 200)) return fail("too long");
@@ -132,27 +138,32 @@ export function extractCandidate(field: QualificationField, utterance: string): 
   return text;
 }
 
-/** Value as the agent should say it */
-export function formatFieldValue(field: QualificationField | undefined, value: unknown): string {
+/** Value as the agent should say it, in the agent's language */
+export function formatFieldValue(
+  field: QualificationField | undefined,
+  value: unknown,
+  language?: string,
+): string {
   if (value === undefined || value === null) return "";
   if (!field) return String(value);
+  const ar = isArabic(language);
   switch (field.type) {
     case "currency":
-      return typeof value === "number" ? formatAmount(value, field.currency) : String(value);
+      return typeof value === "number" ? formatAmount(value, field.currency, language) : String(value);
     case "number":
-      return typeof value === "number" ? value.toLocaleString("en-IN") : String(value);
+      return typeof value === "number" ? value.toLocaleString(ar ? "en-US" : "en-IN") : String(value);
     case "date":
       return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
-        ? formatDateForSpeech(value)
+        ? formatDateForSpeech(value, language)
         : String(value);
     case "time":
       return typeof value === "string" && /^\d{2}:\d{2}$/.test(value)
-        ? formatTimeForSpeech(value)
+        ? formatTimeForSpeech(value, language)
         : String(value);
     case "boolean":
-      return value ? "yes" : "no";
+      return ar ? (value ? "نعم" : "لا") : value ? "yes" : "no";
     case "multiselect":
-      return Array.isArray(value) ? value.join(", ") : String(value);
+      return Array.isArray(value) ? value.join(ar ? "، " : ", ") : String(value);
     default:
       return String(value);
   }

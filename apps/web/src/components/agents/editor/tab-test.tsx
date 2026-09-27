@@ -10,7 +10,8 @@ import { StatusPill } from "@/components/ui/status-pill";
 import { api } from "@/lib/api/client";
 import { errorMessage } from "@/lib/api/errors";
 import { cn } from "@/lib/cn";
-import { fmtValue, humanize } from "@/lib/format";
+import { useMe } from "@/components/app/me-context";
+import { fmtValue, humanize, numberLocale } from "@/lib/format";
 import { useDraft } from "./draft-context";
 
 type TestReply = {
@@ -38,6 +39,7 @@ type TestReply = {
 type Line = { who: "agent" | "you" | "system"; text: string };
 
 export function TestTab() {
+  const me = useMe();
   const { agent, dirty } = useDraft();
   const [target, setTarget] = useState<"draft" | "published">(agent.draft ? "draft" : "published");
   const [at, setAt] = useState("");
@@ -149,6 +151,7 @@ export function TestTab() {
             ) : (
               <div key={i} className={cn("flex", l.who === "you" ? "justify-end" : "justify-start")}>
                 <p
+                  dir="auto"
                   className={cn(
                     "max-w-[85%] rounded-2xl px-3 py-2 text-sm",
                     l.who === "you"
@@ -206,7 +209,8 @@ export function TestTab() {
                 <dd>
                   {Object.entries(last.state.collected).map(([k, v]) => (
                     <p key={k}>
-                      <span className="text-slate-500">{humanize(k)}:</span> {fmtValue(v)}
+                      <span className="text-slate-500">{humanize(k)}:</span>{" "}
+                      {fmtValue(v, numberLocale(me.tenant.currency))}
                     </p>
                   ))}
                   {!Object.keys(last.state.collected).length ? "Nothing yet" : null}

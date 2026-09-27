@@ -10,7 +10,7 @@ import { Alert, Badge, Card, PageHeader } from "@/components/ui/misc";
 import { StatusPill } from "@/components/ui/status-pill";
 import { api } from "@/lib/api/client";
 import { errorMessage } from "@/lib/api/errors";
-import { fmtDateTime, fmtValue, humanize } from "@/lib/format";
+import { fmtDateTime, fmtValue, humanize, numberLocale } from "@/lib/format";
 import type { Lead, LeadStatus, Page } from "@/lib/types";
 import { LeadsBoard } from "./leads-board";
 
@@ -154,7 +154,9 @@ export function LeadsPage() {
                     {Object.entries(l.data).map(([k, v]) => (
                       <div key={k} className="rounded-lg bg-slate-100 px-2 py-1 dark:bg-slate-800">
                         <dt className="inline text-slate-500">{humanize(k)}: </dt>
-                        <dd className="inline font-medium">{fmtValue(v)}</dd>
+                        <dd className="inline font-medium" dir="auto">
+                          {fmtValue(v, numberLocale(me.tenant.currency))}
+                        </dd>
                       </div>
                     ))}
                   </dl>

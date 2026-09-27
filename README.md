@@ -5,6 +5,8 @@ A multi-tenant, configurable, RAG-powered platform for AI phone agents. Any busi
 - Architecture: [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md)
 - Build phases and progress: [`docs/DEVELOPMENT_PHASES.md`](docs/DEVELOPMENT_PHASES.md)
 - Running it in production: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) and the [runbook](docs/RUNBOOK.md)
+- Full project documentation (overview, architecture, how it works, stack and formats, security, build and run): [`docs/project/`](docs/project/README.md)
+- What is still to be built: [`docs/REMAINING_WORK.md`](docs/REMAINING_WORK.md)
 
 ## Stack
 
@@ -117,6 +119,12 @@ for customers to call:
 
 - The app connects as `voice_app` (member of `app_user`), so **Row-Level Security isolates tenants**. Migrations use the owner connection (`DATABASE_MIGRATION_URL`).
 - Prisma cannot model the pgvector HNSW index. When a generated migration contains `DROP INDEX "document_chunks_embedding_hnsw_idx"`, delete that line. `npm run db:check` catches any other drift.
+
+### Arabic agents (Qatar and the Gulf)
+
+- Pick **Arabic (Qatar)** as the agent's language (or start from a Qatar Arabic template). The
+  agent speaks Arabic with an Arabic voice and understands Gulf Arabic, standard Arabic and English.
+- Without an AI key it still understands Arabic yes/no, names, amounts, dates and times.
 
 ### Security and monitoring
 

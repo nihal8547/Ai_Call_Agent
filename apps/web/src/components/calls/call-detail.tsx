@@ -9,7 +9,7 @@ import { api } from "@/lib/api/client";
 import { errorMessage } from "@/lib/api/errors";
 import { cn } from "@/lib/cn";
 import { isAnswered, KnowledgeEvent, type RagPayload, SourceLinks } from "./knowledge-events";
-import { fmtDateTime, fmtDuration, fmtValue, humanize } from "@/lib/format";
+import { fmtDateTime, fmtDuration, fmtValue, humanize, numberLocale } from "@/lib/format";
 import type { CallDetail, CallEvent } from "@/lib/types";
 
 export function CallDetailPage({ id }: { id: string }) {
@@ -90,7 +90,9 @@ export function CallDetailPage({ id }: { id: string }) {
                 {Object.entries(c.collectedData).map(([k, v]) => (
                   <div key={k}>
                     <dt className="text-slate-500">{humanize(k)}</dt>
-                    <dd className="font-medium">{fmtValue(v)}</dd>
+                    <dd className="font-medium" dir="auto">
+                      {fmtValue(v, numberLocale(me.tenant.currency))}
+                    </dd>
                   </div>
                 ))}
               </dl>
@@ -128,7 +130,11 @@ export function CallDetailPage({ id }: { id: string }) {
           ) : null}
           <Card>
             <h2 className="font-semibold">Result</h2>
-            {c.summary ? <p className="mt-2 text-sm">{c.summary}</p> : null}
+            {c.summary ? (
+              <p className="mt-2 text-sm" dir="auto">
+                {c.summary}
+              </p>
+            ) : null}
             <ul className="mt-3 space-y-1 text-sm">
               {c.leads.map((l) => (
                 <li key={l.id}>
@@ -156,6 +162,7 @@ export function CallDetailPage({ id }: { id: string }) {
 }
 
 function TimelineItem({ event: e }: { event: CallEvent }) {
+  const locale = numberLocale(useMe().tenant.currency);
   const p = e.payload as Record<string, unknown>;
   if (e.type === "USER_TURN" || e.type === "AGENT_TURN") {
     const caller = e.type === "USER_TURN";
@@ -175,7 +182,7 @@ function TimelineItem({ event: e }: { event: CallEvent }) {
             {!caller && p.deterministic === false ? " · AI phrased" : ""}
             {!caller && e.latencyMs !== null ? ` · ${e.latencyMs} ms` : ""}
           </p>
-          {text}
+          <p dir="auto">{text}</p>
         </div>
       </li>
     );
@@ -183,7 +190,7 @@ function TimelineItem({ event: e }: { event: CallEvent }) {
   const describe: Record<string, () => string> = {
     CALL_STARTED: () => "Call started",
     EXTRACTION: () =>
-      `Captured ${humanize(String(p.field))}: ${fmtValue(p.value)}${p.correction ? " (corrected)" : ""}`,
+      `Captured ${humanize(String(p.field))}: ${fmtValue(p.value, locale)}${p.correction ? " (corrected)" : ""}`,
     VALIDATION_ERROR: () => `Rejected ${humanize(String(p.field))}: ${String(p.error)}`,
     RAG_RETRIEVAL: () =>
       p.question

@@ -24,7 +24,12 @@ export function guardOutput(text: string, opts: { maxChars?: number } = {}): Gua
   if (violations.length) return { ok: false, violations };
   if (cleaned.length <= maxChars) return { ok: true, text: cleaned };
   const cut = cleaned.slice(0, maxChars);
-  const end = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("? "), cut.lastIndexOf("! "));
+  const end = Math.max(
+    cut.lastIndexOf(". "),
+    cut.lastIndexOf("? "),
+    cut.lastIndexOf("! "),
+    cut.lastIndexOf("؟ "),
+  );
   return end > maxChars * 0.5
     ? { ok: true, text: cut.slice(0, end + 1) }
     : { ok: false, violations: ["too_long"] };
