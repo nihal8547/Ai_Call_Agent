@@ -1,0 +1,8 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^Test-Path \\.env; Test-Path \\.env\\.example; node -v; npm -v; docker info --format '\\{\\{\\.ServerVersion\\}\\}' 2>\\$null$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}
