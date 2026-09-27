@@ -1,45 +1,91 @@
 # Remaining work
 
-_Done since this list was written: password reset by email and emailed invitations (with resend);
-one-click "Continue with …" integrations, including email through Gmail and Outlook._
+_Last updated: 27 September 2026, after one-click integrations (commit `654ab25`)._
 
 What is still to be built, what exists but hasn't been proven against the real service, and known
-limits. Priorities: **P1** needed before selling to real businesses, **P2** important soon after,
-**P3** later growth. Built so far: phases P1–P12 and Arabic agents (see
-[DEVELOPMENT_PHASES.md](DEVELOPMENT_PHASES.md)).
+limits. What has been built is logged phase by phase in
+[DEVELOPMENT_PHASES.md](DEVELOPMENT_PHASES.md).
 
-## 1. Prove it on real services (P1)
+**Priorities:** **P1** needed before selling to real businesses, **P2** important soon after,
+**P3** later growth. **Size** is a rough guide: **S** about a day, **M** a few days, **L** a week
+or more.
+
+## 0. Where the project stands
+
+| Area                                                                                | State                   |
+| ----------------------------------------------------------------------------------- | ----------------------- |
+| Multi-tenant platform, sign-in, 2FA, roles, invitations, password reset, audit log  | Built                   |
+| Agents: editor, versions, workflows, test console, templates (incl. Qatar / Arabic) | Built                   |
+| Phone calls through Twilio (webhook mode), existing numbers by forwarding and SIP   | Built, not on real line |
+| Knowledge base (RAG) with live-call answers and knowledge gaps                      | Built                   |
+| Leads, appointments, lead board, CRM sync (HubSpot, Zoho)                           | Built                   |
+| Integrations with one-click sign-in (Google, Microsoft, HubSpot, Zoho) or manual    | Built, not on real APIs |
+| Queues, retries, failed deliveries, analytics, usage metering, cost estimates       | Built                   |
+| Security hardening, observability, Docker deployment, backups, runbook              | Built                   |
+| Billing, platform admin console, streaming voice                                    | **Not built**           |
+
+## 1. Before launch: must build (P1)
+
+| Item                                | Size | What to build                                                                                                                                                                                                                           |
+| ----------------------------------- | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Billing**                         | L    | Plans, subscriptions and invoices (Stripe; Razorpay for India), payment webhooks, usage from `usage_records` charged as overage, trial period, "payment failed" grace period then calls refused. A Billing page in Settings.            |
+| **Platform admin console**          | L    | `/admin` for the operator only: list businesses with usage and cost, set plan limits (today `tenants.usage_limits` is changed directly in the database), suspend / reactivate a business, failed jobs and alerts across all businesses. |
+| **Suspend a business**              | S    | A tenant status that refuses calls, sign-ins and API keys while keeping the data; needed for unpaid bills and abuse.                                                                                                                    |
+| **Email verification at sign-up**   | S    | Registration doesn't confirm the email today. Send a link (platform mail exists) and limit what an unverified account can do (e.g. no number purchase).                                                                                 |
+| **Twilio subaccount per business**  | M    | Every number is on the platform account today; subaccounts separate billing, limits and suspension.                                                                                                                                     |
+| **Terms, privacy, consent wording** | S    | Accept terms at sign-up; greeting templates that say the caller is talking to an AI assistant (and recorded, once recordings exist), as Qatar PDPPL and India DPDP require.                                                             |
+| **Browser tests in CI**             | M    | The Playwright checks are run by hand today; put the main flows (sign up, create agent, test call, connect an integration) in CI.                                                                                                       |
+
+## 2. Before launch: prove on real services (P1)
 
 Everything below is built and tested against fakes or simulations; this environment could not
 reach the real service.
 
-| Item                         | What to do                                                                                                                                    |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| Real Twilio calls end to end | Buy a number, call it from a phone: speech recognition quality, voices, transfers with whisper, status callbacks                              |
-| Existing numbers in Qatar    | Forward a real Ooredoo and a real Vodafone line; confirm the codes, whether the caller's number is kept, and costs                            |
-| SIP connections              | Connect a real carrier SIP trunk or PBX to a Twilio SIP domain                                                                                |
-| Arabic on phone audio        | Measure Gulf Arabic recognition (`ar-QA`) and the Polly Arabic voices with real callers                                                       |
-| Integrations                 | Real Google Calendar/Sheets/Gmail, Microsoft, HubSpot, Zoho and SMTP accounts; Google app verification (see [OAUTH_SETUP.md](OAUTH_SETUP.md)) |
-| Gemini at production load    | Paid quota (the free tier hit its per-minute limit during one call); latency from the Gulf region                                             |
-| Load                         | Repeat the 50-call load test on production-like infrastructure, with the AI on                                                                |
+| Item                         | What to do                                                                                                                                          |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Real Twilio calls end to end | Buy a number, call it from a phone: speech recognition quality, voices, transfers with whisper, status callbacks                                    |
+| Existing numbers in Qatar    | Forward a real Ooredoo and a real Vodafone line; confirm the codes, whether the caller's number is kept, and costs                                  |
+| SIP connections              | Connect a real carrier SIP trunk or PBX to a Twilio SIP domain                                                                                      |
+| Arabic on phone audio        | Measure Gulf Arabic recognition (`ar-QA`) and the Polly Arabic voices with real callers                                                             |
+| Integrations                 | Register the OAuth apps ([OAUTH_SETUP.md](OAUTH_SETUP.md)); connect real Google Calendar / Sheets / Gmail, Outlook, HubSpot, Zoho and SMTP accounts |
+| Google app verification      | Needed before customers can use Google sign-in outside "Testing" mode (sensitive scopes, including `gmail.send`)                                    |
+| Platform email delivery      | A real mail provider for `SMTP_URL`; SPF, DKIM and DMARC for the sending domain                                                                     |
+| Gemini at production load    | Paid quota (the free tier hit its per-minute limit during one call); latency from the Gulf region                                                   |
+| Load                         | Repeat the 50-call load test on production-like infrastructure, with the AI on                                                                      |
 
-## 2. Product gaps (P1–P2)
+## 3. Operations before launch (P1)
 
-| Priority | Item                               | Notes                                                                                                                                                    |
-| -------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| P1       | **Billing**                        | Plans, subscriptions and invoices (Stripe / Razorpay), usage from `usage_records`, overage alerts. Plan limits already exist but are set by the operator |
-| P1       | **Twilio subaccount per business** | Today every number is on the platform account; subaccounts separate billing and limits                                                                   |
-| P2       | Role editor UI                     | Custom roles exist in the API; the web app only assigns system roles                                                                                     |
-| P2       | Call recordings                    | Record (with consent wording), store encrypted, play with signed short-lived links                                                                       |
-| P2       | Virus scanning of uploads          | ClamAV (or a cloud scanner) before processing                                                                                                            |
-| P2       | Outbound calls                     | Call back new web leads within a minute, appointment reminders, campaigns                                                                                |
-| P2       | SMS / WhatsApp tools               | Catalogued as "coming soon"; confirmations and reminders by message                                                                                      |
-| P2       | CRM workflow tools                 | `crm.*` tools in workflows (today leads sync automatically)                                                                                              |
-| P2       | Drag-and-drop workflow editor      | Steps are reordered with buttons today                                                                                                                   |
-| P2       | Live call monitoring               | Staff listen in, whisper or take over                                                                                                                    |
-| P2       | Dark mode                          | The app is white-and-black by design now; dark classes remain in the code and can be switched back on                                                    |
+- Pick the hosting region (Gulf data residency, if customers require it) and managed Postgres /
+  Redis; follow [DEPLOYMENT.md](DEPLOYMENT.md).
+- Fresh secrets per environment; **rotate the Gemini key used during development**.
+- Register the OAuth apps; put the Microsoft client secret's expiry date in the calendar.
+- Set up alert delivery (email / Slack / PagerDuty) for the Prometheus rules; the on-call runbook
+  is in [RUNBOOK.md](RUNBOOK.md).
+- First restore drill on production backups.
+- Align the ports in `.env.example` with `infra/docker-compose.yml` (now 5441 for Postgres and
+  6381 for Redis locally).
 
-## 3. P13 — Streaming voice (P2)
+## 4. Product gaps soon after launch (P2)
+
+| Item                             | Size | Notes                                                                                                                                                                  |
+| -------------------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role editor UI                   | S    | Custom roles exist in the API (`/roles`); the web app only assigns the built-in roles                                                                                  |
+| Lead detail page                 | S    | `/leads/[id]` with all answers, calls, appointments, CRM sync history and notes                                                                                        |
+| Outbound event webhooks          | M    | Settings → Webhooks: signed `call.completed`, `lead.created`, `appointment.booked` events to the business's own systems (today only the per-agent webhook tool exists) |
+| Business-wide AI defaults        | S    | Default language, voice, AI on/off and tone for new agents (today set per agent)                                                                                       |
+| Call recordings                  | M    | Record with consent wording, store encrypted, play with signed short-lived links, retention                                                                            |
+| Outbound calls                   | L    | Call back new web leads within a minute, appointment reminders, campaigns (with do-not-call checks)                                                                    |
+| SMS / WhatsApp tools             | M    | Shown as "coming soon" in the agent tools list; confirmations and reminders by message                                                                                 |
+| Outlook / Microsoft 365 Calendar | M    | The Microsoft sign-in exists; add calendar scopes, free/busy and booking like Google Calendar                                                                          |
+| CRM workflow tools               | S    | `crm.*` tools inside workflows (today leads sync automatically after the call)                                                                                         |
+| Alerts by email                  | S    | Plan-limit, call-spike and silent-SIP alerts show on the dashboard only; email them to owners                                                                          |
+| Virus scanning of uploads        | S    | ClamAV (or a cloud scanner) before a document is processed                                                                                                             |
+| Drag-and-drop workflow editor    | M    | Steps are reordered with buttons today                                                                                                                                 |
+| Live call monitoring             | L    | Staff listen in, whisper or take over (needs streaming voice, section 5)                                                                                               |
+| Arabic dashboard (web UI)        | M    | Agents speak Arabic, but the web app itself is English only; add translations and a right-to-left layout                                                               |
+| Dark mode                        | S    | The app is white-and-black by design; dark classes remain in the code and can be switched back on                                                                      |
+
+## 5. P13 — Streaming voice (P2, L)
 
 Today each turn waits for the caller to stop, then Twilio recognises speech and plays the reply
 (about 1–3 s per turn with AI). Streaming makes it feel like a real conversation:
@@ -49,25 +95,24 @@ Today each turn waits for the caller to stop, then Twilio recognises speech and 
 - Streaming speech recognition (e.g. Deepgram), voice activity and turn detection, streaming
   LLM tokens, sentence chunking, streaming text-to-speech (e.g. Cartesia / ElevenLabs).
 - Barge-in (the caller interrupts), endpointing 300–500 ms, filler audio for slow tools.
-- Per-agent choice between webhook and streaming mode; latency dashboard per hop
-  (target under 800 ms end to end).
-- Likely needed for good Arabic and Malayalam recognition.
+- Per-agent choice between webhook and streaming mode; latency dashboard per hop (target under
+  800 ms end to end).
+- Likely needed for good Arabic and Malayalam recognition, and for live call monitoring.
 
-## 4. P14 — Advanced AI, RAG and enterprise (P3)
+## 6. P14 — Advanced AI, RAG and enterprise (P3)
 
 - **AI providers**: OpenAI and Anthropic next to Gemini, per-agent choice, automatic failover,
   small model for understanding and a larger one for answers.
 - **RAG**: re-ranking, query rewriting from the conversation, FAQ fast path, per-collection
   chunking, background re-embedding when the embedding model changes.
 - **Telephony**: Telnyx / Plivo adapters.
-- **Integrations**: Outlook / Microsoft 365 Calendar (the Microsoft sign-in exists; calendar scopes and
-  booking are to add), Salesforce, Cal.com, WhatsApp Business, a no-code REST tool builder.
-- **Enterprise**: SSO (SAML / OIDC), white-labelling, data residency (e.g. Gulf region),
-  custom retention per data type, sentiment-based escalation.
+- **Integrations**: Salesforce, Cal.com, WhatsApp Business, a no-code REST tool builder.
+- **Enterprise**: SSO (SAML / OIDC), white-labelling, data residency (e.g. Gulf region), custom
+  retention per data type, sentiment-based escalation.
 - **Languages**: Hindi and Malayalam agents (rules and templates like Arabic), bilingual agents
   that switch language mid-call.
 
-## 5. Known limits today
+## 7. Known limits today
 
 - One language per agent: English callers are understood by an Arabic agent, but it replies in
   Arabic.
@@ -78,17 +123,14 @@ Today each turn waits for the caller to stop, then Twilio recognises speech and 
   the business connects over SIP.
 - Analytics are up to ~30 s behind; latency percentiles are approximate (hourly buckets).
 - Cost figures are estimates from list prices, not invoices.
-- The silent-SIP-connection alert shows on the dashboard but isn't emailed.
 - The system messages before an agent is known ("this number is not in service") are English only.
-- Browser end-to-end checks are run by hand; they are not yet part of CI.
+- Google sign-in in "Testing" mode: only listed test users, and connections expire after 7 days.
 
-## 6. Operations before launch (P1)
+## 8. Suggested order
 
-- Pick the hosting region (Gulf data residency, if customers require it) and managed Postgres /
-  Redis; follow [DEPLOYMENT.md](DEPLOYMENT.md).
-- Fresh secrets per environment; rotate the Gemini key used during development.
-- Set up alert delivery (email / Slack / PagerDuty) for the Prometheus rules; on-call runbook
-  is in [RUNBOOK.md](RUNBOOK.md).
-- Legal: privacy policy and terms; consent wording in greetings where recording or AI disclosure
-  is required (Qatar PDPPL, India DPDP Act).
-- First restore drill on production backups.
+1. Operations basics and real-service checks (sections 2 and 3), so problems show up early.
+2. Suspend a business, email verification, platform admin console.
+3. Billing and Twilio subaccounts.
+4. Terms and consent wording, browser tests in CI; then launch to the first businesses.
+5. P2 items by customer demand (recordings, outbound calls and WhatsApp are usually asked for
+   first), then streaming voice.
