@@ -23,7 +23,8 @@
     "db:seed": "npm run seed -w @platform/db",
     "db:check": "npm run check -w @platform/db",
     "simulate": "npm run simulate -w @platform/runtime --",
-    "audit:prod": "node scripts/audit.mjs"
+    "audit:prod": "node scripts/audit.mjs",
+    "check:live": "node --env-file-if-exists=.env scripts/check-live.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

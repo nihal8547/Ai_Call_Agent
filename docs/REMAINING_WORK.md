@@ -40,7 +40,9 @@ or more.
 ## 2. Before launch: prove on real services (P1)
 
 Everything below is built and tested against fakes or simulations; this environment could not
-reach the real service.
+reach the real service. Step by step, with `npm run check:live` for the automatic part:
+[LIVE_CHECKS.md](LIVE_CHECKS.md). First run (27 September): the Gemini key is free tier with its
+daily quota used up, the Twilio token and SID in `.env` aren't real ones yet, no Meta values.
 
 | Item                         | What to do                                                                                                                                                      |
 | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |

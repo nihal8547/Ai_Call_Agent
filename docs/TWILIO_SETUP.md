@@ -111,6 +111,9 @@ The address must be **exactly** `PUBLIC_BASE_URL` (the signature check compares 
 
 ## 7. Test with a direct call
 
+First run `npm run check:live`: it proves the token, the number's Voice URL and the public
+address before you pick up the phone ([LIVE_CHECKS.md](LIVE_CHECKS.md)).
+
 1. From any phone, call the **Twilio number** directly.
 2. The agent greets you. Talk through a short conversation.
 3. In the app: **Calls** shows the call live with the transcript; after hanging up, the summary
