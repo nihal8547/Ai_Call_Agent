@@ -173,30 +173,33 @@ model Tenant {
   createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  memberships    Membership[]
-  roles          Role[]
-  invitations    Invitation[]
-  apiKeys        ApiKey[]
-  agents         Agent[]
-  agentVersions  AgentVersion[]
-  phoneNumbers   PhoneNumber[]
-  collections    KnowledgeCollection[]
-  documents      Document[]
-  chunks         DocumentChunk[]
-  integrations   Integration[]
-  agentTools     AgentTool[]
-  calls          Call[]
-  callEvents     CallEvent[]
-  leadStatuses   LeadStatus[]
-  leads          Lead[]
-  appointments   Appointment[]
-  usageRecords   UsageRecord[]
-  auditLogs      AuditLog[]
-  failedJobs     FailedJob[]
-  analytics      AnalyticsHourly[]
-  sipTrunks      SipTrunk[]
-  blockedCallers BlockedCaller[]
-  alerts         TenantAlert[]
+  memberships          Membership[]
+  roles                Role[]
+  invitations          Invitation[]
+  apiKeys              ApiKey[]
+  agents               Agent[]
+  agentVersions        AgentVersion[]
+  phoneNumbers         PhoneNumber[]
+  collections          KnowledgeCollection[]
+  documents            Document[]
+  chunks               DocumentChunk[]
+  integrations         Integration[]
+  agentTools           AgentTool[]
+  calls                Call[]
+  callEvents           CallEvent[]
+  leadStatuses         LeadStatus[]
+  leads                Lead[]
+  appointments         Appointment[]
+  usageRecords         UsageRecord[]
+  auditLogs            AuditLog[]
+  failedJobs           FailedJob[]
+  analytics            AnalyticsHourly[]
+  sipTrunks            SipTrunk[]
+  blockedCallers       BlockedCaller[]
+  alerts               TenantAlert[]
+  whatsappNumbers      WhatsAppNumber[]
+  conversations        Conversation[]
+  conversationMessages ConversationMessage[]
 
   @@map("tenants")
 }
@@ -273,7 +276,9 @@ model Membership {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   role   Role   @relation(fields: [roleId], references: [id], onDelete: Restrict)
 
-  assignedLeads Lead[] @relation("LeadAssignee")
+  assignedLeads         Lead[]                @relation("LeadAssignee")
+  assignedConversations Conversation[]        @relation("ConversationAssignee")
+  sentMessages          ConversationMessage[] @relation("MessageSentBy")
 
   @@unique([tenantId, userId])
   @@index([userId])
@@ -340,6 +345,8 @@ model Agent {
   leads            Lead[]
   appointments     Appointment[]
   analytics        AnalyticsHourly[]
+  whatsappNumbers  WhatsAppNumber[]
+  conversations    Conversation[]
 
   @@unique([tenantId, name])
   @@index([tenantId, status])
@@ -539,9 +546,10 @@ model Integration {
   createdAt            DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt            DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  agentTools   AgentTool[]
-  appointments Appointment[]
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agentTools      AgentTool[]
+  appointments    Appointment[]
+  whatsappNumbers WhatsAppNumber[]
 
   @@unique([tenantId, name])
   @@index([tenantId, type])
@@ -675,12 +683,13 @@ model Lead {
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  agent        Agent?        @relation(fields: [agentId], references: [id], onDelete: SetNull)
-  call         Call?         @relation(fields: [callId], references: [id], onDelete: SetNull)
-  status       LeadStatus    @relation(fields: [statusId], references: [id], onDelete: Restrict)
-  assignee     Membership?   @relation("LeadAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
-  appointments Appointment[]
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agent         Agent?         @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  call          Call?          @relation(fields: [callId], references: [id], onDelete: SetNull)
+  status        LeadStatus     @relation(fields: [statusId], references: [id], onDelete: Restrict)
+  assignee      Membership?    @relation("LeadAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  appointments  Appointment[]
+  conversations Conversation[]
 
   @@index([tenantId, statusId])
   @@index([tenantId, createdAt(sort: Desc)])
@@ -910,3 +919,170 @@ model TenantAlert {
   @@map("tenant_alerts")
 }
 
+// ─────────────────────── WhatsApp ───────────────────────
+
+enum WhatsAppNumberStatus {
+  /// Receiving and sending
+  CONNECTED
+  /// Saved, but Meta registration didn't finish (see last_error)
+  PENDING
+  /// Disconnected by the business; kept so its conversations keep their history
+  DISCONNECTED
+}
+
+enum ConversationMode {
+  /// The agent answers
+  AI
+  /// A staff member took over; the agent stays quiet
+  HUMAN
+  CLOSED
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+  /// Shown in the Inbox only (e.g. "Sara took over"); never sent
+  INTERNAL
+}
+
+enum MessageSender {
+  CUSTOMER
+  AI
+  STAFF
+  SYSTEM
+}
+
+enum ConversationMessageType {
+  TEXT
+  AUDIO
+  IMAGE
+  DOCUMENT
+  VIDEO
+  STICKER
+  LOCATION
+  CONTACTS
+  INTERACTIVE
+  REACTION
+  TEMPLATE
+  NOTE
+  UNSUPPORTED
+}
+
+enum ConversationMessageStatus {
+  RECEIVED
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+/// A business's WhatsApp number on the Cloud API. Webhooks are routed by phone_number_id.
+model WhatsAppNumber {
+  id            String               @id @default(uuid(7)) @db.Uuid
+  tenantId      String               @map("tenant_id") @db.Uuid
+  /// The sealed business token lives on this WHATSAPP integration
+  integrationId String?              @map("integration_id") @db.Uuid
+  wabaId        String               @map("waba_id") @db.VarChar(64)
+  phoneNumberId String               @unique @map("phone_number_id") @db.VarChar(64)
+  displayNumber String               @map("display_number") @db.VarChar(32)
+  verifiedName  String?              @map("verified_name") @db.VarChar(160)
+  agentId       String?              @map("agent_id") @db.Uuid
+  status        WhatsAppNumberStatus @default(CONNECTED)
+  qualityRating String?              @map("quality_rating") @db.VarChar(20)
+  lastError     String?              @map("last_error")
+  /// zod: WhatsAppNumberSettings (reply mode, voice, greeting …)
+  settings      Json                 @default("{}")
+  connectedAt   DateTime             @default(now()) @map("connected_at") @db.Timestamptz(3)
+  createdAt     DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  integration   Integration?   @relation(fields: [integrationId], references: [id], onDelete: SetNull)
+  agent         Agent?         @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  conversations Conversation[]
+
+  @@index([tenantId])
+  @@map("whatsapp_numbers")
+}
+
+/// One customer's chat with one WhatsApp number (a new one starts after it is closed)
+model Conversation {
+  id                 String           @id @default(uuid(7)) @db.Uuid
+  tenantId           String           @map("tenant_id") @db.Uuid
+  whatsappNumberId   String           @map("whatsapp_number_id") @db.Uuid
+  agentId            String?          @map("agent_id") @db.Uuid
+  /// The published version answering this conversation (pinned like a call)
+  agentVersionId     String?          @map("agent_version_id") @db.Uuid
+  /// The customer's WhatsApp id (digits, no "+")
+  contactWaId        String           @map("contact_wa_id") @db.VarChar(32)
+  contactPhone       String           @map("contact_phone") @db.VarChar(20)
+  contactName        String?          @map("contact_name") @db.VarChar(160)
+  mode               ConversationMode @default(AI)
+  /// The agent runtime's saved state between messages
+  engineSession      Json?            @map("engine_session")
+  /// Start of the 24-hour window for free-form replies
+  lastInboundAt      DateTime?        @map("last_inbound_at") @db.Timestamptz(3)
+  lastMessageAt      DateTime         @default(now()) @map("last_message_at") @db.Timestamptz(3)
+  lastMessagePreview String?          @map("last_message_preview") @db.VarChar(200)
+  unreadCount        Int              @default(0) @map("unread_count")
+  assigneeId         String?          @map("assignee_id") @db.Uuid
+  leadId             String?          @map("lead_id") @db.Uuid
+  closedAt           DateTime?        @map("closed_at") @db.Timestamptz(3)
+  createdAt          DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant         Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  whatsappNumber WhatsAppNumber        @relation(fields: [whatsappNumberId], references: [id], onDelete: Cascade)
+  agent          Agent?                @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  assignee       Membership?           @relation("ConversationAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  lead           Lead?                 @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  messages       ConversationMessage[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId, lastMessageAt(sort: Desc)])
+  @@index([tenantId, mode])
+  @@index([whatsappNumberId, contactWaId])
+  @@map("conversations")
+}
+
+model ConversationMessage {
+  id                 String                    @id @default(uuid(7)) @db.Uuid
+  tenantId           String                    @map("tenant_id") @db.Uuid
+  conversationId     String                    @map("conversation_id") @db.Uuid
+  /// Meta's message id; unique, so webhook retries are stored once
+  wamid              String?                   @unique @db.VarChar(128)
+  direction          MessageDirection
+  sender             MessageSender
+  sentById           String?                   @map("sent_by_id") @db.Uuid
+  type               ConversationMessageType   @default(TEXT)
+  text               String?
+  /// Meta's media id (received files); downloaded into object storage as media_key
+  mediaId            String?                   @map("media_id") @db.VarChar(64)
+  mediaKey           String?                   @map("media_key") @db.VarChar(255)
+  mediaMime          String?                   @map("media_mime") @db.VarChar(100)
+  mediaFilename      String?                   @map("media_filename") @db.VarChar(255)
+  mediaBytes         Int?                      @map("media_bytes")
+  mediaSeconds       Int?                      @map("media_seconds")
+  transcript         String?
+  transcriptLanguage String?                   @map("transcript_language") @db.VarChar(10)
+  status             ConversationMessageStatus
+  errorCode          Int?                      @map("error_code")
+  errorTitle         String?                   @map("error_title") @db.VarChar(300)
+  replyToWamid       String?                   @map("reply_to_wamid") @db.VarChar(128)
+  /// Staff-only details: knowledge sources, tools, latency
+  meta               Json                      @default("{}")
+  sentAt             DateTime?                 @map("sent_at") @db.Timestamptz(3)
+  deliveredAt        DateTime?                 @map("delivered_at") @db.Timestamptz(3)
+  readAt             DateTime?                 @map("read_at") @db.Timestamptz(3)
+  createdAt          DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  /// Composite key: a message can only point at a conversation of its own business
+  conversation Conversation @relation(fields: [conversationId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  sentBy       Membership?  @relation("MessageSentBy", fields: [sentById], references: [id], onDelete: SetNull)
+
+  @@index([conversationId, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("conversation_messages")
+}

@@ -39,6 +39,9 @@ export const TENANT_TABLES: { table: string; column: string }[] = [
     "sip_trunks",
     "blocked_callers",
     "tenant_alerts",
+    "whatsapp_numbers",
+    "conversations",
+    "conversation_messages",
   ].map((table) => ({ table, column: "tenant_id" })),
 ];
 
@@ -168,7 +171,32 @@ export async function createPopulatedTenant(prisma: ReturnType<typeof appClient>
         expiresAt: new Date(Date.now() + 86400_000),
       },
     });
-    return { agentId: agent.id, leadId: lead.id, collectionId: collection.id, phone };
+    const waPhoneNumberId = `PN${randomUUID().replaceAll("-", "").slice(0, 16)}`;
+    const wa = await tx.whatsAppNumber.create({
+      data: { tenantId, wabaId: "WABA", phoneNumberId: waPhoneNumberId, displayNumber: "+974 5000 0000" },
+    });
+    const conversation = await tx.conversation.create({
+      data: { tenantId, whatsappNumberId: wa.id, contactWaId: "97455000000", contactPhone: "+97455000000" },
+    });
+    await tx.conversationMessage.create({
+      data: {
+        tenantId,
+        conversationId: conversation.id,
+        wamid: `wamid.${randomUUID()}`,
+        direction: "INBOUND",
+        sender: "CUSTOMER",
+        text: "Hello",
+        status: "RECEIVED",
+      },
+    });
+    return {
+      agentId: agent.id,
+      leadId: lead.id,
+      collectionId: collection.id,
+      phone,
+      waPhoneNumberId,
+      conversationId: conversation.id,
+    };
   });
 
   return { tenantId, userId: user.id, ...ids };

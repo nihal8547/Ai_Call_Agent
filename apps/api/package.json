@@ -33,6 +33,7 @@
     "@platform/shared": "*",
     "@platform/storage": "*",
     "@platform/telephony": "*",
+    "@platform/whatsapp": "*",
     "@platform/templates": "*",
     "@platform/tools": "*",
     "bullmq": "^5.81.5",

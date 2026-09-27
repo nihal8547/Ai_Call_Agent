@@ -1513,6 +1513,39 @@ an overloaded model (503) gets one retry on `gemini-flash-lite-latest` within th
 - **Not verified:** real Google and Microsoft consent pages and sending (network policy). Gmail
   for customers needs Google app verification.
 
+### WhatsApp W0–W1: safe foundation, connecting numbers, the Inbox ✅
+
+Plan and review: [WPIntegration.md](WPIntegration.md); operator guide:
+[WHATSAPP_SETUP.md](WHATSAPP_SETUP.md).
+
+- **W0:** removed the unsafe first sketch (no RLS, wrong-business routing, unsigned webhook);
+  Ramadan / Eid periods now also apply to appointment slots; no hard-coded calling code.
+- **`@platform/whatsapp`:** `X-Hub-Signature-256` check over the raw body, webhook parsing for
+  every message type and delivery status, Graph API client (code exchange, number check,
+  subscribe, register, send text / template, mark read, media download) with Meta error codes
+  mapped to what the platform does (24-hour window, token revoked, rate limits …).
+- **Data:** `whatsapp_numbers`, `conversations`, `conversation_messages` with forced RLS, a
+  composite key so a message can't point at another business's conversation, unique `wamid`
+  (Meta retries stored once), `resolve_whatsapp_number()` for routing before the business is
+  known, `chats:read / reply / manage` permissions (existing roles updated by the migration).
+- **API:** signed webhook (routing by phone_number_id, advisory lock per customer, delivery ticks
+  never go backwards), Continue with Facebook (the token must reach the chosen number; subscribe;
+  register with a PIN), access-token connect, test message (hello_world template), disconnect
+  (history kept), Inbox endpoints, staff replies through a `whatsapp` queue with Meta's reason
+  shown when sending fails, 24-hour window enforced.
+- **Web:** Settings → WhatsApp (Facebook SDK loaded only there, with page-specific CSP and
+  opener policy), the Inbox (search, filters, unread badge, thread with ticks, take over / hand
+  back / close, Arabic right to left, phone layout).
+- **Verified:** whatsapp package 10 tests; API 11 new (verification, signature, connect and
+  ownership checks, another business can't take the number, storing once, statuses, staff reply
+  through the queue, 24-hour rule, Meta refusal shown, close and reopen, isolation, disconnect);
+  DB isolation suite covers the new tables. Browser, with Meta's SDK, popup and Graph API as
+  local stand-ins: connect through the popup (real opener policy and origin check), test message,
+  signed webhooks in English, Arabic and a voice note, unread badge, reply, read tick, hand back,
+  phone layout, no CSP violations.
+- **Not verified:** real Meta (network policy). Meta requires business verification, Tech
+  Provider status and App Review before other businesses can connect.
+
 ### ✅ M3 — Level 3 milestone
 
 - The production readiness checklist (plan §18) passes.

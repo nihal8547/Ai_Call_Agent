@@ -7,14 +7,19 @@ import { type NextRequest, NextResponse } from "next/server";
 export function middleware(request: NextRequest) {
   const nonce = btoa(crypto.randomUUID());
   const dev = process.env.NODE_ENV === "development";
+  // WhatsApp's "Continue with Facebook" (Embedded Signup): the Facebook SDK frames and calls
+  // facebook.com. Allowed on that settings page only.
+  const facebook = /^\/t\/[^/]+\/settings\/whatsapp\/?$/.test(request.nextUrl.pathname);
+  const fb = (sources: string) => (facebook ? ` ${sources}` : "");
   const csp = [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${dev ? " 'unsafe-eval'" : ""}`,
     // Tailwind and Next inject style attributes; styles can't run code
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob:",
+    `img-src 'self' data: blob:${fb("https://*.facebook.com https://*.fbcdn.net")}`,
     "font-src 'self' data:",
-    "connect-src 'self'",
+    `connect-src 'self'${fb("https://*.facebook.com https://connect.facebook.net")}`,
+    `frame-src 'self'${fb("https://*.facebook.com")}`,
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

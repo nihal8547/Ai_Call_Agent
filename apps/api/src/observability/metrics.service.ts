@@ -61,6 +61,18 @@ export class MetricsService implements OnModuleDestroy {
     labelNames: ["kind"] as const,
     registers: [this.registry],
   });
+  readonly whatsapp = new Counter({
+    name: "whatsapp_events_total",
+    help: "WhatsApp webhook events by kind and what happened to them",
+    labelNames: ["event", "result"] as const,
+    registers: [this.registry],
+  });
+  readonly whatsappSends = new Counter({
+    name: "whatsapp_sends_total",
+    help: "WhatsApp messages sent to customers, by result",
+    labelNames: ["sender", "result"] as const,
+    registers: [this.registry],
+  });
   readonly deadLetters = new Counter({
     name: "queue_dead_letters_total",
     help: "Jobs that used up their retries",
@@ -83,6 +95,7 @@ export class MetricsService implements OnModuleDestroy {
           QUEUES.crm,
           QUEUES.ingestion,
           QUEUES.analytics,
+          QUEUES.whatsapp,
         ]) {
           const counts = await queues.queue(name).getJobCounts("waiting", "active", "delayed", "failed");
           for (const [state, n] of Object.entries(counts)) this.set({ queue: name, state }, n);

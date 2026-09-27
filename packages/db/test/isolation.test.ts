@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { resolvePhoneNumber, userMemberships } from "../src/system";
+import { resolvePhoneNumber, resolveWhatsAppNumber, userMemberships } from "../src/system";
 import { tenantClient, withTenant } from "../src/tenant-client";
 import { appClient, createPopulatedTenant, hasDb, ownerClient, TENANT_TABLES } from "./helpers";
 
@@ -144,6 +144,31 @@ describe.skipIf(!hasDb)("tenant isolation (Row-Level Security)", () => {
         agentId: null, // agent is INACTIVE until published
       });
       await expect(resolvePhoneNumber(prisma, "+10000000000")).resolves.toBeNull();
+    });
+
+    it("routes a WhatsApp phone_number_id to its tenant, and not once disconnected", async () => {
+      await expect(resolveWhatsAppNumber(prisma, A.waPhoneNumberId)).resolves.toMatchObject({
+        tenantId: A.tenantId,
+        agentId: null,
+      });
+      await expect(resolveWhatsAppNumber(prisma, "PN-unknown")).resolves.toBeNull();
+      await tenantClient(prisma, B.tenantId).whatsAppNumber.updateMany({ data: { status: "DISCONNECTED" } });
+      await expect(resolveWhatsAppNumber(prisma, B.waPhoneNumberId)).resolves.toBeNull();
+    });
+
+    it("won't attach a message to another business's conversation", async () => {
+      await expect(
+        tenantClient(prisma, B.tenantId).conversationMessage.create({
+          data: {
+            tenantId: B.tenantId,
+            conversationId: A.conversationId,
+            direction: "OUTBOUND",
+            sender: "STAFF",
+            text: "sneaky",
+            status: "QUEUED",
+          },
+        }),
+      ).rejects.toThrow(/Foreign key constraint/);
     });
 
     it("lists only the user's own memberships", async () => {

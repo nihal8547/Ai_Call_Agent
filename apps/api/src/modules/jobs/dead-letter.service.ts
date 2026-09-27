@@ -10,7 +10,7 @@ import { MetricsService } from "../../observability/metrics.service";
 import { AuditService } from "../audit/audit.service";
 
 type Meta = { ip?: string; userAgent?: string };
-type TenantQueue = "webhooks" | "notifications" | "crm";
+type TenantQueue = "webhooks" | "notifications" | "crm" | "whatsapp";
 
 const VIEW = {
   id: true,

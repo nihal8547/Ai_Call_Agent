@@ -45,6 +45,7 @@ COPY packages/storage/package.json packages/storage/
 COPY packages/telephony/package.json packages/telephony/
 COPY packages/templates/package.json packages/templates/
 COPY packages/tools/package.json packages/tools/
+COPY packages/whatsapp/package.json packages/whatsapp/
 # Optional extra CA certificate (corporate or build proxies): --secret id=ca,src=path/to/ca.pem
 RUN --mount=type=cache,target=/root/.npm \
     --mount=type=secret,id=ca,required=false \

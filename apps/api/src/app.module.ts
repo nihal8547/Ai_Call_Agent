@@ -29,6 +29,7 @@ import { TelephonyModule } from "./modules/telephony/telephony.module";
 import { TestConsoleModule } from "./modules/test-console/test-console.module";
 import { TenantsModule } from "./modules/tenants/tenants.module";
 import { UsersModule } from "./modules/users/users.module";
+import { WhatsAppModule } from "./modules/whatsapp/whatsapp.module";
 
 @Module({})
 export class AppModule {
@@ -76,6 +77,7 @@ export class AppModule {
         TestConsoleModule,
         KnowledgeModule,
         AppointmentsModule,
+        WhatsAppModule,
       ],
       providers: [
         { provide: API_ENV, useValue: env },

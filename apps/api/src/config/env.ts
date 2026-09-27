@@ -98,6 +98,28 @@ export const ApiEnvSchema = z
     /** Google OAuth client (web application) for "Connect with Google"; service-account keys work without it */
     GOOGLE_OAUTH_CLIENT_ID: z.string().min(10).optional(),
     GOOGLE_OAUTH_CLIENT_SECRET: z.string().min(10).optional(),
+    /**
+     * Meta app for WhatsApp (Cloud API). META_APP_SECRET checks webhook signatures and exchanges
+     * Embedded Signup codes; without it the WhatsApp webhook refuses everything.
+     */
+    META_APP_ID: z
+      .string()
+      .regex(/^\d{5,20}$/, "must be the numeric Meta app id")
+      .optional(),
+    META_APP_SECRET: z.string().min(16).optional(),
+    /** Facebook Login for Business configuration for WhatsApp Embedded Signup ("Continue with Facebook") */
+    META_EMBEDDED_SIGNUP_CONFIG_ID: z
+      .string()
+      .regex(/^\d{5,30}$/)
+      .optional(),
+    /** Token Meta echoes when the webhook URL is verified (random, ≥ 16 characters) */
+    WHATSAPP_VERIFY_TOKEN: z.string().min(16).optional(),
+    META_GRAPH_VERSION: z
+      .string()
+      .regex(/^v\d{1,3}\.\d$/)
+      .default("v23.0"),
+    /** Graph API origin (tests point it at a fake) */
+    META_GRAPH_BASE_URL: envPrimitives.url.default("https://graph.facebook.com"),
     /** HubSpot public app for "Connect with HubSpot"; private-app tokens work without it */
     HUBSPOT_CLIENT_ID: z.string().min(10).optional(),
     HUBSPOT_CLIENT_SECRET: z.string().min(10).optional(),

@@ -163,6 +163,8 @@ export class IntegrationsService {
 
   async list(tenantId: string) {
     const rows = await this.tenantDb.db(tenantId).integration.findMany({
+      // WhatsApp numbers are managed in Settings → WhatsApp
+      where: { type: { not: "WHATSAPP" } },
       orderBy: { createdAt: "asc" },
       select: {
         ...INTEGRATION_VIEW,
@@ -284,6 +286,12 @@ export class IntegrationsService {
     await this.tenantDb.tx(auth.tenantId, async (tx) => {
       const existing = await tx.integration.findUnique({ where: { id } });
       if (!existing) throw new AppException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Integration not found");
+      if (existing.type === "WHATSAPP")
+        throw new AppException(
+          HttpStatus.CONFLICT,
+          "CONFLICT",
+          "Disconnect WhatsApp numbers in Settings → WhatsApp",
+        );
       await tx.integration.delete({ where: { id } }); // tool bindings cascade; appointments keep their data
       await this.audit.record(tx, auth, {
         action: "integration.deleted",

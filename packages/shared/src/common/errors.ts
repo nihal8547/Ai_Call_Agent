@@ -21,6 +21,8 @@ export const ErrorCode = z.enum([
   "SERVICE_UNAVAILABLE",
   /** A connected service (calendar, CRM, …) refused or failed the request */
   "INTEGRATION_ERROR",
+  /** WhatsApp: more than 24 hours since the customer's last message; only templates may be sent */
+  "WHATSAPP_WINDOW_CLOSED",
 ]);
 export type ErrorCode = z.infer<typeof ErrorCode>;
 

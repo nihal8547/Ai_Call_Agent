@@ -7,6 +7,8 @@ export const QUEUES = {
   notifications: "notifications",
   analytics: "analytics",
   webhooks: "webhooks",
+  /** WhatsApp messages to customers (staff replies now; agent replies from W2) */
+  whatsapp: "whatsapp",
   /** The platform's own emails (invitations, password resets); not tied to one business */
   mail: "mail",
 } as const;
@@ -70,7 +72,10 @@ export type AnalyticsJob =
   /** Periodic: every tenant with calls in the last hours */
   | { kind: "sweep"; hours: number };
 
-export type QueueJob = ToolJob | EmailJob | LeadSyncJob;
+/** Send one queued WhatsApp message (`whatsapp`); the job reads the message row when it runs */
+export type WhatsAppSendJob = TenantJob & { kind: "whatsapp_send"; messageId: string };
+
+export type QueueJob = ToolJob | EmailJob | LeadSyncJob | WhatsAppSendJob;
 
 /** Where a background tool's job goes: webhooks, messages to people, or records (leads, sheets, CRMs) */
 export function queueForTool(tool: string): "webhooks" | "notifications" | "crm" {
@@ -84,11 +89,13 @@ export function queueForTool(tool: string): "webhooks" | "notifications" | "crm"
  * Webhooks carry an idempotency key, so receivers can drop repeats; CRM upserts are idempotent.
  */
 export const QUEUE_RETRY: Record<
-  "webhooks" | "notifications" | "crm" | "analytics",
+  "webhooks" | "notifications" | "crm" | "analytics" | "whatsapp",
   { attempts: number; delayMs: number }
 > = {
   webhooks: { attempts: 6, delayMs: 5_000 },
   notifications: { attempts: 4, delayMs: 10_000 },
   crm: { attempts: 6, delayMs: 10_000 },
   analytics: { attempts: 3, delayMs: 5_000 },
+  // Meta has no idempotency key: only failures before Meta accepted the message are retried
+  whatsapp: { attempts: 4, delayMs: 3_000 },
 };

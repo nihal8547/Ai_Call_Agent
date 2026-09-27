@@ -112,3 +112,35 @@ export async function tenantsWithCallsSince(prisma: PrismaClient, since: Date): 
     SELECT tenant_id FROM tenants_with_calls_since(${since})`;
   return rows.map((r) => r.tenant_id);
 }
+
+export type WhatsAppRoute = {
+  tenantId: string;
+  whatsappNumberId: string;
+  agentId: string | null;
+  agentVersionId: string | null;
+};
+
+/** WhatsApp webhooks: Meta's phone_number_id → business, number and answering agent (null when inactive) */
+export async function resolveWhatsAppNumber(
+  prisma: PrismaClient,
+  phoneNumberId: string,
+): Promise<WhatsAppRoute | null> {
+  const rows = await prisma.$queryRaw<
+    {
+      tenant_id: string;
+      whatsapp_number_id: string;
+      agent_id: string | null;
+      agent_version_id: string | null;
+    }[]
+  >`
+    SELECT tenant_id, whatsapp_number_id, agent_id, agent_version_id FROM resolve_whatsapp_number(${phoneNumberId})`;
+  const r = rows[0];
+  return r
+    ? {
+        tenantId: r.tenant_id,
+        whatsappNumberId: r.whatsapp_number_id,
+        agentId: r.agent_id,
+        agentVersionId: r.agent_version_id,
+      }
+    : null;
+}

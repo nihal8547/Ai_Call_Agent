@@ -25,6 +25,11 @@ const nextConfig: NextConfig = {
           { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
         ],
       },
+      {
+        // Facebook's sign-in popup (WhatsApp Embedded Signup) reports back to this page
+        source: "/t/:tenant/settings/whatsapp",
+        headers: [{ key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" }],
+      },
     ];
   },
 };

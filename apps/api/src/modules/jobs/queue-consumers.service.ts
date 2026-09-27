@@ -12,11 +12,12 @@ import { API_ENV, type ApiEnv } from "../../config/env";
 import { DeadLetterService } from "./dead-letter.service";
 import { JobProcessors } from "./job-processors.service";
 
-type TenantQueue = "webhooks" | "notifications" | "crm";
+type TenantQueue = "webhooks" | "notifications" | "crm" | "whatsapp";
 const CONSUMERS: [TenantQueue, number][] = [
   [QUEUES.webhooks, 10],
   [QUEUES.notifications, 5],
   [QUEUES.crm, 5],
+  [QUEUES.whatsapp, 10],
 ];
 
 /** Did this failure use up the job's attempts (or was it not worth retrying)? */

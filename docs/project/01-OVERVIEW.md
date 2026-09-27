@@ -65,6 +65,10 @@ others, each with its own users, agents, numbers, data and settings.
 
 - Webhooks, email (Gmail, Outlook / Microsoft 365 or any SMTP server), Google Calendar, Google
   Sheets, HubSpot, Zoho CRM.
+- **WhatsApp** (official Cloud API): "Continue with Facebook" connects the business number;
+  every customer message appears in the **Inbox** with its history; staff reply, take over from
+  the agent and hand back. Automatic agent replies and voice notes are next (see
+  [WPIntegration.md](../WPIntegration.md)).
 - **One-click connect**: "Continue with Google / Microsoft / HubSpot / Zoho" opens the provider's
   sign-in page; after allowing access the business comes back already connected. Manual keys,
   tokens and SMTP remain as "other ways to connect".

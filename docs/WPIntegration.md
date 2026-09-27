@@ -2,8 +2,11 @@
 
 _Written 27 September 2026, after reviewing commits `fb860a9` and `1d3c770`._
 
-**Status:** W0 done: every problem in section 1 fixed; the WhatsApp routes, worker stub and
-chat tables were removed until W1 rebuilds them safely. Next: W1.
+**Status:** W0 and W1 done. W0 fixed every problem in section 1. W1: `@platform/whatsapp`
+(signatures, webhook parsing, Graph client), the data model with RLS, the signed webhook,
+Continue with Facebook (Embedded Signup) and access-token connect, Settings → WhatsApp and the
+Inbox with staff replies, take over / hand back and delivery ticks. Operator guide:
+[WHATSAPP_SETUP.md](WHATSAPP_SETUP.md). Next: W2 (the agent answers automatically).
 
 **Goal:** a business connects its WhatsApp number (official WhatsApp Business Cloud API) with a
 few clicks. Customers' messages, text or voice, get answered automatically by the same agent that

@@ -12,6 +12,7 @@ import {
   LayoutDashboard,
   ListChecks,
   LogOut,
+  Inbox,
   Menu,
   MessageCircle,
   PhoneCall,
@@ -24,9 +25,10 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { type ReactNode, useEffect, useState } from "react";
+import { type AnchorHTMLAttributes, type ComponentProps, type ReactNode, useEffect, useState } from "react";
 import { api } from "@/lib/api/client";
 import { cn } from "@/lib/cn";
 import { useMe } from "./me-context";
@@ -52,7 +54,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
   {
     group: "Customers",
     items: [
-      { label: "Inbox", href: "inbox", icon: MessageCircle, permission: "calls:read" },
+      { label: "Inbox", href: "inbox", icon: Inbox, permission: "chats:read" },
       { label: "Calls", href: "calls", icon: PhoneCall, permission: "calls:read" },
       { label: "Leads", href: "leads", icon: Users, permission: "leads:read" },
       { label: "Appointments", href: "appointments", icon: CalendarDays, permission: "appointments:read" },
@@ -67,6 +69,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
         icon: PhoneForwarded,
         permission: "phone_numbers:read",
       },
+      { label: "WhatsApp", href: "settings/whatsapp", icon: MessageCircle, permission: "chats:read" },
       { label: "Integrations", href: "integrations", icon: Plug, permission: "integrations:read" },
     ],
   },
@@ -97,6 +100,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const base = `/t/${me.tenant.slug}`;
+  const wide = pathname === `${base}/inbox`;
+  const canChat = me.permissions.includes("chats:read");
+  const unread = useQuery({
+    queryKey: ["chats-unread"],
+    queryFn: () => api<{ conversations: number }>("/chats/unread"),
+    enabled: canChat,
+    refetchInterval: 15_000,
+  });
 
   // The mobile menu closes when you go somewhere, and on Escape
   useEffect(() => {
@@ -172,7 +183,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                   const Icon = it.icon;
                   return (
                     <li key={it.href}>
-                      <Link
+                      <NavLink
+                        full={it.href === "settings/whatsapp"}
                         href={href}
                         aria-current={active ? "page" : undefined}
                         className={cn(
@@ -197,7 +209,15 @@ export function AppShell({ children }: { children: ReactNode }) {
                           aria-hidden
                         />
                         {it.label}
-                      </Link>
+                        {it.href === "inbox" && unread.data?.conversations ? (
+                          <span
+                            className="ml-auto grid min-w-5 place-items-center rounded-full bg-slate-950 px-1.5 text-[11px] font-semibold text-white"
+                            aria-label={`${unread.data.conversations} unread`}
+                          >
+                            {unread.data.conversations}
+                          </span>
+                        ) : null}
+                      </NavLink>
                     </li>
                   );
                 })}
@@ -255,12 +275,30 @@ export function AppShell({ children }: { children: ReactNode }) {
           </button>
           <span className="truncate text-sm font-semibold text-slate-950">{me.tenant.name}</span>
         </header>
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
+        <main
+          className={cn(
+            "w-full flex-1",
+            // The Inbox uses the whole screen (its own panes scroll)
+            wide ? "min-w-0" : "mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-10 lg:py-10",
+          )}
+        >
           {children}
         </main>
       </div>
     </div>
   );
+}
+
+/**
+ * Settings → WhatsApp needs a full page load: its security headers (CSP, opener policy) allow
+ * Facebook's sign-in popup, and headers only apply when a document loads.
+ */
+function NavLink({ full, ...props }: { full: boolean } & ComponentProps<typeof Link>) {
+  if (full) {
+    const { href, prefetch: _prefetch, replace: _replace, scroll: _scroll, ...rest } = props;
+    return <a href={String(href)} {...(rest as AnchorHTMLAttributes<HTMLAnchorElement>)} />;
+  }
+  return <Link {...props} />;
 }
 
 function TenantSwitcher() {
