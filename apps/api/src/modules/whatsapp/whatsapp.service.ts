@@ -46,12 +46,12 @@ export class WhatsappService {
     const tenantId = integration.tenantId;
 
     // 2. Find or Create ChatSession
-    let session = await (this.prisma.client as any).chatSession.findFirst({
+    let session = await this.prisma.client.chatSession.findFirst({
       where: { tenantId, customerNumber, status: 'ACTIVE' }
     });
 
     if (!session) {
-      session = await (this.prisma.client as any).chatSession.create({
+      session = await this.prisma.client.chatSession.create({
         data: {
           tenantId,
           customerNumber,
@@ -60,7 +60,7 @@ export class WhatsappService {
     }
 
     // 3. Save ChatMessage
-    const chatMessage = await (this.prisma.client as any).chatMessage.create({
+    const chatMessage = await this.prisma.client.chatMessage.create({
       data: {
         sessionId: session.id,
         direction: 'INBOUND',
