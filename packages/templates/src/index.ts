@@ -1,6 +1,7 @@
 import { AgentConfig, type AgentConfigInput } from "@platform/shared";
 import { clinic } from "./clinic";
 import { hotel } from "./hotel";
+import { qatarClinicArabic, qatarRealEstateArabic } from "./qatar";
 import { realEstate } from "./real-estate";
 import { restaurant } from "./restaurant";
 
@@ -40,6 +41,22 @@ export const TEMPLATES: readonly AgentTemplate[] = [
     industry: "restaurant",
     description: "Books tables with party size, date, time and occasion.",
     config: restaurant,
+  },
+  {
+    key: "qatar-real-estate-ar",
+    name: "Qatar real estate (Arabic)",
+    industry: "real_estate",
+    description:
+      "Arabic-speaking agent for Qatar: property type, budget in QAR, timeline, area (Lusail, The Pearl, West Bay…), financing, viewings.",
+    config: qatarRealEstateArabic,
+  },
+  {
+    key: "qatar-clinic-ar",
+    name: "Qatar clinic reception (Arabic)",
+    industry: "healthcare",
+    description:
+      "Arabic-speaking dental clinic reception for Qatar: bookings Sunday–Thursday, emergencies to the front desk.",
+    config: qatarClinicArabic,
   },
 ];
 

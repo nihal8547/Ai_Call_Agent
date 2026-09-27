@@ -1,3 +1,4 @@
+import { ARABIC_CURRENCY, arabicNumberWords, formatAmountArabic, isArabic } from "./arabic";
 import { normalizeUtterance } from "./text";
 
 const UNITS: Record<string, number> = {
@@ -58,11 +59,12 @@ const MULTIPLIERS: Record<string, number> = {
 /**
  * Parse the first quantity in an utterance:
  *   "80 lakh" → 8000000, "1.2 crore" → 12000000, "eighty five thousand" → 85000,
- *   "50k" → 50000, "around 80 to 90 lakh" → 8000000, "1,20,000" → 120000, "three" → 3.
+ *   "50k" → 50000, "around 80 to 90 lakh" → 8000000, "1,20,000" → 120000, "three" → 3,
+ *   Arabic: "خمسين ألف" → 50000, "مليون ونص" → 1500000, "٧٥٠ ألف ريال" → 750000.
  * Returns undefined when no number is present.
  */
 export function parseNumber(input: string): number | undefined {
-  const text = normalizeUtterance(input)
+  const text = arabicNumberWords(normalizeUtterance(input).replace(ARABIC_CURRENCY, "$1 "))
     .replace(/(\d),(?=\d)/g, "$1") // 1,20,000 → 120000
     .replace(/(\d)\s*(k|l|cr|m|mn)\b/g, "$1 $2") // 50k → 50 k
     .replace(/[₹$]|rs\.?|inr|rupees?|dollars?|usd/g, " ")
@@ -86,6 +88,14 @@ export function parseNumber(input: string): number | undefined {
     i++;
   }
   return undefined;
+}
+
+/** The utterance states an amount with a scale or currency ("2.5 million", "مليونين ونص", "80 lakh", "50k") */
+export function mentionsAmount(input: string): boolean {
+  const text = arabicNumberWords(normalizeUtterance(input)).replace(/(\d)\s*(k|l|cr|m|mn)\b/g, "$1 $2");
+  const scaled = /\b(?:thousand|million|billion|lakhs?|lacs?|crores?|k|cr|mn)\b/.test(text);
+  const money = /[₹$]|\b(?:rs|inr|rupees?|dollars?|usd|qar|aed|sar)\b|(?:^|\s)(?:ريال|درهم|دينار)/.test(text);
+  return (scaled || money) && parseNumber(input) !== undefined;
 }
 
 type Quantity = { value: number; next: number; multiplied: boolean; multiplier?: number };
@@ -123,6 +133,9 @@ function readQuantity(tokens: string[], start: number): Quantity | undefined {
   } else if ((t0 === "a" || t0 === "an") && MULTIPLIERS[tokens[i + 1] ?? ""]) {
     base = 1;
     i++;
+  } else if (t0 === "thousand" || t0 === "million" || t0 === "hundred") {
+    // Arabic says "ألف" / "مليون" for "a thousand" / "a million"
+    base = 1;
   }
   if (base === undefined) return undefined;
 
@@ -143,6 +156,11 @@ function readQuantity(tokens: string[], start: number): Quantity | undefined {
     i++;
     multiplied = true;
   }
+  // "مليون ونص" → "million and half": one and a half million
+  if (multiplier && tokens[i] === "and" && tokens[i + 1] === "half") {
+    base += 0.5;
+    i += 2;
+  }
   return { value: base * (multiplier ?? 1), next: i, multiplied, multiplier };
 }
 
@@ -150,15 +168,31 @@ function round(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-/** Speech-friendly amount: INR uses lakh/crore ("80 lakh rupees"), others use thousand/million */
-export function formatAmount(value: number, currency = "INR"): string {
+const CURRENCY_WORDS: Record<string, string> = {
+  USD: "dollars",
+  QAR: "riyals",
+  SAR: "riyals",
+  OMR: "rials",
+  AED: "dirhams",
+  KWD: "dinars",
+  BHD: "dinars",
+  GBP: "pounds",
+  EUR: "euros",
+};
+
+/**
+ * Speech-friendly amount: INR uses lakh/crore ("80 lakh rupees"), others thousand/million
+ * ("50,000 riyals"); Arabic agents say "50 ألف ريال".
+ */
+export function formatAmount(value: number, currency = "INR", language?: string): string {
+  if (isArabic(language)) return formatAmountArabic(value, currency);
   const trim = (n: number) => Number(n.toFixed(2)).toString();
   if (currency === "INR") {
     if (value >= 10_000_000) return `${trim(value / 10_000_000)} crore rupees`;
     if (value >= 100_000) return `${trim(value / 100_000)} lakh rupees`;
     return `${value.toLocaleString("en-IN")} rupees`;
   }
-  const unit = currency === "USD" ? "dollars" : currency;
+  const unit = CURRENCY_WORDS[currency] ?? currency;
   if (value >= 1_000_000) return `${trim(value / 1_000_000)} million ${unit}`;
   return `${value.toLocaleString("en-US")} ${unit}`;
 }

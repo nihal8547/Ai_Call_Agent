@@ -27,6 +27,7 @@ export const TextField = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLIn
         <input
           ref={ref}
           id={inputId}
+          dir="auto"
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? `${inputId}-error` : hint ? `${inputId}-hint` : undefined}
           className={cn(control, error ? "border-red-500" : "border-slate-300 dark:border-slate-700")}

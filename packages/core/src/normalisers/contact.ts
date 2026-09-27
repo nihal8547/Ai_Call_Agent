@@ -1,3 +1,4 @@
+import { arabicNumberWords, hasArabic } from "./arabic";
 import { normalizeUtterance, titleCase } from "./text";
 
 /**
@@ -18,7 +19,8 @@ export const NATIONAL_NUMBER_LENGTH: Record<string, number[]> = {
 
 /** Spoken or typed phone number → E.164 using the business's default country code */
 export function parsePhone(input: string, defaultCountryCode = "91"): string | undefined {
-  const text = normalizeUtterance(input)
+  // Arabic digits by name ("خمسة خمسة واحد …") become English words, then digits
+  const text = arabicNumberWords(normalizeUtterance(input))
     .replace(/\bzero\b|\boh\b/g, "0")
     .replace(/\bone\b/g, "1")
     .replace(/\btwo\b/g, "2")
@@ -65,8 +67,29 @@ const NAME_PATTERNS = [
   /\b(?:my name is|my name's|name is|this is|i am|i'm|it's|it is|call me|speaking,?|you can call me|the name is|the patient is|patient name is|booking for|for)\s+([a-z][a-z .'-]{0,60})$/,
 ];
 
-/** "Hi, my name is Rahul Sharma" → "Rahul Sharma" */
+const AR_NAME_LEAD = /(?:^|\s)(?:اسمي|إسمي|أسمي|الاسم|انا|أنا|معك|معاك|معكم|وياك|هنا)\s+(.+)$/;
+/** After "أنا …" these start a sentence, not a name ("أنا أبي شقة" = "I want a flat") */
+const AR_NOT_NAME = /^(?:[اأ]بي|[اأ]بغ[ىيا]|[اأ]ريد|ودي|مهتم|[اأ]تصل|[اأ]سأل|ساكن|من|في|عندي|محتاج)(?:\s|$)/;
+const AR_POLITE = /\s+(?:لو سمحت|من فضلك|تفضل|يا [اأ]خي|يا [اأ]ختي)$/;
+
+/** "اسمي فاطمة الكواري" → "فاطمة الكواري" (spelling kept as heard) */
+function parseArabicName(input: string): string | undefined {
+  const text = input
+    .replace(/[.,!?،؟]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(AR_POLITE, "");
+  const m = text.match(AR_NAME_LEAD);
+  const candidate = (m ? m[1]! : text).trim();
+  if (AR_NOT_NAME.test(candidate)) return undefined;
+  const words = candidate.split(" ").filter(Boolean);
+  const ok = words.length >= 1 && words.length <= 4 && words.every((w) => /^[\p{L}\u064B-\u0652]+$/u.test(w));
+  return ok && candidate.length >= 2 ? candidate : undefined;
+}
+
+/** "Hi, my name is Rahul Sharma" → "Rahul Sharma"; "اسمي فاطمة" → "فاطمة" */
 export function parseName(input: string): string | undefined {
+  if (hasArabic(input)) return parseArabicName(input);
   const text = normalizeUtterance(input)
     .replace(/[.,!?]+$/g, "")
     .replace(/\s+(?:here|speaking)$/g, "");

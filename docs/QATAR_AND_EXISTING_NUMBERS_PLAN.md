@@ -1,11 +1,11 @@
 # Plan: Qatar-based agents and connecting existing numbers
 
-Status: **connecting existing numbers is implemented (P12)**: forwarding from Ooredoo, Vodafone
-or any carrier with a test call, SIP connections with a setup sheet, buying Twilio numbers, +974
-numbers, Qatar as a business country (QAR, Asia/Qatar). See
-[P12 in the phases](DEVELOPMENT_PHASES.md#p12--security-hardening-observability-deployment-existing-numbers-).
-**Still to do:** Arabic conversations and the Qatar working week (§4), Twilio subaccounts per
-business, and checks on real Ooredoo/Vodafone lines (the items marked **(confirm)**).
+Status: **implemented.** Connecting existing numbers (forwarding with a test call, SIP
+connections, buying Twilio numbers, Qatar as a business country) came in P12; Arabic agents
+(understanding, speaking, voices, Qatar templates, Sunday–Thursday week) after it. See
+[P12 and "Qatar localisation" in the phases](DEVELOPMENT_PHASES.md).
+**Still open:** Twilio subaccounts per business, Ramadan hours and Hijri dates, and checks on
+real Ooredoo/Vodafone lines and real Arabic phone audio (the items marked **(confirm)**).
 
 It covers two related goals:
 

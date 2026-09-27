@@ -31,6 +31,8 @@ describe.skipIf(!hasTestDb)("agents: templates, drafts, publishing and version p
       "clinic-reception",
       "hotel-reservations",
       "restaurant-booking",
+      "qatar-real-estate-ar",
+      "qatar-clinic-ar",
     ]);
 
     const id = await createAgent();

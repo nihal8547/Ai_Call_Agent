@@ -1,7 +1,15 @@
 import type { AgentConfig, Condition, QualificationField, WorkflowStep } from "@platform/shared";
 import type { EngineContext } from "./context";
 import { extractCandidate, type FieldValue, formatFieldValue, validateFieldValue } from "./fields";
-import { detectNotInterested, detectQuestion, detectWantsHuman, parseYesNo } from "./normalisers";
+import {
+  detectNotInterested,
+  detectQuestion,
+  detectWantsHuman,
+  isArabic,
+  mentionsAmount,
+  parseYesNo,
+  recogniseOption,
+} from "./normalisers";
 import {
   type CallOutcome,
   type CallSession,
@@ -536,17 +544,19 @@ function understandWithRules(c: Ctx, text: string): Understanding {
       const candidate = extractCandidate(f, text);
       if (candidate !== undefined) fields[f.key] = candidate;
     }
-    // Choice fields mentioned out of order ("a villa, within 3 months")
+    // Answers to this step's other questions, given early ("a villa, budget about 2 crore, cash"):
+    // choices named outright or by a known synonym, and amounts said with a scale or currency
     const step = s.stepId ? stepById(c, s.stepId) : undefined;
     if (step?.type === "collect_fields") {
       for (const key of step.fields) {
         const other = fieldByKey(c, key);
         if (!other || key === f?.key || s.collected[key] !== undefined) continue;
-        if (
-          other.type === "select" &&
-          other.options.some((o) => new RegExp(`\\b${escapeRe(o)}\\b`, "i").test(text))
-        )
+        if (other.type === "select") {
+          const option = recogniseOption(text, other.options);
+          if (option) fields[key] = option;
+        } else if (other.type === "currency" && f?.type !== "currency" && mentionsAmount(text)) {
           fields[key] = text;
+        }
       }
     }
   }
@@ -606,11 +616,18 @@ function mergeFields(
 }
 
 function acknowledge(c: Ctx, changed: { key: string; correction: boolean }[]): void {
+  const ar = isArabic(c.config.language);
   for (const ch of changed) {
     const field = fieldByKey(c, ch.key)!;
-    const value = formatFieldValue(field, c.s.collected[ch.key]);
-    if (ch.correction) c.t.say("ack", `Okay, I've updated the ${field.label.toLowerCase()} to ${value}.`);
-    else if (field.confirmBack) c.t.say("ack", `Got it, ${value}.`);
+    const value = formatFieldValue(field, c.s.collected[ch.key], c.config.language);
+    if (ch.correction)
+      c.t.say(
+        "ack",
+        ar
+          ? `تمام، عدّلت ${field.label} إلى ${value}.`
+          : `Okay, I've updated the ${field.label.toLowerCase()} to ${value}.`,
+      );
+    else if (field.confirmBack) c.t.say("ack", ar ? `تمام، ${value}.` : `Got it, ${value}.`);
   }
 }
 
@@ -744,8 +761,4 @@ function previousCollectStep(c: Ctx, stepId: string): string | undefined {
     .slice(0, i)
     .reverse()
     .find((s) => s.type === "collect_fields")?.id;
-}
-
-function escapeRe(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

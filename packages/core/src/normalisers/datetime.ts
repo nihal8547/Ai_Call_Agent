@@ -1,3 +1,4 @@
+import { arabicDateWords, arabicTimeWords, isArabic } from "./arabic";
 import { normalizeUtterance } from "./text";
 
 const WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
@@ -82,9 +83,10 @@ const monthIndex = (name: string) => MONTHS.findIndex((m) => m.startsWith(name.s
  * Parse a spoken date relative to "today" in the business time zone → "YYYY-MM-DD".
  * Handles today/tomorrow/day after tomorrow, weekdays ("next Monday", "this Friday"), "in 3 days",
  * "12th October", "October 12", "12/10" (day/month), ISO dates. Dates without a year roll forward.
+ * Arabic: "بكرة", "بعد بكرة", "الأحد الجاي", "بعد ثلاث أيام", "15 أكتوبر".
  */
 export function parseDate(input: string, ctx: { timezone: string; now: Date }): string | undefined {
-  const text = normalizeUtterance(input).replace(/,/g, " ");
+  const text = arabicDateWords(normalizeUtterance(input)).replace(/,/g, " ");
   const today = todayIn(ctx.timezone, ctx.now);
 
   const iso = text.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
@@ -169,10 +171,10 @@ const HOUR_WORDS: Record<string, number> = {
 /**
  * Parse a spoken time → "HH:MM" (24h): "5 pm", "5:30pm", "17:30", "half past five", "quarter to six",
  * "morning" (10:00), "afternoon" (14:00), "evening" (17:00), "noon". Bare hours 1–7 are read as PM
- * (business hours), 8–11 as AM.
+ * (business hours), 8–11 as AM. Arabic: "الساعة خمس ونص العصر", "عشرة الصبح", "٥ م".
  */
 export function parseTime(input: string): string | undefined {
-  const text = normalizeUtterance(input)
+  const text = arabicTimeWords(normalizeUtterance(input))
     .replace(/\./g, "")
     .replace(/\bo'?clock\b/g, "");
   const fmt = (h: number, m: number) =>
@@ -224,9 +226,11 @@ export function parseTime(input: string): string | undefined {
   return undefined;
 }
 
-/** "2026-10-12" → "Monday, 12 October" */
-export function formatDateForSpeech(iso: string, locale = "en-IN"): string {
+/** "2026-10-12" → "Monday, 12 October" (Arabic agents: "الاثنين، 12 أكتوبر") */
+export function formatDateForSpeech(iso: string, language = "en-IN"): string {
   const [y, m, d] = iso.split("-").map(Number);
+  // Western digits in Arabic too: the voices read them, and fact checks compare them
+  const locale = isArabic(language) ? "ar-QA-u-nu-latn" : "en-IN";
   return new Intl.DateTimeFormat(locale, {
     weekday: "long",
     day: "numeric",
@@ -235,10 +239,10 @@ export function formatDateForSpeech(iso: string, locale = "en-IN"): string {
   }).format(new Date(Date.UTC(y!, m! - 1, d!)));
 }
 
-/** "17:30" → "5:30 PM" */
-export function formatTimeForSpeech(hhmm: string): string {
+/** "17:30" → "5:30 PM" (Arabic agents: "5:30 مساءً") */
+export function formatTimeForSpeech(hhmm: string, language?: string): string {
   const [h, m] = hhmm.split(":").map(Number);
-  const suffix = h! >= 12 ? "PM" : "AM";
+  const suffix = isArabic(language) ? (h! >= 12 ? "مساءً" : "صباحًا") : h! >= 12 ? "PM" : "AM";
   const hour = h! % 12 === 0 ? 12 : h! % 12;
   return m ? `${hour}:${String(m).padStart(2, "0")} ${suffix}` : `${hour} ${suffix}`;
 }

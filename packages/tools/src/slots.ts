@@ -1,4 +1,10 @@
-import { formatDateForSpeech, formatTimeForSpeech, isOpen, zonedDateTimeToUtc } from "@platform/core";
+import {
+  formatDateForSpeech,
+  formatTimeForSpeech,
+  isArabic,
+  isOpen,
+  zonedDateTimeToUtc,
+} from "@platform/core";
 import { AppointmentConfig, type AgentConfig, type WorkingHours } from "@platform/shared";
 
 export type Interval = { start: Date; end: Date };
@@ -84,12 +90,16 @@ export function nearestSlots(slots: string[], requested: string | undefined, n: 
     .sort();
 }
 
-const list = (items: string[]) =>
-  items.length <= 1 ? (items[0] ?? "") : `${items.slice(0, -1).join(", ")} or ${items[items.length - 1]}`;
+const list = (items: string[], or = "or") =>
+  items.length <= 1 ? (items[0] ?? "") : `${items.slice(0, -1).join(", ")} ${or} ${items[items.length - 1]}`;
 
-/** "On Tuesday, 29 September I have 11 AM or 3 PM free." */
-export function describeSlots(date: string, slots: string[]): string {
-  return `On ${formatDateForSpeech(date)} I have ${list(slots.map(formatTimeForSpeech))} free.`;
+/** "On Tuesday, 29 September I have 11 AM or 3 PM free." (Arabic agents say it in Arabic) */
+export function describeSlots(date: string, slots: string[], language?: string): string {
+  const day = formatDateForSpeech(date, language);
+  const times = slots.map((t) => formatTimeForSpeech(t, language));
+  return isArabic(language)
+    ? `يوم ${day} عندي ${list(times, "أو")} فاضي.`
+    : `On ${day} I have ${list(times)} free.`;
 }
 
 /** What to tell a caller whose time can't be booked, with alternatives when there are any */
@@ -98,18 +108,32 @@ export function explainProblem(
   date: string,
   time: string,
   alternatives: string[],
+  language?: string,
 ): string {
-  const when = `${formatTimeForSpeech(time)} on ${formatDateForSpeech(date)}`;
-  const reason: Record<SlotProblem, string> = {
-    taken: `${when} is already booked.`,
-    closed: `We're closed at ${when}.`,
-    in_the_past: `${when} has already passed.`,
-    too_soon: `${when} is a little too soon for us to prepare.`,
-    too_far: `We can't book that far ahead yet.`,
-  };
+  const ar = isArabic(language);
+  const when = ar
+    ? `الساعة ${formatTimeForSpeech(time, language)} يوم ${formatDateForSpeech(date, language)}`
+    : `${formatTimeForSpeech(time)} on ${formatDateForSpeech(date)}`;
+  const reason: Record<SlotProblem, string> = ar
+    ? {
+        taken: `${when} محجوزة.`,
+        closed: `إحنا مسكّرين ${when}.`,
+        in_the_past: `${when} راحت خلاص.`,
+        too_soon: `${when} قريبة شوي علينا نتجهز.`,
+        too_far: "ما نقدر نحجز لهالمدة البعيدة الحين.",
+      }
+    : {
+        taken: `${when} is already booked.`,
+        closed: `We're closed at ${when}.`,
+        in_the_past: `${when} has already passed.`,
+        too_soon: `${when} is a little too soon for us to prepare.`,
+        too_far: `We can't book that far ahead yet.`,
+      };
   // No question here: the agent asks for the time (or day) again right after
   const alt = alternatives.length
-    ? ` ${describeSlots(date, alternatives)}`
-    : " I don't have any free times that day.";
+    ? ` ${describeSlots(date, alternatives, language)}`
+    : ar
+      ? " ما عندي أوقات فاضية ذاك اليوم."
+      : " I don't have any free times that day.";
   return reason[problem] + alt;
 }

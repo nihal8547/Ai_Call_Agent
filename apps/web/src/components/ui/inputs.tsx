@@ -16,6 +16,7 @@ export function TextArea({
       </label>
       <textarea
         id={id}
+        dir="auto"
         aria-invalid={error ? true : undefined}
         className={cn(
           "block w-full rounded-lg border bg-white px-3 py-2 text-sm focus:outline-2 focus:outline-brand-500 dark:bg-slate-900",

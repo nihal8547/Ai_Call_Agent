@@ -15,9 +15,9 @@ export function renderTemplate(
       if (key === "agent_name") return config.agentName;
       if (key === "business_name") return config.businessName;
       if (key === "caller_number") return ctx?.callerNumber ?? "";
-      return formatFieldValue(byKey.get(key), collected[key]);
+      return formatFieldValue(byKey.get(key), collected[key], config.language);
     })
-    .replace(/\s+([,.!?])/g, "$1")
+    .replace(/\s+([,.!?،؟])/g, "$1")
     .replace(/\s{2,}/g, " ")
     .trim();
 }

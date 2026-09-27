@@ -1,3 +1,4 @@
+export * from "./arabic";
 export * from "./contact";
 export * from "./datetime";
 export * from "./number";

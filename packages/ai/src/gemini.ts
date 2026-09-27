@@ -40,8 +40,13 @@ function classify(status: number): LLMErrorKind {
  * Google Gemini via the REST API (no SDK), so requests are explicit and easy to test.
  * JSON mode uses `responseMimeType: application/json` + `responseJsonSchema`.
  */
+/** Used for one retry when the chosen model is overloaded (503): lighter, and usually has capacity */
+export const GEMINI_OVERLOAD_FALLBACK = "gemini-flash-lite-latest";
+
 export class GeminiProvider implements LLMProvider {
   readonly name = "gemini";
+  /** Models that reject `thinkingBudget` (newer models use other thinking settings) */
+  private readonly noThinkingBudget = new Set<string>();
 
   constructor(
     private readonly apiKey: string,
@@ -51,13 +56,28 @@ export class GeminiProvider implements LLMProvider {
 
   async generate(p: GenerateParams): Promise<LLMResult> {
     const started = Date.now();
-    const done = (r: Omit<Extract<LLMResult, { ok: false }>, "latencyMs" | "model">): LLMResult => ({
-      ...r,
-      latencyMs: Date.now() - started,
+    const first = await this.once(p, resolveGeminiModel(p.model), started);
+    if (first.retry === "no_thinking") return (await this.once(p, first.model, started)).result;
+    // Overloaded: one try on the lighter model, if the turn still has time for it
+    if (
+      first.retry === "overloaded" &&
+      first.model !== GEMINI_OVERLOAD_FALLBACK &&
+      Date.now() - started < p.timeoutMs / 2
+    )
+      return (await this.once(p, GEMINI_OVERLOAD_FALLBACK, started)).result;
+    return first.result;
+  }
+
+  private async once(
+    p: GenerateParams,
+    model: string,
+    started: number,
+  ): Promise<{ result: LLMResult; model: string; retry?: "no_thinking" | "overloaded" }> {
+    const done = (r: Omit<Extract<LLMResult, { ok: false }>, "latencyMs" | "model">) => ({
+      result: { ...r, latencyMs: Date.now() - started, model } as LLMResult,
       model,
     });
-
-    const model = resolveGeminiModel(p.model);
+    const thinking = /flash/.test(model) && !this.noThinkingBudget.has(model);
     const body = {
       systemInstruction: { parts: [{ text: p.system }] },
       contents: p.messages.map((m) => ({
@@ -69,7 +89,7 @@ export class GeminiProvider implements LLMProvider {
         maxOutputTokens: p.maxOutputTokens ?? 512,
         ...(p.jsonSchema ? { responseMimeType: "application/json", responseJsonSchema: p.jsonSchema } : {}),
         // Flash models "think" by default, which costs seconds a caller would hear as silence
-        ...(/flash/.test(model) ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+        ...(thinking ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
       },
     };
 
@@ -79,7 +99,7 @@ export class GeminiProvider implements LLMProvider {
         method: "POST",
         headers: { "content-type": "application/json", "x-goog-api-key": this.apiKey },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(p.timeoutMs),
+        signal: AbortSignal.timeout(Math.max(100, p.timeoutMs - (Date.now() - started))),
       });
     } catch (err) {
       const aborted = err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError");
@@ -89,7 +109,20 @@ export class GeminiProvider implements LLMProvider {
         message: (err as Error).message,
       });
     }
-    if (!res.ok) return done({ ok: false, error: classify(res.status), message: `HTTP ${res.status}` });
+    if (!res.ok) {
+      if (res.status === 400 && thinking) {
+        const detail = await res.text().catch(() => "");
+        if (/thinking|invalid argument/i.test(detail)) {
+          this.noThinkingBudget.add(model);
+          return {
+            ...done({ ok: false, error: "provider_error", message: "HTTP 400" }),
+            retry: "no_thinking",
+          };
+        }
+      }
+      const failed = done({ ok: false, error: classify(res.status), message: `HTTP ${res.status}` });
+      return res.status === 503 ? { ...failed, retry: "overloaded" } : failed;
+    }
 
     let data: GeminiResponse;
     try {
@@ -123,15 +156,18 @@ export class GeminiProvider implements LLMProvider {
       }
     }
     return {
-      ok: true,
-      text,
-      ...(p.jsonSchema ? { json } : {}),
-      usage: {
-        inputTokens: data.usageMetadata?.promptTokenCount ?? 0,
-        outputTokens: data.usageMetadata?.candidatesTokenCount ?? 0,
-      },
-      latencyMs: Date.now() - started,
       model,
+      result: {
+        ok: true,
+        text,
+        ...(p.jsonSchema ? { json } : {}),
+        usage: {
+          inputTokens: data.usageMetadata?.promptTokenCount ?? 0,
+          outputTokens: data.usageMetadata?.candidatesTokenCount ?? 0,
+        },
+        latencyMs: Date.now() - started,
+        model,
+      },
     };
   }
 }

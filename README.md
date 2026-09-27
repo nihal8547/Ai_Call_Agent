@@ -118,6 +118,12 @@ for customers to call:
 - The app connects as `voice_app` (member of `app_user`), so **Row-Level Security isolates tenants**. Migrations use the owner connection (`DATABASE_MIGRATION_URL`).
 - Prisma cannot model the pgvector HNSW index. When a generated migration contains `DROP INDEX "document_chunks_embedding_hnsw_idx"`, delete that line. `npm run db:check` catches any other drift.
 
+### Arabic agents (Qatar and the Gulf)
+
+- Pick **Arabic (Qatar)** as the agent's language (or start from a Qatar Arabic template). The
+  agent speaks Arabic with an Arabic voice and understands Gulf Arabic, standard Arabic and English.
+- Without an AI key it still understands Arabic yes/no, names, amounts, dates and times.
+
 ### Security and monitoring
 
 - Two-step sign-in and the list of signed-in devices: **Settings → Security**.

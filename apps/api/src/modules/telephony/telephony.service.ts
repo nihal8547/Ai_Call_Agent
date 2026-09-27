@@ -11,7 +11,7 @@ import { TenantDbService } from "../../infra/tenant-db.service";
 import { AgentConfigService } from "./agent-config.service";
 import { CallRecorder, timelineEvents } from "./call-recorder";
 import { type CallState, CallStateStore } from "./call-state.store";
-import { queueForTool, TOOL_SPECS, type ToolName } from "@platform/shared";
+import { queueForTool, systemLines, TOOL_SPECS, type ToolName, voiceForLanguage } from "@platform/shared";
 import type { ToolRunEvent } from "@platform/tools";
 import { QueueService } from "../../infra/queue.service";
 import { CrmSyncService } from "../crm/crm-sync.service";
@@ -26,8 +26,6 @@ import { upsertLeadForCall } from "./lead-writer";
 type CallContext = Pick<CallState, "tenantId" | "callId" | "agentId" | "callerNumber" | "timezone">;
 
 const NOT_IN_SERVICE = "Sorry, this number is not in service right now. Please try again later. Goodbye.";
-const MAX_DURATION =
-  "We've reached the time limit for this call. I've noted everything you told me, and our team will follow up. Goodbye.";
 const LOST_CALL = "Sorry, we had a problem on our side. Please call us back. Goodbye.";
 
 const PROVIDER_STATUS: Record<string, "COMPLETED" | "FAILED" | "NO_ANSWER" | "BUSY" | "CANCELED"> = {
@@ -183,7 +181,7 @@ export class TelephonyService {
         state.maxCallMinutes &&
         Date.now() - state.startedAt > state.maxCallMinutes * 60_000
       ) {
-        const end = this.systemEnd(state, config, "max_duration", MAX_DURATION);
+        const end = this.systemEnd(state, config, "max_duration", systemLines(config.language).maxDuration);
         return this.complete(state, config, end, timelineEvents(end, speech));
       }
       const tools = this.tools(state, config);
@@ -309,9 +307,11 @@ export class TelephonyService {
     reply: Omit<VoiceReply, "voice" | "language"> & Partial<VoiceReply>,
     config?: AgentConfig,
   ): string {
+    const language = config?.language ?? "en-IN";
     return this.adapter().render({
-      voice: config?.voice.voice ?? "Polly.Kajal-Neural",
-      language: config?.language ?? "en-IN",
+      // An Arabic agent left on an English voice would read Arabic badly: use a voice for its language
+      voice: voiceForLanguage(language, config?.voice.voice),
+      language,
       ...reply,
     } as VoiceReply).body;
   }

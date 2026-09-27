@@ -7,6 +7,7 @@ export * from "./tenancy/defaults";
 export * from "./tenancy/countries";
 export * from "./auth/schemas";
 export * from "./agent/config";
+export * from "./agent/languages";
 export * from "./agent/fields";
 export * from "./agent/tools";
 export * from "./agent/workflow";

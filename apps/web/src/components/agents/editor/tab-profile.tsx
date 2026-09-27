@@ -1,6 +1,7 @@
 "use client";
 
-import { TextField } from "@/components/ui/field";
+import { AGENT_LANGUAGES, voiceForLanguage, voicesFor } from "@platform/shared";
+import { SelectField, TextField } from "@/components/ui/field";
 import { Check, Section, TextArea } from "@/components/ui/inputs";
 import { useDraft } from "./draft-context";
 
@@ -30,20 +31,44 @@ export function ProfileTab() {
             hint="Placeholders: {{agent_name}}, {{business_name}}, and any question key such as {{customer_name}}."
             onChange={(e) => update((c) => void (c.greeting = e.target.value))}
           />
-          <TextField
+          <SelectField
             label="Language"
             value={config.language}
             error={errorFor("language")}
-            hint="e.g. en-IN, hi-IN"
-            onChange={(e) => update((c) => void (c.language = e.target.value))}
-          />
-          <TextField
+            hint="What callers are understood in, and what the agent speaks. Arabic agents also understand English."
+            onChange={(e) =>
+              update((c) => {
+                c.language = e.target.value;
+                // Keep the voice if it speaks the new language, otherwise pick one that does
+                c.voice.voice = voiceForLanguage(c.language, c.voice.voice);
+              })
+            }
+          >
+            {AGENT_LANGUAGES.some((l) => l.code === config.language) ? null : (
+              <option value={config.language}>{config.language}</option>
+            )}
+            {AGENT_LANGUAGES.map((l) => (
+              <option key={l.code} value={l.code}>
+                {l.name}
+              </option>
+            ))}
+          </SelectField>
+          <SelectField
             label="Voice"
             value={config.voice.voice}
             error={errorFor("voice.voice")}
-            hint="Twilio voice id, e.g. Polly.Kajal-Neural"
+            hint="Amazon Polly voices through Twilio"
             onChange={(e) => update((c) => void (c.voice.voice = e.target.value))}
-          />
+          >
+            {voicesFor(config.language).some((v) => v.id === config.voice.voice) ? null : (
+              <option value={config.voice.voice}>{config.voice.voice}</option>
+            )}
+            {voicesFor(config.language).map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.name}
+              </option>
+            ))}
+          </SelectField>
         </div>
       </Section>
 
