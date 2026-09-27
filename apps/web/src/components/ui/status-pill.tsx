@@ -40,6 +40,10 @@ const TONE_OF: Record<string, keyof typeof TONES> = {
   NO_ANSWER: "bad",
   BUSY: "bad",
   ABANDONED: "neutral",
+  VERIFIED: "good",
+  PENDING: "info",
+  PENDING_SETUP: "warn",
+  DISABLED: "neutral",
 };
 
 /** Status label with a text label always present (color is never the only signal) */

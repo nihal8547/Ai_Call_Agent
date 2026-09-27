@@ -142,12 +142,92 @@ export type Lead = {
   >;
 };
 
+export type VerificationStatus = "NONE" | "PENDING" | "VERIFIED" | "FAILED";
+
 export type PhoneNumber = {
   id: string;
   e164: string;
+  provider: "TWILIO" | "SIP";
+  providerSid: string | null;
   friendlyName: string | null;
   isActive: boolean;
+  /** The business's existing line forwarded to this number */
+  forwardedFrom: string | null;
+  carrier: "ooredoo" | "vodafone_qa" | "other" | null;
+  forwardingMode: "NO_ANSWER_BUSY_UNREACHABLE" | "ALL" | null;
+  verificationStatus: VerificationStatus;
+  verificationExpiresAt: string | null;
+  verifiedAt: string | null;
+  verification: {
+    expectFrom?: string;
+    from?: string | null;
+    callerIdKept?: boolean;
+    forwardedFromMatches?: boolean | null;
+    via?: string;
+  };
+  maxConcurrentCalls: number | null;
+  lastCallAt: string | null;
+  createdAt: string;
   agent: { id: string; name: string; status: string } | null;
+  sipTrunk: { id: string; name: string; domainName: string; status: string } | null;
+};
+
+export type ForwardingStep = { label: string; code?: string };
+export type ForwardingInstructions = {
+  target: string;
+  mobile: { enable: ForwardingStep[]; disable: ForwardingStep[]; note: string };
+  landline: string;
+  costs: string;
+};
+
+export type AvailableNumber = {
+  phoneNumber: string;
+  friendlyName: string;
+  locality: string | null;
+  region: string | null;
+  isoCountry: string;
+  capabilities: { voice: boolean; sms: boolean };
+  addressRequirements: string;
+};
+
+export type SipTrunk = {
+  id: string;
+  name: string;
+  carrier: "ooredoo" | "vodafone_qa" | "pbx" | "other";
+  domainName: string;
+  allowedIps: string[];
+  authUsername: string | null;
+  status: "PENDING_SETUP" | "ACTIVE" | "ERROR" | "DISABLED";
+  lastError: string | null;
+  lastCallAt: string | null;
+  createdAt: string;
+  _count: { numbers: number };
+};
+
+export type SipSetupSheet = {
+  sipDomain: string;
+  uris: string[];
+  transport: string;
+  media: string;
+  codecs: string;
+  dialledNumber: string;
+  callerNumber: string;
+  allowedSourceIps: string[];
+  authentication: string;
+  twilioAddresses: string;
+  status: string;
+  text: string;
+};
+
+export type BlockedCaller = { id: string; pattern: string; reason: string | null; createdAt: string };
+
+export type TenantAlert = {
+  id: string;
+  kind: string;
+  message: string;
+  data: Record<string, unknown>;
+  createdAt: string;
+  acknowledgedAt: string | null;
 };
 
 export type DocumentStatus = "UPLOADING" | "PROCESSING" | "EXTRACTING" | "EMBEDDING" | "READY" | "FAILED";

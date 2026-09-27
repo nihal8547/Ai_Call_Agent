@@ -228,7 +228,10 @@ export const TWILIO_NUMBER_TYPES = ["local", "mobile", "toll_free"] as const;
 export const SearchTwilioNumbersQuery = z.object({
   country: z.string().regex(/^[A-Z]{2}$/, "Two-letter country code"),
   type: z.enum(TWILIO_NUMBER_TYPES).default("local"),
-  contains: z.string().regex(/^[0-9*]{1,10}$/).optional(),
+  contains: z
+    .string()
+    .regex(/^[0-9*]{1,10}$/)
+    .optional(),
 });
 export const BuyTwilioNumberBody = z.object({
   phoneNumber: E164,

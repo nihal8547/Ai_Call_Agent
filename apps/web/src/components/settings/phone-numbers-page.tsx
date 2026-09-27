@@ -1,156 +1,91 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useCan } from "@/components/app/me-context";
-import { Button } from "@/components/ui/button";
-import { SelectField, TextField } from "@/components/ui/field";
-import { Alert, Card, PageHeader } from "@/components/ui/misc";
-import { api } from "@/lib/api/client";
-import { errorMessage } from "@/lib/api/errors";
-import type { AgentListItem, PhoneNumber } from "@/lib/types";
+import { PageHeader } from "@/components/ui/misc";
+import { cn } from "@/lib/cn";
+import { BlockedCallers } from "./numbers/blocked-callers";
+import { GetNumber } from "./numbers/get-number";
+import { ExistingNumberWizard } from "./numbers/existing-number";
+import { NumbersList } from "./numbers/numbers-list";
+import { SipConnections } from "./numbers/sip-connections";
+
+const WAYS = [
+  {
+    key: "existing",
+    title: "Use my existing number",
+    text: "Keep the number customers already call (Ooredoo, Vodafone or any carrier) and forward it to your agent.",
+  },
+  {
+    key: "new",
+    title: "Get a new number",
+    text: "A new Twilio number that rings your agent straight away.",
+  },
+  {
+    key: "sip",
+    title: "Connect over SIP",
+    text: "For a business SIP line or office PBX: calls come in over SIP with no forwarding.",
+  },
+] as const;
+type Way = (typeof WAYS)[number]["key"];
 
 export function PhoneNumbersPage() {
   const canWrite = useCan("phone_numbers:write");
-  const qc = useQueryClient();
-  const numbers = useQuery({
-    queryKey: ["phone-numbers"],
-    queryFn: () => api<{ items: PhoneNumber[] }>("/phone-numbers"),
-  });
-  const agents = useQuery({
-    queryKey: ["agents"],
-    queryFn: () => api<{ items: AgentListItem[] }>("/agents"),
-    enabled: useCan("agents:read"),
-  });
-  const [e164, setE164] = useState("");
-  const [friendlyName, setFriendlyName] = useState("");
-  const [agentId, setAgentId] = useState("");
-  const refresh = () => qc.invalidateQueries({ queryKey: ["phone-numbers"] });
-
-  const add = useMutation({
-    mutationFn: () =>
-      api("/phone-numbers", {
-        method: "POST",
-        body: {
-          e164: e164.replace(/\s/g, ""),
-          ...(friendlyName ? { friendlyName } : {}),
-          agentId: agentId || null,
-        },
-      }),
-    onSuccess: () => {
-      setE164("");
-      setFriendlyName("");
-      void refresh();
-    },
-  });
-  const patch = useMutation({
-    mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
-      api(`/phone-numbers/${id}`, { method: "PATCH", body }),
-    onSuccess: refresh,
-  });
-  const remove = useMutation({
-    mutationFn: (id: string) => api(`/phone-numbers/${id}`, { method: "DELETE" }),
-    onSuccess: refresh,
-  });
-  const error = add.error ?? patch.error ?? remove.error;
+  const [way, setWay] = useState<Way | null>(null);
 
   return (
     <>
       <PageHeader
         title="Phone numbers"
-        description="Route each of your numbers to the agent that should answer it."
+        description="How callers reach your agents: your existing number, a new number, or your SIP line."
       />
-      {error ? (
-        <div className="mb-4">
-          <Alert>{errorMessage(error)}</Alert>
-        </div>
-      ) : null}
       {canWrite ? (
-        <Card>
-          <h2 className="font-semibold">Add a number</h2>
-          <form
-            className="mt-4 grid gap-4 md:grid-cols-[1fr_1fr_1fr_auto] md:items-end"
-            onSubmit={(e) => {
-              e.preventDefault();
-              add.mutate();
-            }}
+        <section aria-labelledby="add-heading" className="mb-6">
+          <h2 id="add-heading" className="sr-only">
+            Add a way for customers to call
+          </h2>
+          <div
+            role="tablist"
+            aria-label="Add a way for customers to call"
+            className="grid gap-3 md:grid-cols-3"
           >
-            <TextField
-              label="Number"
-              placeholder="+91 98765 43210"
-              value={e164}
-              onChange={(e) => setE164(e.target.value)}
-              hint="International format with country code"
-            />
-            <TextField
-              label="Label"
-              placeholder="Front desk"
-              value={friendlyName}
-              onChange={(e) => setFriendlyName(e.target.value)}
-            />
-            <SelectField label="Answered by" value={agentId} onChange={(e) => setAgentId(e.target.value)}>
-              <option value="">No agent yet</option>
-              {agents.data?.items.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </SelectField>
-            <Button type="submit" loading={add.isPending} disabled={!e164.trim()}>
-              Add
-            </Button>
-          </form>
-        </Card>
-      ) : null}
-      <Card className="mt-6">
-        <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-          {numbers.data?.items.map((n) => (
-            <li key={n.id} className="flex flex-wrap items-center gap-3 py-3 text-sm">
-              <div className="min-w-40">
-                <p className="font-medium tabular-nums">{n.e164}</p>
-                <p className="text-slate-500">{n.friendlyName ?? "—"}</p>
-              </div>
-              {canWrite ? (
-                <>
-                  <select
-                    aria-label={`Agent for ${n.e164}`}
-                    value={n.agent?.id ?? ""}
-                    onChange={(e) => patch.mutate({ id: n.id, body: { agentId: e.target.value || null } })}
-                    className="h-9 rounded-lg border border-slate-300 bg-white px-2 dark:border-slate-700 dark:bg-slate-900"
-                  >
-                    <option value="">No agent</option>
-                    {agents.data?.items.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}
-                      </option>
-                    ))}
-                  </select>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={n.isActive}
-                      onChange={(e) => patch.mutate({ id: n.id, body: { isActive: e.target.checked } })}
-                    />{" "}
-                    Active
-                  </label>
-                  <Button
-                    variant="ghost"
-                    className="ml-auto text-red-600"
-                    onClick={() => confirm(`Remove ${n.e164}?`) && remove.mutate(n.id)}
-                  >
-                    Remove
-                  </Button>
-                </>
+            {WAYS.map((w) => (
+              <button
+                key={w.key}
+                role="tab"
+                id={`way-${w.key}`}
+                aria-selected={way === w.key}
+                aria-controls="way-panel"
+                onClick={() => setWay(way === w.key ? null : w.key)}
+                className={cn(
+                  "rounded-2xl border p-4 text-left transition-colors focus-visible:outline-2 focus-visible:outline-brand-500",
+                  way === w.key
+                    ? "border-brand-500 bg-brand-50 dark:border-brand-500 dark:bg-slate-800"
+                    : "border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700",
+                )}
+              >
+                <span className="block font-semibold">{w.title}</span>
+                <span className="mt-1 block text-sm text-slate-500">{w.text}</span>
+              </button>
+            ))}
+          </div>
+          {way ? (
+            <div id="way-panel" role="tabpanel" aria-labelledby={`way-${way}`} className="mt-4">
+              {way === "existing" ? (
+                <ExistingNumberWizard onGetNumber={() => setWay("new")} onDone={() => setWay(null)} />
+              ) : way === "new" ? (
+                <GetNumber onDone={() => setWay(null)} />
               ) : (
-                <span className="text-slate-500">{n.agent?.name ?? "No agent"}</span>
+                <SipConnections />
               )}
-            </li>
-          ))}
-        </ul>
-        {numbers.data && !numbers.data.items.length ? (
-          <p className="text-sm text-slate-500">No numbers yet.</p>
-        ) : null}
-      </Card>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      <NumbersList />
+      {way !== "sip" ? <SipConnections listOnly /> : null}
+      <BlockedCallers />
     </>
   );
 }

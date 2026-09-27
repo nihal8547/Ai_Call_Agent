@@ -87,6 +87,7 @@ export class AlertsService {
     const { count } = await this.tenantDb
       .db(auth.tenantId)
       .tenantAlert.updateMany({ where: { id, acknowledgedAt: null }, data: { acknowledgedAt: new Date() } });
-    if (!count) throw new AppException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Alert not found or already dismissed");
+    if (!count)
+      throw new AppException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Alert not found or already dismissed");
   }
 }

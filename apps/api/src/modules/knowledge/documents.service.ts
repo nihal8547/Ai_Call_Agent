@@ -202,7 +202,11 @@ export class DocumentsService {
     if (!isReplacement && Number(count) >= limits.maxDocuments)
       await this.limitReached(tenantId, "maxDocuments", `Your plan allows ${limits.maxDocuments} documents`);
     if (Number(bytes ?? 0n) + size > limits.maxStorageMb * MB)
-      await this.limitReached(tenantId, "maxStorageMb", `Your plan allows ${limits.maxStorageMb} MB of documents`);
+      await this.limitReached(
+        tenantId,
+        "maxStorageMb",
+        `Your plan allows ${limits.maxStorageMb} MB of documents`,
+      );
   }
 }
 

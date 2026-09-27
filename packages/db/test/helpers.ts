@@ -142,7 +142,12 @@ export async function createPopulatedTenant(prisma: ReturnType<typeof appClient>
       },
     });
     await tx.sipTrunk.create({
-      data: { tenantId, name: "Ooredoo SIP", carrier: "ooredoo", domainName: `t-${randomUUID().slice(0, 12)}` },
+      data: {
+        tenantId,
+        name: "Ooredoo SIP",
+        carrier: "ooredoo",
+        domainName: `t-${randomUUID().slice(0, 12)}`,
+      },
     });
     await tx.blockedCaller.create({ data: { tenantId, pattern: "+882*" } });
     await tx.tenantAlert.create({

@@ -9,6 +9,7 @@ import { api } from "@/lib/api/client";
 import { errorMessage } from "@/lib/api/errors";
 import { fmtCompact, fmtDuration, fmtPercent, plural } from "@/lib/format";
 import type { Summary } from "@/lib/types";
+import { AlertsBanner } from "./alerts-banner";
 import { CallsChart } from "./calls-chart";
 
 const RANGES = [7, 30, 90] as const;
@@ -37,6 +38,7 @@ export function DashboardPage() {
     return (
       <>
         <PageHeader title={`Welcome, ${me.user.name}`} description={me.tenant.name} />
+        <AlertsBanner />
         <Card>
           <p className="text-sm text-slate-500">Use the menu to see your calls, leads and appointments.</p>
         </Card>
@@ -69,6 +71,7 @@ export function DashboardPage() {
           </div>
         }
       />
+      <AlertsBanner />
       {summary.error ? <Alert>{errorMessage(summary.error)}</Alert> : null}
       {t && t.calls === 0 ? (
         <Card className="mb-6">

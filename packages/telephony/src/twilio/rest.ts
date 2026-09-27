@@ -70,7 +70,11 @@ export class TwilioRest {
     if (res.status === 204) return undefined as T;
     const json = (await res.json().catch(() => ({}))) as { message?: string; code?: number };
     if (!res.ok)
-      throw new TwilioRestError(res.status, json.code ?? null, `Twilio: ${json.message ?? `HTTP ${res.status}`}`);
+      throw new TwilioRestError(
+        res.status,
+        json.code ?? null,
+        `Twilio: ${json.message ?? `HTTP ${res.status}`}`,
+      );
     return json as T;
   }
 
@@ -104,7 +108,10 @@ export class TwilioRest {
       locality: n.locality || null,
       region: n.region || null,
       isoCountry: n.iso_country,
-      capabilities: { voice: Boolean(n.capabilities.voice), sms: Boolean(n.capabilities.SMS ?? n.capabilities.sms) },
+      capabilities: {
+        voice: Boolean(n.capabilities.voice),
+        sms: Boolean(n.capabilities.SMS ?? n.capabilities.sms),
+      },
       addressRequirements: n.address_requirements,
     }));
   }
@@ -133,7 +140,10 @@ export class TwilioRest {
 
   /** Numbers already on the account (e.g. bought in the Twilio console) */
   async listNumbers(): Promise<OwnedNumber[]> {
-    const r = await this.call<{ incoming_phone_numbers: RawOwned[] }>("GET", "/IncomingPhoneNumbers.json?PageSize=200");
+    const r = await this.call<{ incoming_phone_numbers: RawOwned[] }>(
+      "GET",
+      "/IncomingPhoneNumbers.json?PageSize=200",
+    );
     return r.incoming_phone_numbers.map(owned);
   }
 
@@ -154,7 +164,12 @@ export class TwilioRest {
 
   // ── SIP domains (business trunks) ───────────────────────────────────────────
   /** A SIP domain whose calls are sent to our voice webhook; returns its SID */
-  async createSipDomain(o: { domainName: string; friendlyName: string; voiceUrl: string; statusCallback: string }) {
+  async createSipDomain(o: {
+    domainName: string;
+    friendlyName: string;
+    voiceUrl: string;
+    statusCallback: string;
+  }) {
     const r = await this.call<{ sid: string; domain_name: string }>("POST", "/SIP/Domains.json", {
       DomainName: o.domainName,
       FriendlyName: o.friendlyName.slice(0, 64),
@@ -178,9 +193,13 @@ export class TwilioRest {
       FriendlyName: friendlyName.slice(0, 64),
     });
     await this.setIpAclAddresses(acl.sid, cidrs);
-    await this.call("POST", `/SIP/Domains/${encodeURIComponent(domainSid)}/Auth/Calls/IpAccessControlListMappings.json`, {
-      IpAccessControlListSid: acl.sid,
-    });
+    await this.call(
+      "POST",
+      `/SIP/Domains/${encodeURIComponent(domainSid)}/Auth/Calls/IpAccessControlListMappings.json`,
+      {
+        IpAccessControlListSid: acl.sid,
+      },
+    );
     return acl.sid;
   }
 
@@ -188,7 +207,8 @@ export class TwilioRest {
   async setIpAclAddresses(aclSid: string, cidrs: string[]): Promise<void> {
     const path = `/SIP/IpAccessControlLists/${encodeURIComponent(aclSid)}/IpAddresses`;
     const existing = await this.call<{ ip_addresses: { sid: string }[] }>("GET", `${path}.json?PageSize=200`);
-    for (const ip of existing.ip_addresses) await this.call("DELETE", `${path}/${encodeURIComponent(ip.sid)}.json`);
+    for (const ip of existing.ip_addresses)
+      await this.call("DELETE", `${path}/${encodeURIComponent(ip.sid)}.json`);
     for (const [i, cidr] of cidrs.entries()) {
       const [ip, prefix] = cidr.split("/");
       await this.call("POST", `${path}.json`, {
@@ -204,7 +224,12 @@ export class TwilioRest {
   }
 
   /** A credential list with one username/password, mapped to the domain for calls */
-  async createCredentials(domainSid: string, friendlyName: string, username: string, password: string): Promise<string> {
+  async createCredentials(
+    domainSid: string,
+    friendlyName: string,
+    username: string,
+    password: string,
+  ): Promise<string> {
     const list = await this.call<{ sid: string }>("POST", "/SIP/CredentialLists.json", {
       FriendlyName: friendlyName.slice(0, 64),
     });
@@ -212,9 +237,13 @@ export class TwilioRest {
       Username: username,
       Password: password,
     });
-    await this.call("POST", `/SIP/Domains/${encodeURIComponent(domainSid)}/Auth/Calls/CredentialListMappings.json`, {
-      CredentialListSid: list.sid,
-    });
+    await this.call(
+      "POST",
+      `/SIP/Domains/${encodeURIComponent(domainSid)}/Auth/Calls/CredentialListMappings.json`,
+      {
+        CredentialListSid: list.sid,
+      },
+    );
     return list.sid;
   }
 

@@ -1,5 +1,12 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Req, Res } from "@nestjs/common";
-import { DisableTotpBody, EnableTotpBody, LoginBody, LoginMfaBody, RegisterBody, SwitchTenantBody } from "@platform/shared";
+import {
+  DisableTotpBody,
+  EnableTotpBody,
+  LoginBody,
+  LoginMfaBody,
+  RegisterBody,
+  SwitchTenantBody,
+} from "@platform/shared";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import type { AuthContext } from "../../common/auth/auth.types";
@@ -61,7 +68,12 @@ export class AuthController {
     const user = userAuth(auth);
     const result = await this.mfa.enable(user.userId, body.code);
     await this.tenantDb.tx(user.tenantId, (tx) =>
-      this.audit.record(tx, auth, { action: "user.2fa_enabled", entityType: "user", entityId: user.userId, ...requestMeta(req) }),
+      this.audit.record(tx, auth, {
+        action: "user.2fa_enabled",
+        entityType: "user",
+        entityId: user.userId,
+        ...requestMeta(req),
+      }),
     );
     return result;
   }
@@ -79,7 +91,12 @@ export class AuthController {
     const user = userAuth(auth);
     await this.mfa.disable(user.userId, body.password, body.code);
     await this.tenantDb.tx(user.tenantId, (tx) =>
-      this.audit.record(tx, auth, { action: "user.2fa_disabled", entityType: "user", entityId: user.userId, ...requestMeta(req) }),
+      this.audit.record(tx, auth, {
+        action: "user.2fa_disabled",
+        entityType: "user",
+        entityId: user.userId,
+        ...requestMeta(req),
+      }),
     );
   }
 

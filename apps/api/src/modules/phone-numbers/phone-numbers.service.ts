@@ -58,11 +58,14 @@ export class PhoneNumbersService {
   ) {}
 
   list(tenantId: string) {
-    return this.tenantDb.db(tenantId).phoneNumber.findMany({ select: PHONE_NUMBER_VIEW, orderBy: { createdAt: "asc" } });
+    return this.tenantDb
+      .db(tenantId)
+      .phoneNumber.findMany({ select: PHONE_NUMBER_VIEW, orderBy: { createdAt: "asc" } });
   }
 
   async callingCode(tx: TenantTx, tenantId: string): Promise<string> {
-    return (await tx.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { callingCode: true } })).callingCode;
+    return (await tx.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { callingCode: true } }))
+      .callingCode;
   }
 
   /** Staff typed a number: E.164, or local digits in the business's own country */
@@ -78,7 +81,11 @@ export class PhoneNumbersService {
    */
   async addManual(auth: AuthContext, body: z.output<typeof CreatePhoneNumberBody>, meta: Meta) {
     if (this.twilio.client && !(await this.isPlatformOwner(auth)))
-      throw new AppException(HttpStatus.FORBIDDEN, "FORBIDDEN", "Buy a number here, or ask the platform operator to add yours.");
+      throw new AppException(
+        HttpStatus.FORBIDDEN,
+        "FORBIDDEN",
+        "Buy a number here, or ask the platform operator to add yours.",
+      );
     return this.tenantDb.tx(auth.tenantId, async (tx) => {
       if (body.agentId) await assertAgent(tx, body.agentId);
       const number = await this.createNumber(tx, {
@@ -88,14 +95,26 @@ export class PhoneNumbersService {
         agentId: body.agentId ?? null,
         providerSid: body.providerSid ?? null,
       });
-      await this.audit.record(tx, auth, { action: "phone_number.added", entityType: "phone_number", entityId: number.id, after: body, ...meta });
+      await this.audit.record(tx, auth, {
+        action: "phone_number.added",
+        entityType: "phone_number",
+        entityId: number.id,
+        after: body,
+        ...meta,
+      });
       return number;
     });
   }
 
-  async searchTwilio(q: { country: string; type: "local" | "mobile" | "toll_free"; contains?: string | undefined }) {
+  async searchTwilio(q: {
+    country: string;
+    type: "local" | "mobile" | "toll_free";
+    contains?: string | undefined;
+  }) {
     try {
-      return await this.twilio.require().searchNumbers({ ...q, ...(q.contains ? { contains: q.contains } : {}), limit: 20 });
+      return await this.twilio
+        .require()
+        .searchNumbers({ ...q, ...(q.contains ? { contains: q.contains } : {}), limit: 20 });
     } catch (err) {
       if (err instanceof AppException) throw err;
       throw TwilioRestService.toProblem(err, "Searching numbers");
@@ -159,14 +178,27 @@ export class PhoneNumbersService {
   }
 
   // ── The business's existing line, forwarded ─────────────────────────────────
-  async connectForwarding(auth: AuthContext, id: string, body: z.output<typeof ConnectForwardingBody>, meta: Meta) {
+  async connectForwarding(
+    auth: AuthContext,
+    id: string,
+    body: z.output<typeof ConnectForwardingBody>,
+    meta: Meta,
+  ) {
     return this.tenantDb.tx(auth.tenantId, async (tx) => {
-      const number = await tx.phoneNumber.findUnique({ where: { id }, include: { agent: { include: { publishedVersion: true } } } });
+      const number = await tx.phoneNumber.findUnique({
+        where: { id },
+        include: { agent: { include: { publishedVersion: true } } },
+      });
       if (!number) throw notFound();
       if (number.provider !== "TWILIO")
         throw invalid("id", "Forwarding goes to a Twilio number; SIP numbers are connected on their trunk");
-      const business = this.parse(body.businessNumber, await this.callingCode(tx, auth.tenantId), "businessNumber");
-      if (business === number.e164) throw invalid("businessNumber", "Enter the number customers call now, not this one");
+      const business = this.parse(
+        body.businessNumber,
+        await this.callingCode(tx, auth.tenantId),
+        "businessNumber",
+      );
+      if (business === number.e164)
+        throw invalid("businessNumber", "Enter the number customers call now, not this one");
       assertNoTransferLoop(number.agent?.publishedVersion?.config, business);
       const updated = await tx.phoneNumber
         .update({
@@ -204,7 +236,11 @@ export class PhoneNumbersService {
     const n = await this.tenantDb.db(tenantId).phoneNumber.findUnique({ where: { id } });
     if (!n) throw notFound();
     if (!n.forwardedFrom) throw invalid("id", "No existing number is connected to this one");
-    return forwardingInstructions(n.e164, (n.forwardingMode ?? "NO_ANSWER_BUSY_UNREACHABLE") as ForwardingMode, (n.carrier ?? "other") as Carrier);
+    return forwardingInstructions(
+      n.e164,
+      (n.forwardingMode ?? "NO_ANSWER_BUSY_UNREACHABLE") as ForwardingMode,
+      (n.carrier ?? "other") as Carrier,
+    );
   }
 
   async disconnectForwarding(auth: AuthContext, id: string, meta: Meta) {
@@ -240,7 +276,9 @@ export class PhoneNumbersService {
     return this.tenantDb.tx(auth.tenantId, async (tx) => {
       const n = await tx.phoneNumber.findUnique({ where: { id } });
       if (!n) throw notFound();
-      const expectFrom = from ? this.parse(from, await this.callingCode(tx, auth.tenantId), "from") : undefined;
+      const expectFrom = from
+        ? this.parse(from, await this.callingCode(tx, auth.tenantId), "from")
+        : undefined;
       return tx.phoneNumber.update({
         where: { id },
         data: {
@@ -284,7 +322,10 @@ export class PhoneNumbersService {
 
   private async isPlatformOwner(auth: AuthContext): Promise<boolean> {
     if (auth.kind !== "user") return false;
-    const user = await this.prisma.client.user.findUnique({ where: { id: auth.userId }, select: { isPlatformOwner: true } });
+    const user = await this.prisma.client.user.findUnique({
+      where: { id: auth.userId },
+      select: { isPlatformOwner: true },
+    });
     return Boolean(user?.isPlatformOwner);
   }
 }
@@ -305,4 +346,3 @@ export function assertNoTransferLoop(config: unknown, businessNumber: string): v
       "This agent transfers callers to this same number, which would forward them straight back. Give the agent a different staff number for transfers first.",
     );
 }
-

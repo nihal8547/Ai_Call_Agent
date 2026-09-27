@@ -4,6 +4,7 @@ A multi-tenant, configurable, RAG-powered platform for AI phone agents. Any busi
 
 - Architecture: [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md)
 - Build phases and progress: [`docs/DEVELOPMENT_PHASES.md`](docs/DEVELOPMENT_PHASES.md)
+- Running it in production: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) and the [runbook](docs/RUNBOOK.md)
 
 ## Stack
 
@@ -74,6 +75,16 @@ docker compose up -d --build
    - **Call status changes** → `POST {PUBLIC_BASE_URL}/telephony/twilio/status`
 5. Call the number. Calls, transcripts and leads appear in the web app; without `GEMINI_API_KEY` the agent runs on deterministic understanding.
 
+With the platform's Twilio account set (`TWILIO_ACCOUNT_SID`, `TWILIO_API_KEY_SID`,
+`TWILIO_API_KEY_SECRET`), steps 3–4 happen in the app: **Settings → Phone numbers** offers three ways
+for customers to call:
+
+- **Use my existing number:** keep the number customers already call (Ooredoo, Vodafone or any
+  carrier). The app shows the call-forwarding codes to dial and runs a test call.
+- **Get a new number:** search and buy a Twilio number; it is pointed at the agent straight away.
+- **Connect over SIP:** for a business SIP line or office phone system. The app creates a SIP
+  address with an IP allow-list (and optional password) and a setup sheet for the carrier.
+
 ### Knowledge base (documents)
 
 - Upload files under **Knowledge Base** in the web app. The **worker** must be running (`npm run dev` starts it) to process them.
@@ -107,7 +118,21 @@ docker compose up -d --build
 - The app connects as `voice_app` (member of `app_user`), so **Row-Level Security isolates tenants**. Migrations use the owner connection (`DATABASE_MIGRATION_URL`).
 - Prisma cannot model the pgvector HNSW index. When a generated migration contains `DROP INDEX "document_chunks_embedding_hnsw_idx"`, delete that line. `npm run db:check` catches any other drift.
 
+### Security and monitoring
+
+- Two-step sign-in and the list of signed-in devices: **Settings → Security**.
+- Country, time zone, longest call and how long call records are kept: **Settings → Business**.
+- Blocked callers, per-number call limits, plan limits and unusual-volume alerts protect against
+  abuse and toll fraud; alerts show on the dashboard.
+- Metrics: API `/metrics` and worker `:9464/metrics`; Prometheus and Grafana with
+  `docker compose --profile observability up -d` (Grafana on port 3001). Traces go to
+  `OTEL_EXPORTER_OTLP_ENDPOINT` when set.
+- `npm run audit:prod` checks production dependencies; `scripts/backup.sh` and
+  `scripts/restore-drill.sh` take and test backups; `scripts/loadtest.mjs` simulates concurrent calls.
+
 ### Deployment notes
+
+Full guide: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 - **Client IPs and rate limits:** the web app proxies `/api/*` to the API and passes `X-Forwarded-For` through unchanged. In production, run the web app behind a load balancer that appends the real client IP (Cloud Run, Vercel, ALB, nginx all do), and list the load balancer and web server addresses in `TRUST_PROXY`. The API only honours `X-Forwarded-For` from those peers.
 - **Cookies:** sessions use httpOnly cookies scoped to the web origin. Set `COOKIE_SECURE=true` (the default in production) and serve over HTTPS.

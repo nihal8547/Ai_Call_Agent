@@ -4,9 +4,9 @@
  * Qatar support; landlines and PBXs are set up by the carrier or the PBX vendor.
  */
 export const CARRIERS = {
-  ooredoo: { name: "Ooredoo", support: "Ooredoo business care: 111 (from an Ooredoo line)" },
-  vodafone_qa: { name: "Vodafone Qatar", support: "Vodafone business care: 111 (from a Vodafone line)" },
-  other: { name: "Another carrier", support: "Your carrier's business support" },
+  ooredoo: { name: "Ooredoo", support: "Ooredoo business customer care" },
+  vodafone_qa: { name: "Vodafone Qatar", support: "Vodafone business customer care" },
+  other: { name: "Another carrier", support: "your carrier's business support" },
 } as const;
 export type Carrier = keyof typeof CARRIERS;
 
@@ -37,7 +37,7 @@ export function forwardingInstructions(target: string, mode: ForwardingMode, car
       disable,
       note: "Dial each code from the business mobile and press call. The phone confirms each one.",
     },
-    landline: `For a landline or a PBX, ask ${CARRIERS[carrier].name} (${CARRIERS[carrier].support}) or your PBX vendor to forward ${mode === "ALL" ? "all calls" : "unanswered, busy and unreachable calls"} to ${t}.`,
+    landline: `For a landline or a PBX, ask ${CARRIERS[carrier].support} or your PBX vendor to forward ${mode === "ALL" ? "all calls" : "unanswered, busy and unreachable calls"} to ${t}.`,
     costs: `${CARRIERS[carrier].name} may charge for forwarded calls at its rate for calls to ${t}.`,
   };
 }

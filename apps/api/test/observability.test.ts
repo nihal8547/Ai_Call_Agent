@@ -12,7 +12,9 @@ describe.skipIf(!hasTestDb)("P12: Prometheus metrics", () => {
 
   it("answers private-network scrapers only, and counts calls, turns and requests by route", async () => {
     const owner = await registerOwner(app, "metrics");
-    const clinic = await provisionAgent(app, owner.me.tenant.id, "clinic-reception", { workingHours: undefined });
+    const clinic = await provisionAgent(app, owner.me.tenant.id, "clinic-reception", {
+      workingHours: undefined,
+    });
     await phoneCall(app, clinic.e164, ["Priya"]);
     await owner.client.get(`/api/v1/agents/${clinic.agentId}`);
 

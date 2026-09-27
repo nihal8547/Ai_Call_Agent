@@ -24,7 +24,9 @@ export class BlockedCallersController {
   @RequirePermissions("phone_numbers:read")
   @Get()
   async list(@CurrentAuth() auth: AuthContext) {
-    return { items: await this.tenantDb.db(auth.tenantId).blockedCaller.findMany({ orderBy: { createdAt: "desc" } }) };
+    return {
+      items: await this.tenantDb.db(auth.tenantId).blockedCaller.findMany({ orderBy: { createdAt: "desc" } }),
+    };
   }
 
   @RequirePermissions("phone_numbers:write")
@@ -44,7 +46,13 @@ export class BlockedCallersController {
             ]);
           throw err;
         });
-      await this.audit.record(tx, auth, { action: "caller.blocked", entityType: "blocked_caller", entityId: row.id, after: body, ...requestMeta(req) });
+      await this.audit.record(tx, auth, {
+        action: "caller.blocked",
+        entityType: "blocked_caller",
+        entityId: row.id,
+        after: body,
+        ...requestMeta(req),
+      });
       this.settings.forget(auth.tenantId);
       return row;
     });
@@ -61,7 +69,12 @@ export class BlockedCallersController {
     await this.tenantDb.tx(auth.tenantId, async (tx) => {
       const { count } = await tx.blockedCaller.deleteMany({ where: { id } });
       if (!count) throw new AppException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Not found");
-      await this.audit.record(tx, auth, { action: "caller.unblocked", entityType: "blocked_caller", entityId: id, ...requestMeta(req) });
+      await this.audit.record(tx, auth, {
+        action: "caller.unblocked",
+        entityType: "blocked_caller",
+        entityId: id,
+        ...requestMeta(req),
+      });
     });
     this.settings.forget(auth.tenantId);
   }

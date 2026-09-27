@@ -77,7 +77,13 @@ export class MetricsService implements OnModuleDestroy {
       labelNames: ["queue", "state"] as const,
       registers: [registry],
       async collect() {
-        for (const name of [QUEUES.webhooks, QUEUES.notifications, QUEUES.crm, QUEUES.ingestion, QUEUES.analytics]) {
+        for (const name of [
+          QUEUES.webhooks,
+          QUEUES.notifications,
+          QUEUES.crm,
+          QUEUES.ingestion,
+          QUEUES.analytics,
+        ]) {
           const counts = await queues.queue(name).getJobCounts("waiting", "active", "delayed", "failed");
           for (const [state, n] of Object.entries(counts)) this.set({ queue: name, state }, n);
         }

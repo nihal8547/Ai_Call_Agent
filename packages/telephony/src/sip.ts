@@ -12,7 +12,9 @@ export function parseSipUri(value: string): SipAddress | null {
 
 /** "acme-7f3a.sip.twilio.com" (or a regional "….sip.us1.twilio.com") → "acme-7f3a"; other hosts → null */
 export function sipDomainLabel(host: string): string | null {
-  const m = /^([a-z0-9][a-z0-9-]{0,61}[a-z0-9]?)\.sip(?:\.[a-z0-9-]+)?\.twilio\.com$/.exec(host.toLowerCase());
+  const m = /^([a-z0-9][a-z0-9-]{0,61}[a-z0-9]?)\.sip(?:\.[a-z0-9-]+)?\.twilio\.com$/.exec(
+    host.toLowerCase(),
+  );
   return m ? m[1]! : null;
 }
 
@@ -25,6 +27,12 @@ export function validTrunkCidr(value: string): boolean {
   if (o.some((x) => x > 255) || prefix < 16 || prefix > 32) return false;
   const [a, b] = o as [number, number, number, number];
   const privateRange =
-    a === 10 || a === 127 || a === 0 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254) || a >= 224;
+    a === 10 ||
+    a === 127 ||
+    a === 0 ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 169 && b === 254) ||
+    a >= 224;
   return !privateRange;
 }

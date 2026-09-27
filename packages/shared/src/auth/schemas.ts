@@ -61,7 +61,12 @@ export const SwitchTenantBody = z.object({ tenantId: z.uuid() });
 /** A 6-digit authenticator code, or a recovery code like 7GQ4-X2MP-KT9A */
 const MfaCode = z.string().trim().min(6).max(20);
 export const LoginMfaBody = z.object({ mfaToken: z.string().min(20).max(100), code: MfaCode });
-export const EnableTotpBody = z.object({ code: z.string().trim().regex(/^\d{6}$/, "Enter the 6-digit code") });
+export const EnableTotpBody = z.object({
+  code: z
+    .string()
+    .trim()
+    .regex(/^\d{6}$/, "Enter the 6-digit code"),
+});
 export const DisableTotpBody = z.object({ password: z.string().min(1).max(128), code: MfaCode });
 
 export const MembershipSummary = z.object({

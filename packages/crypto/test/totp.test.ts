@@ -25,7 +25,11 @@ describe("TOTP", () => {
   });
 
   it("matches RFC 4226 HOTP values", () => {
-    expect([0, 1, 2].map((c) => hotp(Buffer.from("12345678901234567890"), c))).toEqual(["755224", "287082", "359152"]);
+    expect([0, 1, 2].map((c) => hotp(Buffer.from("12345678901234567890"), c))).toEqual([
+      "755224",
+      "287082",
+      "359152",
+    ]);
   });
 
   it("accepts the current code and one step of drift, nothing else", () => {

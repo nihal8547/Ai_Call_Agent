@@ -74,8 +74,13 @@ export class SipTrunksService {
   async create(auth: AuthContext, body: z.output<typeof CreateSipTrunkBody>, meta: Meta) {
     const allowedIps = this.checkIps(body.allowedIps);
     if (!allowedIps.length && !body.useCredentials)
-      throw invalid("allowedIps", "Add your carrier's signalling addresses, or use a username and password (or both)");
-    const tenant = await this.tenantDb.db(auth.tenantId).tenant.findUniqueOrThrow({ where: { id: auth.tenantId }, select: { slug: true } });
+      throw invalid(
+        "allowedIps",
+        "Add your carrier's signalling addresses, or use a username and password (or both)",
+      );
+    const tenant = await this.tenantDb
+      .db(auth.tenantId)
+      .tenant.findUniqueOrThrow({ where: { id: auth.tenantId }, select: { slug: true } });
     const domainName = `${tenant.slug.replace(/[^a-z0-9]/g, "").slice(0, 20) || "biz"}-${randomBytes(3).toString("hex")}`;
     const password = body.useCredentials ? sipPassword() : null;
     const created = await this.tenantDb.tx(auth.tenantId, async (tx) => {
@@ -169,10 +174,13 @@ export class SipTrunksService {
       throw invalid("allowedIps", "A connection without a password needs at least one address");
     if (allowedIps && this.twilio.client && trunk.twilioDomainSid) {
       try {
-        if (trunk.twilioIpAclSid) await this.twilio.client.setIpAclAddresses(trunk.twilioIpAclSid, allowedIps);
+        if (trunk.twilioIpAclSid)
+          await this.twilio.client.setIpAclAddresses(trunk.twilioIpAclSid, allowedIps);
         else if (allowedIps.length) {
           const acl = await this.twilio.client.createIpAcl(trunk.twilioDomainSid, trunk.name, allowedIps);
-          await this.tenantDb.db(auth.tenantId).sipTrunk.update({ where: { id }, data: { twilioIpAclSid: acl } });
+          await this.tenantDb
+            .db(auth.tenantId)
+            .sipTrunk.update({ where: { id }, data: { twilioIpAclSid: acl } });
         }
       } catch (err) {
         throw TwilioRestService.toProblem(err, "Updating the allowed addresses");
@@ -188,14 +196,23 @@ export class SipTrunksService {
         },
         select: VIEW,
       });
-      await this.audit.record(tx, auth, { action: "sip_trunk.updated", entityType: "sip_trunk", entityId: id, after: body, ...meta });
+      await this.audit.record(tx, auth, {
+        action: "sip_trunk.updated",
+        entityType: "sip_trunk",
+        entityId: id,
+        after: body,
+        ...meta,
+      });
       return row;
     });
   }
 
   async remove(auth: AuthContext, id: string, meta: Meta): Promise<void> {
     const db = this.tenantDb.db(auth.tenantId);
-    const trunk = await db.sipTrunk.findUnique({ where: { id }, include: { _count: { select: { numbers: true } } } });
+    const trunk = await db.sipTrunk.findUnique({
+      where: { id },
+      include: { _count: { select: { numbers: true } } },
+    });
     if (!trunk) throw notFound();
     if (trunk._count.numbers)
       throw new AppException(HttpStatus.CONFLICT, "CONFLICT", "Remove this connection's numbers first");
@@ -207,11 +224,18 @@ export class SipTrunksService {
         [trunk.twilioIpAclSid, (s: string) => client.deleteIpAcl(s)],
         [trunk.twilioCredListSid, (s: string) => client.deleteCredentialList(s)],
       ] as const)
-        if (sid) await del(sid).catch((err: unknown) => this.logger.warn({ err, sid }, "Twilio cleanup failed"));
+        if (sid)
+          await del(sid).catch((err: unknown) => this.logger.warn({ err, sid }, "Twilio cleanup failed"));
     }
     await this.tenantDb.tx(auth.tenantId, async (tx) => {
       await tx.sipTrunk.delete({ where: { id } });
-      await this.audit.record(tx, auth, { action: "sip_trunk.deleted", entityType: "sip_trunk", entityId: id, before: { name: trunk.name }, ...meta });
+      await this.audit.record(tx, auth, {
+        action: "sip_trunk.deleted",
+        entityType: "sip_trunk",
+        entityId: id,
+        before: { name: trunk.name },
+        ...meta,
+      });
     });
   }
 
@@ -221,7 +245,11 @@ export class SipTrunksService {
       const trunk = await tx.sipTrunk.findUnique({ where: { id } });
       if (!trunk) throw notFound();
       if (body.agentId) await assertAgent(tx, body.agentId);
-      const e164 = this.numbers.parse(body.number, await this.numbers.callingCode(tx, auth.tenantId), "number");
+      const e164 = this.numbers.parse(
+        body.number,
+        await this.numbers.callingCode(tx, auth.tenantId),
+        "number",
+      );
       const number = await this.numbers.createNumber(tx, {
         tenantId: auth.tenantId,
         e164,
@@ -231,19 +259,29 @@ export class SipTrunksService {
         provider: "SIP",
         sipTrunkId: id,
       });
-      await this.audit.record(tx, auth, { action: "phone_number.added", entityType: "phone_number", entityId: number.id, after: { e164, sipTrunkId: id }, ...meta });
+      await this.audit.record(tx, auth, {
+        action: "phone_number.added",
+        entityType: "phone_number",
+        entityId: number.id,
+        after: { e164, sipTrunkId: id },
+        ...meta,
+      });
       return number;
     });
   }
 
   /** Everything the carrier or PBX vendor needs, as a sheet to send them */
   async setupSheet(tenantId: string, id: string) {
-    const trunk = await this.tenantDb.db(tenantId).sipTrunk.findUnique({ where: { id }, include: { numbers: { select: { e164: true } } } });
+    const trunk = await this.tenantDb
+      .db(tenantId)
+      .sipTrunk.findUnique({ where: { id }, include: { numbers: { select: { e164: true } } } });
     if (!trunk) throw notFound();
     const domain = `${trunk.domainName}.${SIP_DOMAIN_SUFFIX}`;
     const sheet = {
       sipDomain: domain,
-      uris: trunk.numbers.length ? trunk.numbers.map((n) => `sip:${n.e164}@${domain}`) : [`sip:<dialled number in +974 format>@${domain}`],
+      uris: trunk.numbers.length
+        ? trunk.numbers.map((n) => `sip:${n.e164}@${domain}`)
+        : [`sip:<dialled number in +974 format>@${domain}`],
       transport: "TLS on port 5061 (preferred), or TCP/UDP on 5060",
       media: "SRTP with TLS; RTP otherwise",
       codecs: "G.711 A-law (PCMA) and G.711 μ-law (PCMU)",
@@ -253,7 +291,8 @@ export class SipTrunksService {
       authentication: trunk.authUsername
         ? `Digest username ${trunk.authUsername} (the password was shown once when the connection was created)`
         : "By source IP address only",
-      twilioAddresses: "Allow Twilio's SIP signalling and media address ranges in your firewall (listed in Twilio's “IP addresses” documentation for SIP)",
+      twilioAddresses:
+        "Allow Twilio's SIP signalling and media address ranges in your firewall (listed in Twilio's “IP addresses” documentation for SIP)",
       status: trunk.status,
     };
     const text = [

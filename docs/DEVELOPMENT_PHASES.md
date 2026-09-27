@@ -1278,26 +1278,129 @@ With the free-tier key, Gemini timed out or returned 429 during these calls, so 
 
 ---
 
-## P12 — Security hardening, observability, deployment
+## P12 — Security hardening, observability, deployment, existing numbers ✅
 
-- Twilio subaccount per tenant (provisioned on tenant creation), with number search and purchase from the UI; geo permissions and a per-number concurrency cap.
-- Usage limits enforced at call start and on uploads (plan limits) → graceful refusal message + an owner alert.
-- Toll-fraud and abuse controls: blocklists, per-caller rate limits, max call duration, and anomaly alerts.
-- PII redaction before persisting events and logs; per-tenant retention policy + a nightly purge job; signed short-lived URLs for recordings.
-- 2FA (TOTP) and a session management page (revoke sessions).
-- Security headers (helmet, CSP on web), CORS allow-list, dependency scanning (`npm audit`, Dependabot), secret scanning, and `/security-review` before release.
-- Observability:
-  - pino JSON logs with `tenantId` and `callId`.
-  - OpenTelemetry traces across api → runtime → providers → db.
-  - Prometheus metrics and Grafana dashboards.
-  - Alerts on fallback rate, error rate, p95 turn latency, ingestion failures, queue depth, and cost spikes.
-- Deployment:
-  - Docker images (api, worker, web).
-  - Managed Postgres 16 + pgvector (Neon/RDS/Cloud SQL) and managed Redis.
-  - API/worker on Cloud Run/ECS/Kubernetes with min instances ≥ 1; web on Vercel or the same platform.
-  - `prisma migrate deploy` as a release step.
-  - Blue/green deploys; nightly backups + a restore drill.
-- Load test: 50 concurrent calls (k6 against webhooks + simulator).
+**Status: done.** P12 also delivers the numbers part of
+[the Qatar plan](QATAR_AND_EXISTING_NUMBERS_PLAN.md): a business keeps its Ooredoo or Vodafone
+number (forwarding or SIP), or buys a Twilio number in the app.
+
+**Numbers: three ways for customers to call**
+
+- **Buy a Twilio number** (Phone numbers → Get a new number). Search by country, type and digits,
+  buy (needs `phone_numbers:write` and `billing:write`), release on removal so billing stops. The
+  number is pointed at our webhooks in the same request. Needs the platform's Twilio account
+  (`TWILIO_ACCOUNT_SID` + API key); without it, only platform owners add numbers by hand.
+- **Keep the existing number, forwarded** (Use my existing number): number and carrier (Ooredoo,
+  Vodafone Qatar, other), "only when we can't answer" or "every call", then the GSM codes to dial
+  (`**61*…**20#`, `**67*…#`, `**62*…#` or `**21*…#`; off with `##004#` / `##21#`) with copy and
+  tap-to-dial, the landline/PBX route, and a cost note. Then a **test call**: a 10-minute window
+  in which the next call (optionally only from a given phone) hears "Your number is connected",
+  and the page flips to Connected. The test records whether the carrier kept the caller's number.
+- **SIP connection** (Connect over SIP): name, carrier (Ooredoo or Vodafone business SIP, a PBX),
+  allowed signalling IPs (public IPv4, /16 or narrower) and optional digest username/password
+  (shown once, stored sealed). The API creates a Twilio SIP domain `<name>.sip.twilio.com` with
+  the IP list and credentials, and the **setup sheet** (copy/download) tells the carrier what to
+  send. Numbers are added to the connection and routed by the dialled number in the SIP URI.
+- **Routing:** `resolve_phone_number` (Twilio numbers by `To`) and `resolve_sip_trunk` (SIP
+  domain), both SECURITY DEFINER. Calls record `connection` (TWILIO / FORWARDED / SIP) and
+  `forwardedFrom`.
+
+**Business country settings**
+
+- `country` (IN, QA, AE, SA, KW, OM, BH, GB, US) sets the calling code for local numbers, the
+  currency and the default time zone; chosen at sign-up, changed on the new **Business** page.
+- +974 numbers and Arabic-Indic digits (٠١٢…) are understood when callers say or type numbers.
+
+**Abuse, toll fraud and limits (checked before answering)**
+
+- Blocked callers per business, with ranges (`+882*`).
+- Transfer-loop guard: a transfer to the business's own forwarded line is refused, and a call
+  coming back from one is rejected as busy.
+- "Max calls" per number (simultaneous calls).
+- Plan limits (calls per day, minutes per month): a polite refusal and a "Plan limit reached"
+  alert for the owners (also on document uploads).
+- Unusual volume: ≥ 20 calls in an hour and 5× the usual hour raises an alert.
+- Longest call per business (default 20 minutes): the agent ends politely.
+- Alerts show on the dashboard (dismissible) and are emailed to owners when the business has SMTP connected.
+
+**Accounts**
+
+- Two-step sign-in (TOTP, RFC 6238): QR code drawn in the browser, 10 recovery codes (stored
+  hashed), a code can't be replayed, 5 attempts per sign-in ticket, the secret sealed with the
+  master key.
+- **Security** page: where you're signed in, sign out one device or everywhere else. Revoking
+  takes effect immediately (the access token's session is checked against a revocation list).
+
+**Data**
+
+- Retention per business (default 365 days): nightly, older calls lose their transcript events,
+  caller number, collected data and summary; outcome, timing, cost and leads stay. Resolved
+  failed jobs and dismissed alerts go after 90 days.
+- Hourly check for SIP connections that went quiet for a day.
+
+**Web security**
+
+- CSP with a per-request nonce (`script-src 'self' 'nonce-…' 'strict-dynamic'`), HSTS,
+  Permissions-Policy, COOP, frame-ancestors none.
+- Dependency gate `npm run audit:prod` with a reviewed, expiring allow-list; Dependabot;
+  gitleaks in CI.
+
+**Observability and operations**
+
+- Prometheus metrics: API `/metrics` (private network, or `METRICS_TOKEN`), worker `:9464`.
+  Calls by result and connection, reply time by AI, fallbacks by reason, tool runs, knowledge
+  answers, estimated cost, HTTP latency by route, queue depth, dead letters.
+- 9 alert rules with promtool unit tests, each linked to [the runbook](RUNBOOK.md); Grafana
+  dashboard; `docker compose --profile observability up -d`.
+- OpenTelemetry traces (HTTP, Fastify, Postgres, Redis, outgoing fetch) when
+  `OTEL_EXPORTER_OTLP_ENDPOINT` is set. Logs carry `tenantId` and `userId`.
+- [Deployment guide](DEPLOYMENT.md): managed Postgres/Redis, instances, release steps,
+  configuration, backups (`scripts/backup.sh`) and the restore drill (`scripts/restore-drill.sh`).
+- Load test `scripts/loadtest.mjs`.
+
+**Verified**
+
+- Tests: API 130 (P12: 14 numbers, 5 security, 2 maintenance, 2 observability), db 121,
+  core 154, tools 46, rag 24, crypto 18, runtime 15, shared 13, telephony 13, ai 11,
+  templates 9, web 5, worker 2. Twilio is a local fake REST server in the tests.
+- Load: 50 simultaneous calls, 400 replies, 0 failures; client p50 19 ms, p95 376 ms, p99 440 ms
+  (no AI key). Traces exported to a local OTLP receiver during the run.
+- Restore drill on the test database: restored, 276 calls and 2,774 events, RLS forced on every
+  tenant table, app role sees nothing without a tenant.
+- `promtool check rules` and `promtool test rules` pass; `npm run audit:prod` passes; gitleaks
+  finds nothing.
+- **Browser E2E** (real API, web and database; Twilio faked on localhost):
+  1. Sign up a Qatar business: Business page shows +974, QAR, Asia/Qatar.
+  2. Search Qatar numbers: none, with the advice to forward abroad or use SIP. Search the UK,
+     buy one.
+  3. Use my existing number: a local 5512 xxxx on Ooredoo → codes for the bought number → test
+     call (signed webhook with `ForwardedFrom`) → "Your number is connected", the page flips to
+     Connected.
+  4. SIP: a private IP is refused; public IPs + credentials → password shown once, Ready, add a
+     +974 4412 number, setup sheet; a SIP call to it routes to that number.
+  5. Block `+882*`: a call from +88216… is rejected.
+  6. An alert shows on the dashboard and is dismissed.
+  7. Turn on two-step sign-in with the QR's key; a second browser needs the code (a wrong code
+     is refused), signs in with a recovery code; "Sign out everywhere else" cuts it off at once.
+  8. Mobile dark mode: no horizontal overflow. **No CSP violations** on any page.
+
+**Changed from the original plan and known limits**
+
+- **No Twilio subaccount per business yet:** all numbers are on the platform account; costs are
+  attributed per business by the usage meter.
+- **Not tested against real Ooredoo, Vodafone or Twilio** from here (network policy). Whether a
+  carrier keeps the caller's number when forwarding, and which business plans allow forwarding,
+  is only known from the test call on a real line.
+- **Twilio has few or no Qatar numbers:** forwarding goes to a number abroad (the carrier charges
+  its international rate) or the business connects over SIP.
+- **PII redaction:** retention removes transcripts and caller numbers; events are not redacted
+  while they are kept. Recordings aren't stored yet, so signed recording URLs wait for them.
+- **Per-caller rate limits:** covered by the per-number cap, blocklist and volume alerts rather
+  than a separate per-caller limiter.
+- The worker's quiet-SIP alerts show on the dashboard but are not emailed.
+- No virus scan of uploaded documents yet (the ClamAV hook deferred from P8); uploads are
+  type-checked and size-limited, parsed in the worker and only downloaded back as attachments.
+- Arabic conversations (plan §4) are still to do.
 
 ### ✅ M3 — Level 3 milestone
 

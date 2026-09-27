@@ -147,7 +147,8 @@ export class CallRecorder {
       this.metrics.turn.observe({ ai }, turn.metrics.totalMs / 1000);
     }
     for (const r of rows) {
-      if (r.type === "FALLBACK") this.metrics.fallbacks.inc({ reason: String(r.payload.reason ?? "unknown").slice(0, 40) });
+      if (r.type === "FALLBACK")
+        this.metrics.fallbacks.inc({ reason: String(r.payload.reason ?? "unknown").slice(0, 40) });
       if (r.type === "RAG_RETRIEVAL" && typeof r.payload.answered === "string")
         this.metrics.questions.inc({ answered: r.payload.answered });
       if (r.type === "TOOL_CALL" && r.payload.phase === "executed")

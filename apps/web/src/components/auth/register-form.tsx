@@ -1,20 +1,25 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { type MeResponse, RegisterBody } from "@platform/shared";
+import { COUNTRIES, COUNTRY_CODES, type CountryCode, type MeResponse, RegisterBody } from "@platform/shared";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { type z } from "zod";
 import { Button } from "@/components/ui/button";
-import { TextField } from "@/components/ui/field";
+import { SelectField, TextField } from "@/components/ui/field";
 import { Alert, Card } from "@/components/ui/misc";
 import { api } from "@/lib/api/client";
 import { errorMessage } from "@/lib/api/errors";
 import { applyServerErrors } from "@/lib/forms";
 
 type Values = z.input<typeof RegisterBody>;
+
+const browserZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Kolkata";
+/** The country whose time zone the browser is in, as a first guess */
+const guessCountry = (zone: string): CountryCode =>
+  COUNTRY_CODES.find((c) => COUNTRIES[c].timezone === zone) ?? "IN";
 
 export function RegisterForm() {
   const router = useRouter();
@@ -26,7 +31,8 @@ export function RegisterForm() {
       email: "",
       password: "",
       businessName: "",
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Kolkata",
+      country: guessCountry(browserZone()),
+      timezone: browserZone(),
     },
   });
   const errors = form.formState.errors;
@@ -34,7 +40,10 @@ export function RegisterForm() {
   const onSubmit = form.handleSubmit(async (values) => {
     setError(null);
     try {
-      const me = await api<MeResponse>("/auth/register", { method: "POST", body: values });
+      // Setting up a business elsewhere: use that country's time zone, not the browser's
+      const body =
+        values.country !== guessCountry(browserZone()) ? { ...values, timezone: undefined } : values;
+      const me = await api<MeResponse>("/auth/register", { method: "POST", body });
       router.replace(`/t/${me.tenant.slug}/dashboard`);
       router.refresh();
     } catch (err) {
@@ -54,6 +63,18 @@ export function RegisterForm() {
           error={errors.businessName?.message}
           {...form.register("businessName")}
         />
+        <SelectField
+          label="Country"
+          hint="Sets the calling code for local numbers and your currency"
+          error={errors.country?.message}
+          {...form.register("country")}
+        >
+          {COUNTRY_CODES.map((c) => (
+            <option key={c} value={c}>
+              {COUNTRIES[c].name}
+            </option>
+          ))}
+        </SelectField>
         <TextField
           label="Your name"
           autoComplete="name"

@@ -56,7 +56,9 @@ export async function purgeExpired(
         },
       })
     ).count;
-    totals.alerts = (await tx.tenantAlert.deleteMany({ where: { acknowledgedAt: { lt: housekeeping } } })).count;
+    totals.alerts = (
+      await tx.tenantAlert.deleteMany({ where: { acknowledgedAt: { lt: housekeeping } } })
+    ).count;
   });
   return totals;
 }
@@ -65,7 +67,11 @@ export async function purgeExpired(
  * SIP trunks that are set up with numbers but have taken no call for a day may have broken on the
  * carrier's side (an address change, an expired password): raise an alert for the owner.
  */
-export async function checkSilentTrunks(prisma: PrismaClient, tenantId: string, now = new Date()): Promise<number> {
+export async function checkSilentTrunks(
+  prisma: PrismaClient,
+  tenantId: string,
+  now = new Date(),
+): Promise<number> {
   const since = new Date(now.getTime() - 86_400_000);
   return withTenant(prisma, tenantId, async (tx) => {
     const silent = await tx.sipTrunk.findMany({

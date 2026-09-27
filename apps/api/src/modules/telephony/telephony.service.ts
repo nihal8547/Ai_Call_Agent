@@ -79,7 +79,10 @@ export class TelephonyService {
 
     const route = await this.router.route(call, async (t) => (await this.settings.get(t)).callingCode);
     if (!route) {
-      this.metrics.calls.inc({ connection: call.to.startsWith("sip:") ? "SIP" : "TWILIO", result: "unknown_number" });
+      this.metrics.calls.inc({
+        connection: call.to.startsWith("sip:") ? "SIP" : "TWILIO",
+        result: "unknown_number",
+      });
       this.logger.warn({ to: call.to }, "inbound call to an unknown number or SIP domain");
       return this.render({ say: NOT_IN_SERVICE, hangup: true });
     }
@@ -175,7 +178,11 @@ export class TelephonyService {
       if (seq !== state.seq || state.finalized) return state.lastReply; // retry or stale request
       const { config } = await this.configs.published(state.tenantId, state.agentVersionId);
       const speech = call.speech ?? { transcript: "" };
-      if (state.startedAt && state.maxCallMinutes && Date.now() - state.startedAt > state.maxCallMinutes * 60_000) {
+      if (
+        state.startedAt &&
+        state.maxCallMinutes &&
+        Date.now() - state.startedAt > state.maxCallMinutes * 60_000
+      ) {
         const end = this.systemEnd(state, config, "max_duration", MAX_DURATION);
         return this.complete(state, config, end, timelineEvents(end, speech));
       }
@@ -256,7 +263,12 @@ export class TelephonyService {
       state.missedTransfer = true;
       await this.recordMissedTransfer(state, config, "loop_protected");
       reply = {
-        say: renderTemplate(config.handoff.unavailableMessage, config, out.session.collected, this.ctx(state)),
+        say: renderTemplate(
+          config.handoff.unavailableMessage,
+          config,
+          out.session.collected,
+          this.ctx(state),
+        ),
         hangup: true,
       };
     } else if (out.control === "transfer" && out.transferTo) {

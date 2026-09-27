@@ -16,7 +16,11 @@ describe("auth schemas", () => {
       password: "Str0ng-pass!",
       businessName: "Asha Dental",
     });
-    expect(r).toMatchObject({ name: "Asha", email: "asha@example.com", timezone: "Asia/Kolkata" });
+    // The country's time zone is applied when the business is created, unless one is given
+    expect(r).toMatchObject({ name: "Asha", email: "asha@example.com", country: "IN" });
+    expect(r.timezone).toBeUndefined();
+    expect(RegisterBody.safeParse({ ...r, country: "QA", timezone: "Asia/Qatar" }).success).toBe(true);
+    expect(RegisterBody.safeParse({ ...r, country: "XX" }).success).toBe(false);
   });
 
   it("does not apply the password policy on login", () => {

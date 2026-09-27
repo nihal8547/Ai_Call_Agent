@@ -35,17 +35,27 @@ export class CallRouter {
     private readonly tenantDb: TenantDbService,
   ) {}
 
-  async route(call: InboundCall, callingCode: (tenantId: string) => Promise<string>): Promise<CallRoute | null> {
+  async route(
+    call: InboundCall,
+    callingCode: (tenantId: string) => Promise<string>,
+  ): Promise<CallRoute | null> {
     const sipTo = parseSipUri(call.to);
     return sipTo ? this.sip(call, sipTo, callingCode) : this.twilio(call, callingCode);
   }
 
-  private async twilio(call: InboundCall, callingCode: (t: string) => Promise<string>): Promise<CallRoute | null> {
+  private async twilio(
+    call: InboundCall,
+    callingCode: (t: string) => Promise<string>,
+  ): Promise<CallRoute | null> {
     const r = await resolvePhoneNumber(this.prisma.client, call.to);
     if (!r) return null;
-    const number = await this.tenantDb.db(r.tenantId).phoneNumber.findUniqueOrThrow({ where: { id: r.phoneNumberId } });
+    const number = await this.tenantDb
+      .db(r.tenantId)
+      .phoneNumber.findUniqueOrThrow({ where: { id: r.phoneNumberId } });
     const code = await callingCode(r.tenantId);
-    const forwardedFrom = call.forwardedFrom ? (parsePhone(call.forwardedFrom, code) ?? call.forwardedFrom) : null;
+    const forwardedFrom = call.forwardedFrom
+      ? (parsePhone(call.forwardedFrom, code) ?? call.forwardedFrom)
+      : null;
     return {
       tenantId: r.tenantId,
       phoneNumberId: r.phoneNumberId,
@@ -99,7 +109,11 @@ export class CallRouter {
   }
 }
 
-function pending(n: { verificationStatus: string; verificationExpiresAt: Date | null; verification: unknown }) {
+function pending(n: {
+  verificationStatus: string;
+  verificationExpiresAt: Date | null;
+  verification: unknown;
+}) {
   return n.verificationStatus === "PENDING" && n.verificationExpiresAt && n.verificationExpiresAt > new Date()
     ? { from: ((n.verification ?? {}) as { expectFrom?: string }).expectFrom ?? null }
     : null;

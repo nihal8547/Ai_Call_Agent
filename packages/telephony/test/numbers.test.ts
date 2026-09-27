@@ -68,7 +68,16 @@ describe("Twilio numbers", () => {
 
   it("buys a number already pointed at the platform's webhooks", async () => {
     const t = fakeTwilio([
-      () => Response.json({ sid: "PN1", phone_number: "+15005550006", friendly_name: "Front desk", voice_url: "https://voice.test/telephony/twilio/voice" }, { status: 201 }),
+      () =>
+        Response.json(
+          {
+            sid: "PN1",
+            phone_number: "+15005550006",
+            friendly_name: "Front desk",
+            voice_url: "https://voice.test/telephony/twilio/voice",
+          },
+          { status: 201 },
+        ),
     ]);
     const n = await t.rest.buyNumber({
       phoneNumber: "+15005550006",
@@ -76,7 +85,12 @@ describe("Twilio numbers", () => {
       statusCallback: "https://voice.test/telephony/twilio/status",
       friendlyName: "Front desk",
     });
-    expect(n).toEqual({ sid: "PN1", phoneNumber: "+15005550006", friendlyName: "Front desk", voiceUrl: "https://voice.test/telephony/twilio/voice" });
+    expect(n).toEqual({
+      sid: "PN1",
+      phoneNumber: "+15005550006",
+      friendlyName: "Front desk",
+      voiceUrl: "https://voice.test/telephony/twilio/voice",
+    });
     expect(t.seen[0]).toMatchObject({
       method: "POST",
       url: "https://api.twilio.com/2010-04-01/Accounts/AC123/IncomingPhoneNumbers.json",
@@ -91,7 +105,9 @@ describe("Twilio numbers", () => {
   });
 
   it("reports Twilio's own error message", async () => {
-    const t = fakeTwilio([() => Response.json({ code: 21422, message: "PhoneNumber is not available" }, { status: 400 })]);
+    const t = fakeTwilio([
+      () => Response.json({ code: 21422, message: "PhoneNumber is not available" }, { status: 400 }),
+    ]);
     await expect(
       t.rest.buyNumber({ phoneNumber: "+15005550000", voiceUrl: "x", statusCallback: "y" }),
     ).rejects.toEqual(new TwilioRestError(400, 21422, "Twilio: PhoneNumber is not available"));
@@ -119,8 +135,14 @@ describe("SIP domains for business trunks", () => {
       statusCallback: "https://voice.test/telephony/twilio/status",
     });
     expect(domain).toEqual({ sid: "SD1", domainName: "acme-1a2b.sip.twilio.com" });
-    expect(t.seen[0]!.body).toMatchObject({ DomainName: "acme-1a2b.sip.twilio.com", VoiceUrl: "https://voice.test/telephony/twilio/voice", Secure: "true" });
-    expect(await t.rest.createIpAcl("SD1", "Ooredoo SIP-T", ["212.77.192.0/24", "212.77.200.10"])).toBe("AL1");
+    expect(t.seen[0]!.body).toMatchObject({
+      DomainName: "acme-1a2b.sip.twilio.com",
+      VoiceUrl: "https://voice.test/telephony/twilio/voice",
+      Secure: "true",
+    });
+    expect(await t.rest.createIpAcl("SD1", "Ooredoo SIP-T", ["212.77.192.0/24", "212.77.200.10"])).toBe(
+      "AL1",
+    );
     expect(t.seen.slice(2, 7).map((s) => `${s.method} ${s.url.split("/Accounts/AC123")[1]}`)).toEqual([
       "GET /SIP/IpAccessControlLists/AL1/IpAddresses.json?PageSize=200",
       "DELETE /SIP/IpAccessControlLists/AL1/IpAddresses/IPold.json",
@@ -136,8 +158,14 @@ describe("SIP domains for business trunks", () => {
   });
 
   it("reads the trunk and the dialled number from SIP addresses", () => {
-    expect(parseSipUri("sip:+97444123456@acme-1a2b.sip.twilio.com")).toEqual({ user: "+97444123456", host: "acme-1a2b.sip.twilio.com" });
-    expect(parseSipUri("<sip:44123456@Acme-1A2B.sip.twilio.com;transport=tls>")).toEqual({ user: "44123456", host: "acme-1a2b.sip.twilio.com" });
+    expect(parseSipUri("sip:+97444123456@acme-1a2b.sip.twilio.com")).toEqual({
+      user: "+97444123456",
+      host: "acme-1a2b.sip.twilio.com",
+    });
+    expect(parseSipUri("<sip:44123456@Acme-1A2B.sip.twilio.com;transport=tls>")).toEqual({
+      user: "44123456",
+      host: "acme-1a2b.sip.twilio.com",
+    });
     expect(parseSipUri("+97444123456")).toBeNull();
     expect(sipDomainLabel("acme-1a2b.sip.twilio.com")).toBe("acme-1a2b");
     expect(sipDomainLabel("acme-1a2b.sip.us1.twilio.com")).toBe("acme-1a2b");
@@ -159,16 +187,28 @@ describe("SIP domains for business trunks", () => {
 describe("forwarding an existing line", () => {
   it("gives the GSM codes for 'staff first', or everything", () => {
     const staffFirst = forwardingInstructions("+15005550006", "NO_ANSWER_BUSY_UNREACHABLE", "ooredoo");
-    expect(staffFirst.mobile.enable.map((s) => s.code)).toEqual(["**61*+15005550006**20#", "**67*+15005550006#", "**62*+15005550006#"]);
+    expect(staffFirst.mobile.enable.map((s) => s.code)).toEqual([
+      "**61*+15005550006**20#",
+      "**67*+15005550006#",
+      "**62*+15005550006#",
+    ]);
     expect(staffFirst.mobile.disable).toEqual([{ label: "Stop all conditional forwarding", code: "##004#" }]);
     expect(staffFirst.landline).toContain("Ooredoo");
     const all = forwardingInstructions("+1 500 555 0006", "ALL", "vodafone_qa");
-    expect(all.mobile.enable).toEqual([{ label: "Forward every call to the agent", code: "**21*+15005550006#" }]);
+    expect(all.mobile.enable).toEqual([
+      { label: "Forward every call to the agent", code: "**21*+15005550006#" },
+    ]);
     expect(all.costs).toContain("Vodafone Qatar");
   });
 
   it("reads what the carrier passed, and can refuse a call before answering", () => {
-    const call = new TwilioAdapter("token").parse({ CallSid: "CA1", From: "+97455123456", To: "+15005550006", ForwardedFrom: "+97444123456", CallStatus: "ringing" });
+    const call = new TwilioAdapter("token").parse({
+      CallSid: "CA1",
+      From: "+97455123456",
+      To: "+15005550006",
+      ForwardedFrom: "+97444123456",
+      CallStatus: "ringing",
+    });
     expect(call).toMatchObject({ forwardedFrom: "+97444123456", from: "+97455123456" });
     expect(renderTwiml({ say: "", voice: "v", language: "en", reject: "busy" })).toBe(
       '<?xml version="1.0" encoding="UTF-8"?><Response><Reject reason="busy"/></Response>',

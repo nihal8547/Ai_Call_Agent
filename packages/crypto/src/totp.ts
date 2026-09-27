@@ -79,7 +79,13 @@ export function verifyTotp(secretBase32: string, code: string, at: Date = new Da
 /** otpauth:// link for QR codes */
 export function totpUri(o: { issuer: string; account: string; secret: string }): string {
   const label = encodeURIComponent(`${o.issuer}:${o.account}`);
-  const q = new URLSearchParams({ secret: o.secret, issuer: o.issuer, algorithm: "SHA1", digits: "6", period: "30" });
+  const q = new URLSearchParams({
+    secret: o.secret,
+    issuer: o.issuer,
+    algorithm: "SHA1",
+    digits: "6",
+    period: "30",
+  });
   return `otpauth://totp/${label}?${q}`;
 }
 

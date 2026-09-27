@@ -73,7 +73,11 @@ async function main(): Promise<void> {
   await system.upsertJobScheduler(
     "trunk-health-hourly",
     { pattern: "7 * * * *", tz: "UTC" },
-    { name: "trunk_health", data: { type: "trunk_health" }, opts: { removeOnComplete: 30, removeOnFail: 100 } },
+    {
+      name: "trunk_health",
+      data: { type: "trunk_health" },
+      opts: { removeOnComplete: 30, removeOnFail: 100 },
+    },
   );
 
   const registry = new Registry();
@@ -97,7 +101,9 @@ async function main(): Promise<void> {
   const metricsServer = env.WORKER_METRICS_PORT
     ? createServer((req, res) => {
         if (req.url !== "/metrics") return void res.writeHead(404).end();
-        void registry.metrics().then((body) => res.writeHead(200, { "content-type": registry.contentType }).end(body));
+        void registry
+          .metrics()
+          .then((body) => res.writeHead(200, { "content-type": registry.contentType }).end(body));
       }).listen(env.WORKER_METRICS_PORT)
     : null;
   logger.info({ queues: workers.map((w) => w.name) }, "worker started");

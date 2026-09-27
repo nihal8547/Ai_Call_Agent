@@ -9,7 +9,23 @@ import { TwilioRestService } from "./twilio-rest.service";
 
 @Global()
 @Module({
-  providers: [PrismaService, RedisService, TenantDbService, StorageService, QueueService, TenantKeysService, TwilioRestService],
-  exports: [PrismaService, RedisService, TenantDbService, StorageService, QueueService, TenantKeysService, TwilioRestService],
+  providers: [
+    PrismaService,
+    RedisService,
+    TenantDbService,
+    StorageService,
+    QueueService,
+    TenantKeysService,
+    TwilioRestService,
+  ],
+  exports: [
+    PrismaService,
+    RedisService,
+    TenantDbService,
+    StorageService,
+    QueueService,
+    TenantKeysService,
+    TwilioRestService,
+  ],
 })
 export class InfraModule {}

@@ -25,11 +25,13 @@ const NAV: { section?: string; items: NavItem[] }[] = [
   {
     section: "Settings",
     items: [
+      { label: "Business", href: "settings/business", permission: "tenant:read" },
       { label: "Members", href: "settings/members", permission: "users:read" },
       { label: "Phone numbers", href: "settings/phone-numbers", permission: "phone_numbers:read" },
       { label: "Lead statuses", href: "settings/lead-statuses", permission: "leads:read" },
       { label: "API keys", href: "settings/api-keys", permission: "api_keys:read" },
       { label: "Audit log", href: "settings/audit-log", permission: "audit:read" },
+      { label: "Security", href: "settings/security" },
     ],
   },
 ];

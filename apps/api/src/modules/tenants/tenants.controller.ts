@@ -51,7 +51,11 @@ export class TenantsController {
     return this.tenantDb.tx(auth.tenantId, async (tx) => {
       const before = await tx.tenant.findUniqueOrThrow({ where: { id: auth.tenantId }, select: tenantView });
       const data = body.country
-        ? { ...body, callingCode: COUNTRIES[body.country].callingCode, currency: COUNTRIES[body.country].currency }
+        ? {
+            ...body,
+            callingCode: COUNTRIES[body.country].callingCode,
+            currency: COUNTRIES[body.country].currency,
+          }
         : body;
       const after = await tx.tenant.update({ where: { id: auth.tenantId }, data, select: tenantView });
       await this.audit.record(tx, auth, {

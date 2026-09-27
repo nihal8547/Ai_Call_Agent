@@ -22,7 +22,8 @@ const SETUP_TTL_SECONDS = 600;
 const MAX_ATTEMPTS = 5;
 const ISSUER = "Voice Agent Platform";
 
-const badCode = () => new AppException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "That code is not right");
+const badCode = () =>
+  new AppException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "That code is not right");
 
 /**
  * Two-step sign-in with an authenticator app (TOTP). The secret is encrypted with the platform
@@ -44,7 +45,12 @@ export class MfaService {
   /** Password was right; the second step is still owed. Returns a short-lived ticket. */
   async issueTicket(userId: string, tenantId: string): Promise<string> {
     const token = randomToken(24);
-    await this.redis.client.set(`mfa:${sha256Hex(token)}`, JSON.stringify({ userId, tenantId }), "EX", TICKET_TTL_SECONDS);
+    await this.redis.client.set(
+      `mfa:${sha256Hex(token)}`,
+      JSON.stringify({ userId, tenantId }),
+      "EX",
+      TICKET_TTL_SECONDS,
+    );
     return token;
   }
 
@@ -53,13 +59,21 @@ export class MfaService {
     const key = `mfa:${sha256Hex(token)}`;
     const raw = await this.redis.client.get(key);
     if (!raw)
-      throw new AppException(HttpStatus.UNAUTHORIZED, "TOKEN_EXPIRED", "The sign-in took too long, please start again");
+      throw new AppException(
+        HttpStatus.UNAUTHORIZED,
+        "TOKEN_EXPIRED",
+        "The sign-in took too long, please start again",
+      );
     const ticket = JSON.parse(raw) as { userId: string; tenantId: string };
     const attempts = await this.redis.client.incr(`${key}:attempts`);
     await this.redis.client.expire(`${key}:attempts`, TICKET_TTL_SECONDS);
     if (attempts > MAX_ATTEMPTS) {
       await this.redis.client.del(key);
-      throw new AppException(HttpStatus.UNAUTHORIZED, "UNAUTHENTICATED", "Too many wrong codes, please sign in again");
+      throw new AppException(
+        HttpStatus.UNAUTHORIZED,
+        "UNAUTHENTICATED",
+        "Too many wrong codes, please sign in again",
+      );
     }
     if (!(await this.check(ticket.userId, code))) throw badCode();
     await this.redis.client.del(key, `${key}:attempts`);
@@ -70,7 +84,11 @@ export class MfaService {
   async check(userId: string, code: string): Promise<boolean> {
     const user = await this.prisma.client.user.findUniqueOrThrow({ where: { id: userId } });
     if (!user.totpSecretEnc || !user.totpEnabledAt) return false;
-    const { secret } = openJson<{ secret: string }>(this.masterKey, Buffer.from(user.totpSecretEnc), aad(userId));
+    const { secret } = openJson<{ secret: string }>(
+      this.masterKey,
+      Buffer.from(user.totpSecretEnc),
+      aad(userId),
+    );
     const step = verifyTotp(secret, code);
     if (step !== null) {
       // Each code works once, even inside its 90-second window
@@ -88,7 +106,10 @@ export class MfaService {
   }
 
   async enabled(userId: string): Promise<boolean> {
-    const u = await this.prisma.client.user.findUniqueOrThrow({ where: { id: userId }, select: { totpEnabledAt: true } });
+    const u = await this.prisma.client.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { totpEnabledAt: true },
+    });
     return Boolean(u.totpEnabledAt);
   }
 
@@ -96,7 +117,10 @@ export class MfaService {
   async setup(userId: string) {
     if (await this.enabled(userId))
       throw new AppException(HttpStatus.CONFLICT, "CONFLICT", "Two-step sign-in is already on");
-    const user = await this.prisma.client.user.findUniqueOrThrow({ where: { id: userId }, select: { email: true } });
+    const user = await this.prisma.client.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { email: true },
+    });
     const secret = generateTotpSecret();
     await this.redis.client.set(`totp-setup:${userId}`, secret, "EX", SETUP_TTL_SECONDS);
     return { secret, otpauthUrl: totpUri({ issuer: ISSUER, account: user.email, secret }) };

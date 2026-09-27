@@ -24,10 +24,14 @@ const problems = [];
 for (const [name, v] of Object.entries(report.vulnerabilities ?? {})) {
   for (const via of v.via) {
     if (typeof via === "string" || !["high", "critical"].includes(via.severity)) continue;
-    const id = String(via.url ?? "").split("/").pop();
+    const id = String(via.url ?? "")
+      .split("/")
+      .pop();
     const allowed = ALLOWED[id];
     if (allowed && allowed.until >= today) continue;
-    problems.push(`${via.severity.toUpperCase()} ${name}: ${via.title} (${via.url})${allowed ? " — allowance expired" : ""}`);
+    problems.push(
+      `${via.severity.toUpperCase()} ${name}: ${via.title} (${via.url})${allowed ? " — allowance expired" : ""}`,
+    );
   }
 }
 if (problems.length) {

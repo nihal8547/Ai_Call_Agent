@@ -7,9 +7,7 @@
     "to": "now"
   },
   "refresh": "30s",
-  "tags": [
-    "voice"
-  ],
+  "tags": ["voice"],
   "panels": [
     {
       "id": 1,

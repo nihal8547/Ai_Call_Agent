@@ -35,7 +35,8 @@ export class CallGate {
   ) {}
 
   async check(route: CallRoute, callSid: string, settings: CallSettings): Promise<GateResult> {
-    if (isBlocked(route.callerNumber, settings.blocked)) return { ok: false, reason: "blocked", reject: "rejected" };
+    if (isBlocked(route.callerNumber, settings.blocked))
+      return { ok: false, reason: "blocked", reject: "rejected" };
     if (await this.redis.client.exists(transferKey(route.tenantId, route.callerNumber)))
       return { ok: false, reason: "loop", reject: "busy" };
     if (route.maxConcurrentCalls !== null) {
@@ -84,7 +85,10 @@ export class CallGate {
         message: `Calls are being refused: the plan allows ${s.limits.maxCallsPerDay} calls in 24 hours.`,
       };
     const month = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-    const used = await db.call.aggregate({ where: { startedAt: { gte: month } }, _sum: { durationSec: true } });
+    const used = await db.call.aggregate({
+      where: { startedAt: { gte: month } },
+      _sum: { durationSec: true },
+    });
     if ((used._sum.durationSec ?? 0) / 60 >= s.limits.maxCallMinutesPerMonth)
       return {
         key: `minutes-${now.toISOString().slice(0, 7)}`,
@@ -103,7 +107,9 @@ export class CallGate {
       const db = this.tenantDb.db(tenantId);
       const hour = await db.call.count({ where: { startedAt: { gte: new Date(Date.now() - 3_600_000) } } });
       if (hour < 20) return;
-      const week = await db.call.count({ where: { startedAt: { gte: new Date(Date.now() - 7 * 86_400_000) } } });
+      const week = await db.call.count({
+        where: { startedAt: { gte: new Date(Date.now() - 7 * 86_400_000) } },
+      });
       const average = week / (7 * 24);
       if (hour < average * 5) return;
       await this.alerts.raise(tenantId, {

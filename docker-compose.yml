@@ -81,7 +81,13 @@ services:
       # Plain http on localhost; set true behind HTTPS
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      # Platform Twilio account: buying numbers and SIP domains (optional)
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_API_KEY_SID: ${TWILIO_API_KEY_SID:-}
+      TWILIO_API_KEY_SECRET: ${TWILIO_API_KEY_SECRET:-}
       DEFAULT_COUNTRY_CODE: ${DEFAULT_COUNTRY_CODE:-91}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
       GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
       HUBSPOT_CLIENT_ID: ${HUBSPOT_CLIENT_ID:-}
@@ -104,6 +110,7 @@ services:
       <<: *app-env
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
       ANALYTICS_SWEEP_MINUTES: ${ANALYTICS_SWEEP_MINUTES:-10}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     volumes: [storage:/data/storage]
     depends_on:
       migrate: { condition: service_completed_successfully }

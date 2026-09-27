@@ -182,7 +182,11 @@ describe.skipIf(!hasTestDb)("telephony: real phone calls through Twilio webhooks
     const loop = await phoneCall(app, clinic.e164, []);
     expect(loop.last.xml).toContain('<Reject reason="busy"/>');
     // Twilio reports the end of the call; the caller can ring again straight away
-    await twilioPost(app, "/telephony/twilio/status", { ...call.base, CallStatus: "completed", CallDuration: "40" });
+    await twilioPost(app, "/telephony/twilio/status", {
+      ...call.base,
+      CallStatus: "completed",
+      CallDuration: "40",
+    });
     expect((await phoneCall(app, clinic.e164, [])).last.say).toContain("May I have the patient's name?");
   });
 

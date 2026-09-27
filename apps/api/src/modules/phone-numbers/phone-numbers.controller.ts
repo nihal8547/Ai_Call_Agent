@@ -1,4 +1,16 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query, Req } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+} from "@nestjs/common";
 import {
   BuyTwilioNumberBody,
   ConnectForwardingBody,
@@ -123,7 +135,10 @@ export class PhoneNumbersController {
 
   @RequirePermissions("phone_numbers:read")
   @Get(":id/forwarding")
-  forwarding(@CurrentAuth() auth: AuthContext, @Param(new ZodValidationPipe(IdParam)) { id }: { id: string }) {
+  forwarding(
+    @CurrentAuth() auth: AuthContext,
+    @Param(new ZodValidationPipe(IdParam)) { id }: { id: string },
+  ) {
     return this.numbers.instructions(auth.tenantId, id);
   }
 

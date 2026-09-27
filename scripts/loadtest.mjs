@@ -19,14 +19,21 @@ if (!TOKEN) throw new Error("TWILIO_AUTH_TOKEN is required");
 
 const sign = (url, params) =>
   createHmac("sha1", TOKEN)
-    .update(Object.keys(params).sort().reduce((a, k) => a + k + params[k], url))
+    .update(
+      Object.keys(params)
+        .sort()
+        .reduce((a, k) => a + k + params[k], url),
+    )
     .digest("base64");
 
 async function webhook(path, params) {
   const started = performance.now();
   const res = await fetch(`${API}${path}`, {
     method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded", "x-twilio-signature": sign(`${PUBLIC}${path}`, params) },
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      "x-twilio-signature": sign(`${PUBLIC}${path}`, params),
+    },
     body: new URLSearchParams(params),
   });
   const xml = await res.text();
@@ -42,7 +49,11 @@ async function api(method, path, body) {
   const headers = { cookie: [...jar].map(([k, v]) => `${k}=${v}`).join("; ") };
   if (body) headers["content-type"] = "application/json";
   if (jar.get("csrf_token")) headers["x-csrf-token"] = jar.get("csrf_token");
-  const res = await fetch(`${API}/api/v1${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  const res = await fetch(`${API}/api/v1${path}`, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  });
   for (const c of res.headers.getSetCookie()) {
     const [kv] = c.split(";");
     const [k, v] = kv.split("=");
@@ -70,11 +81,24 @@ async function setup() {
   return e164;
 }
 
-const LINES = ["Priya Nair", "teeth cleaning", "I'm flexible", "Is there parking for patients?", "tomorrow", "11 am", "yes"];
+const LINES = [
+  "Priya Nair",
+  "teeth cleaning",
+  "I'm flexible",
+  "Is there parking for patients?",
+  "tomorrow",
+  "11 am",
+  "yes",
+];
 const think = () => new Promise((r) => setTimeout(r, randomInt(800, 2000)));
 
 async function oneCall(to, i) {
-  const base = { CallSid: `CAload${Date.now()}${i}${randomInt(1e6)}`, From: `+9197${String(10_000_000 + i).slice(-8)}`, To: to, CallStatus: "in-progress" };
+  const base = {
+    CallSid: `CAload${Date.now()}${i}${randomInt(1e6)}`,
+    From: `+9197${String(10_000_000 + i).slice(-8)}`,
+    To: to,
+    CallStatus: "in-progress",
+  };
   const lat = [];
   let r = await webhook("/telephony/twilio/voice", base);
   lat.push(r.ms);
@@ -103,7 +127,12 @@ console.log(
       failedCalls: failed.length,
       firstError: failed[0]?.reason?.message ?? null,
       replies: lat.length,
-      replyMs: { p50: Math.round(pct(lat, 50)), p95: Math.round(pct(lat, 95)), p99: Math.round(pct(lat, 99)), max: Math.round(lat.at(-1)) },
+      replyMs: {
+        p50: Math.round(pct(lat, 50)),
+        p95: Math.round(pct(lat, 95)),
+        p99: Math.round(pct(lat, 99)),
+        max: Math.round(lat.at(-1)),
+      },
       wallSeconds: Math.round((performance.now() - started) / 1000),
     },
     null,

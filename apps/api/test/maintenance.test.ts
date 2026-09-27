@@ -19,22 +19,43 @@ describe.skipIf(!hasTestDb)("P12: retention and health checks", () => {
   afterAll(() => app.close());
 
   it("forgets what was said after the retention period, keeping outcomes, cost and leads", async () => {
-    const clinic = await provisionAgent(app, owner.me.tenant.id, "clinic-reception", { workingHours: undefined });
+    const clinic = await provisionAgent(app, owner.me.tenant.id, "clinic-reception", {
+      workingHours: undefined,
+    });
     const old = await phoneCall(app, clinic.e164, ["Priya", "cleaning"]);
-    await twilioPost(app, "/telephony/twilio/status", { ...old.base, CallStatus: "completed", CallDuration: "40" });
+    await twilioPost(app, "/telephony/twilio/status", {
+      ...old.base,
+      CallStatus: "completed",
+      CallDuration: "40",
+    });
     const fresh = await phoneCall(app, clinic.e164, ["Arjun"]);
     const oldRow = await db().call.findUniqueOrThrow({ where: { providerCallSid: old.callSid } });
-    await db().call.update({ where: { id: oldRow.id }, data: { startedAt: new Date(Date.now() - 400 * 86_400_000) } });
+    await db().call.update({
+      where: { id: oldRow.id },
+      data: { startedAt: new Date(Date.now() - 400 * 86_400_000) },
+    });
 
     const r = await purgeExpired(prisma(), owner.me.tenant.id, 365);
     expect(r.calls).toBe(1);
     expect(r.events).toBeGreaterThan(3);
-    const purged = await db().call.findUniqueOrThrow({ where: { id: oldRow.id }, include: { events: true, leads: true } });
-    expect(purged).toMatchObject({ fromNumber: "redacted", summary: null, collectedData: {}, outcome: oldRow.outcome, durationSec: 40 });
+    const purged = await db().call.findUniqueOrThrow({
+      where: { id: oldRow.id },
+      include: { events: true, leads: true },
+    });
+    expect(purged).toMatchObject({
+      fromNumber: "redacted",
+      summary: null,
+      collectedData: {},
+      outcome: oldRow.outcome,
+      durationSec: 40,
+    });
     expect(purged.events).toEqual([]);
     expect(purged.leads[0]).toMatchObject({ customerName: "Priya" });
     // Recent calls are untouched, and a second run finds nothing more
-    const recent = await db().call.findUniqueOrThrow({ where: { providerCallSid: fresh.callSid }, include: { events: true } });
+    const recent = await db().call.findUniqueOrThrow({
+      where: { providerCallSid: fresh.callSid },
+      include: { events: true },
+    });
     expect(recent.events.length).toBeGreaterThan(0);
     expect((await purgeExpired(prisma(), owner.me.tenant.id, 365)).calls).toBe(0);
   });
@@ -53,11 +74,19 @@ describe.skipIf(!hasTestDb)("P12: retention and health checks", () => {
     });
     expect(await checkSilentTrunks(prisma(), owner.me.tenant.id)).toBe(0); // no numbers yet
     await db().phoneNumber.create({
-      data: { tenantId: owner.me.tenant.id, e164: `+97444${Date.now().toString().slice(-6)}`, provider: "SIP", sipTrunkId: trunk.id },
+      data: {
+        tenantId: owner.me.tenant.id,
+        e164: `+97444${Date.now().toString().slice(-6)}`,
+        provider: "SIP",
+        sipTrunkId: trunk.id,
+      },
     });
     expect(await checkSilentTrunks(prisma(), owner.me.tenant.id)).toBe(1);
     expect(await checkSilentTrunks(prisma(), owner.me.tenant.id)).toBe(0);
     const alerts = (await owner.client.get("/api/v1/alerts")).json().items;
-    expect(alerts[0]).toMatchObject({ kind: "sip_trunk_silent", message: expect.stringContaining("Vodafone SIP") });
+    expect(alerts[0]).toMatchObject({
+      kind: "sip_trunk_silent",
+      message: expect.stringContaining("Vodafone SIP"),
+    });
   });
 });
