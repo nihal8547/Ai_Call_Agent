@@ -21,7 +21,7 @@
     "@platform/rag": "*",
     "@platform/shared": "*",
     "@platform/storage": "*",
-    "bullmq": "^5.81.5",
+    "bullmq": "^6.3.8",
     "ioredis": "^5.11.1",
     "pino": "^9.14.0",
     "prom-client": "^15.1.3",
