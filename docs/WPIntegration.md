@@ -8,7 +8,10 @@ Continue with Facebook (Embedded Signup) and access-token connect, Settings → 
 Inbox with staff replies, take over / hand back and delivery ticks. Operator guide:
 [WHATSAPP_SETUP.md](WHATSAPP_SETUP.md). W2: the agent answers automatically with the same
 runtime as calls (knowledge, questions, workflow, bookings, leads), written for WhatsApp, with
-hand-over to staff. Next: W3 (voice notes in and out).
+hand-over to staff. W3: customers' voice notes are downloaded, kept and transcribed (Gemini),
+the agent answers a voice note with a voice note (Gemini speech, encoded to Ogg / Opus in
+Node.js, so no ffmpeg), per-number reply mode and voice, text fallback, player and transcript in
+the Inbox. Next: W4 (images, documents, templates, opt-out).
 
 **Goal:** a business connects its WhatsApp number (official WhatsApp Business Cloud API) with a
 few clicks. Customers' messages, text or voice, get answered automatically by the same agent that
@@ -434,7 +437,7 @@ Sizes: **S** about a day, **M** a few days, **L** a week or more.
 | **W0** | S    | Fix the current code (section 1): remove the unsafe routes and mock Inbox for now, WhatsApp tools back to "coming soon", Ramadan slots fix, calling-code fallbacks, scratch files, `.env.example`, lint / format / tests / `db:check` green                                                                                 | CI green; no route exposes chat data without RLS                                                              |
 | **W1** | L    | Data model + migration + RLS + definer function; webhook with raw-body signature, routing, de-duplication, statuses; Graph client in `packages/whatsapp` (send text, media upload / download, mark read, typing); Embedded Signup + manual connect + disconnect; Settings → WhatsApp; Inbox (read + staff reply, take over) | A message to the connected number appears in the Inbox within seconds; staff can reply; isolation tests pass  |
 | **W2** | L    | Worker: per-conversation ordering + debounce; runtime turns with RAG, tools, workflow, working hours; chat style in prompts; leads with source WhatsApp; hand-off to a person with notifications; idle close; usage metering; test console "chat style"                                                                     | Customers get correct, grounded answers; a lead is created; "talk to a person" pauses the AI and alerts staff |
-| **W3** | M    | Voice: download, store, transcribe (Gemini), transcript in Inbox; replies as voice notes (Gemini TTS + ffmpeg → OGG / Opus), reply mode and voice settings, fallback to text; `ffmpeg` in the Docker image                                                                                                                  | A Malayalam, Arabic or English voice note gets a correct voice note back; the transcript shows in the Inbox   |
+| **W3** | M    | Voice: download, store, transcribe (Gemini), transcript in Inbox; replies as voice notes (Gemini TTS → Ogg / Opus with libopus in WebAssembly, no ffmpeg), reply mode and voice settings, fallback to text ✅                                                                                                               | A Malayalam, Arabic or English voice note gets a correct voice note back; the transcript shows in the Inbox   |
 | **W4** | M    | Images and documents in and out; `whatsapp.send_document` (shareable knowledge documents) and `send_location`; message templates (sync approved templates, picker after 24 h); opt-out                                                                                                                                      | The agent can send the brochure; staff can re-open an old conversation with a template                        |
 | **W5** | M    | Analytics and dashboard cards, quality alerts, server-sent events for the Inbox, retention purge, docs (`WHATSAPP_SETUP.md`, project docs), load test (100 conversations)                                                                                                                                                   | Numbers match the database; purge removes media; docs let a new operator set it up                            |
 

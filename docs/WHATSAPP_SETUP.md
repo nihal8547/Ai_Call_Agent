@@ -77,6 +77,18 @@ connect.
 Without `META_APP_SECRET` the webhook refuses everything; without the three Meta app values the
 **Continue with Facebook** button is disabled and businesses can only use the access-token option.
 
+Voice notes need nothing extra from Meta. They use `GEMINI_API_KEY` (transcription and the
+agent's spoken replies) and object storage (`STORAGE_*`, the same as documents). Optional:
+
+| Variable                     | Value                                                                      |
+| ---------------------------- | -------------------------------------------------------------------------- |
+| `WHATSAPP_MEDIA_MAX_MB`      | Largest file downloaded from Meta, default `16`                            |
+| `WHATSAPP_VOICE_MAX_SECONDS` | Longest voice note transcribed, default `180`; longer ones get a polite no |
+| `GEMINI_TTS_MODEL`           | Speech model, default `gemini-2.5-flash-preview-tts`                       |
+
+Voice notes are encoded and decoded in Node.js (libopus in WebAssembly): no ffmpeg in the image.
+Without `GEMINI_API_KEY` customers who send a voice note are asked to type.
+
 ## 5. Checking it
 
 1. As a business owner: **Settings → WhatsApp → Continue with Facebook**, finish the popup, pick
@@ -85,6 +97,9 @@ Without `META_APP_SECRET` the webhook refuses everything; without the three Meta
 3. Reply to it from your phone: the conversation appears in the **Inbox** within seconds (the
    sidebar shows the unread count).
 4. Reply from the Inbox: it arrives on the phone; the ticks turn to delivered and read.
+5. Hand the chat back to the agent and send a voice note: the Inbox shows a player and the
+   transcript, and the agent answers with a voice note (or text, per **Voice notes** on the
+   number's card in Settings → WhatsApp).
 
 ## 6. Troubleshooting
 
@@ -96,5 +111,7 @@ Without `META_APP_SECRET` the webhook refuses everything; without the three Meta
 | The popup opens and closes with an error                        | Your domain isn't in **Allowed domains for the JavaScript SDK**, or the app isn't live / the user has no role on it during review                       |
 | Number shows **Needs attention** ("Meta registration")          | Registering the number failed (e.g. still on the WhatsApp app, or two-step PIN set elsewhere); fix it in WhatsApp Manager, then **Finish registration** |
 | "This WhatsApp number is already connected to another business" | A number belongs to one business on the platform; disconnect it there first                                                                             |
+| Voice notes get "Could you type your message?"                  | No `GEMINI_API_KEY`, Gemini refused the audio, or nothing was heard; API log "voice note not processed" shows why                                       |
+| The agent answers a voice note with text                        | The number's setting is "A text message", the reply was long or had a link, or Gemini speech failed (the message shows "sent as text" in the Inbox)     |
 | Reply fails with "Re-engagement message"                        | More than 24 hours since the customer's last message: WhatsApp allows only templates (coming in W4)                                                     |
 | "Meta rejected the access token" on the number                  | The business removed the app's access or the token expired: reconnect with **Continue with Facebook**                                                   |

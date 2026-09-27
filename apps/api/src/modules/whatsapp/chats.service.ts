@@ -5,6 +5,7 @@ import type { z } from "zod";
 import type { AuthContext } from "../../common/auth/auth.types";
 import { AppException } from "../../common/filters/problem-details.filter";
 import { QueueService } from "../../infra/queue.service";
+import { StorageService } from "../../infra/storage.service";
 import { TenantDbService } from "../../infra/tenant-db.service";
 import { AuditService } from "../audit/audit.service";
 import { previewOf } from "./whatsapp-inbound.service";
@@ -33,6 +34,9 @@ const MESSAGE_VIEW = {
   text: true,
   mediaMime: true,
   mediaFilename: true,
+  mediaSeconds: true,
+  mediaKey: true,
+  transcriptLanguage: true,
   transcript: true,
   status: true,
   errorCode: true,
@@ -62,6 +66,7 @@ export class ChatsService {
   constructor(
     private readonly tenantDb: TenantDbService,
     private readonly queues: QueueService,
+    private readonly storage: StorageService,
     private readonly audit: AuditService,
   ) {}
 
@@ -149,7 +154,11 @@ export class ChatsService {
     });
     const page = rows.slice(0, q.limit);
     return {
-      items: page.reverse().map(({ sentBy, ...m }) => ({ ...m, sentByName: sentBy?.user.name ?? null })),
+      items: page.reverse().map(({ sentBy, mediaKey, ...m }) => ({
+        ...m,
+        hasMedia: Boolean(mediaKey),
+        sentByName: sentBy?.user.name ?? null,
+      })),
       hasMore: rows.length > q.limit,
     };
   }
@@ -225,8 +234,8 @@ export class ChatsService {
       },
       `wa-send-${message.id}`,
     );
-    const { sentBy, ...rest } = message;
-    return { ...rest, sentByName: sentBy?.user.name ?? staff.name };
+    const { sentBy, mediaKey, ...rest } = message;
+    return { ...rest, hasMedia: Boolean(mediaKey), sentByName: sentBy?.user.name ?? staff.name };
   }
 
   /** Take over (HUMAN), hand back to the agent (AI) or close */
@@ -257,6 +266,20 @@ export class ChatsService {
       }
       return withWindow(await tx.conversation.findUniqueOrThrow({ where: { id }, select: LIST_VIEW }));
     });
+  }
+
+  /** A stored media file of this conversation; only audio for now (voice notes) */
+  async media(tenantId: string, conversationId: string, messageId: string) {
+    const m = await this.tenantDb.db(tenantId).conversationMessage.findFirst({
+      where: { id: messageId, conversationId },
+      select: { mediaKey: true, mediaMime: true, type: true },
+    });
+    if (!m?.mediaKey || m.type !== "AUDIO")
+      throw new AppException(HttpStatus.NOT_FOUND, "NOT_FOUND", "No audio for this message");
+    const body = await this.storage.storage.get(m.mediaKey);
+    // Only audio types are served inline; anything else would be a download
+    const mime = /^audio\/[\w.+-]+/.exec(m.mediaMime ?? "")?.[0] ?? "audio/ogg";
+    return { body, mime };
   }
 
   async markRead(tenantId: string, id: string): Promise<void> {

@@ -149,6 +149,7 @@ describe.skipIf(!hasTestDb)("WhatsApp: connect, webhook, Inbox and sending", () 
         graphVersion: "v23.0",
         webhookUrl: "https://voice.test/api/v1/webhooks/whatsapp",
         webhookReady: true,
+        speech: false,
       },
       numbers: [],
     });

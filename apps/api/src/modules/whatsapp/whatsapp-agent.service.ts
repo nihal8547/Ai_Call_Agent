@@ -10,6 +10,7 @@ import {
   systemLines,
   TOOL_SPECS,
   type ToolName,
+  WhatsAppNumberSettings,
   type WhatsAppReplyJob,
 } from "@platform/shared";
 import { type Job } from "bullmq";
@@ -28,6 +29,7 @@ import { isBlocked, TenantSettingsService } from "../telephony/tenant-settings.s
 import { ToolService } from "../tools/tool.service";
 import { turnUsage, UsageService } from "../usage/usage.service";
 import { WhatsAppAccountsService } from "./whatsapp-accounts.service";
+import { VOICE_MIME, WhatsAppMediaService } from "./whatsapp-media.service";
 import { previewOf, type StoredInbound } from "./whatsapp-inbound.service";
 
 const LOCK_MS = 60_000;
@@ -38,8 +40,10 @@ const RATE_LIMIT = 30;
 
 type Input =
   | { kind: "text"; text: string }
-  /** A voice note (answered in W3; until then the customer is asked to type) */
+  /** A voice note that couldn't be transcribed (no speech service, or it failed) */
   | { kind: "voice" }
+  /** A voice note too long to transcribe */
+  | { kind: "voice_too_long" }
   /** Photos, files, stickers without any words */
   | { kind: "media" }
   /** Reactions: nothing to answer */
@@ -47,10 +51,11 @@ type Input =
 
 /** What the customer said, from all messages since the agent last answered */
 export function customerInput(
-  messages: Pick<ConversationMessage, "type" | "text" | "transcript" | "mediaFilename">[],
+  messages: Pick<ConversationMessage, "type" | "text" | "transcript" | "mediaFilename" | "meta">[],
 ): Input {
   const parts: string[] = [];
   let voice = false;
+  let tooLong = false;
   let media = false;
   for (const m of messages) {
     const text = m.text?.trim();
@@ -63,6 +68,7 @@ export function customerInput(
         break;
       case "AUDIO":
         if (m.transcript?.trim()) parts.push(m.transcript.trim());
+        else if ((m.meta as { tooLong?: boolean } | null)?.tooLong) tooLong = true;
         else voice = true;
         break;
       case "IMAGE":
@@ -79,6 +85,7 @@ export function customerInput(
     }
   }
   if (parts.length) return { kind: "text", text: parts.join("\n").slice(0, 2000) };
+  if (tooLong) return { kind: "voice_too_long" };
   if (voice) return { kind: "voice" };
   if (media) return { kind: "media" };
   return { kind: "ignore" };
@@ -106,6 +113,7 @@ export class WhatsAppAgentService implements OnModuleInit {
     private readonly crm: CrmSyncService,
     private readonly usage: UsageService,
     private readonly accounts: WhatsAppAccountsService,
+    private readonly media: WhatsAppMediaService,
     private readonly metrics: MetricsService,
   ) {}
 
@@ -184,7 +192,7 @@ export class WhatsAppAgentService implements OnModuleInit {
       include: { whatsappNumber: { include: { agent: true } } },
     });
     if (!c) return { replied: false, reason: "conversation deleted" };
-    const pending = await db.conversationMessage.findMany({
+    let pending = await db.conversationMessage.findMany({
       where: {
         conversationId,
         direction: "INBOUND",
@@ -193,6 +201,9 @@ export class WhatsAppAgentService implements OnModuleInit {
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     });
     if (!pending.length) return { replied: false, reason: "nothing new" };
+    // Voice notes first (download before Meta's link expires, transcript for staff and the agent)
+    if (c.whatsappNumber.status === "CONNECTED")
+      pending = await this.media.prepareVoiceNotes(tenantId, c.whatsappNumber, pending, undefined);
     const cursor = pending[pending.length - 1]!.createdAt;
     const skip = async (reason: string) => {
       await db.conversation.update({ where: { id: c.id }, data: { agentHandledAt: cursor } });
@@ -261,6 +272,7 @@ export class WhatsAppAgentService implements OnModuleInit {
     let control: "listen" | "transfer" | "hangup" = "listen";
     let backgroundTools: ToolCall[] = [];
     if (input.kind === "voice") text = lines.chatVoiceUnsupported;
+    else if (input.kind === "voice_too_long") text = lines.chatVoiceTooLong;
     else if (input.kind === "media") text = lines.chatMediaOnly;
     else {
       // First message: the greeting (not its question: the customer already said what they want)
@@ -295,25 +307,57 @@ export class WhatsAppAgentService implements OnModuleInit {
     const executed = toolRunner.drain().map((e) => ({ tool: e.tool, ok: e.ok, error: e.error ?? null }));
     const collected = session?.collected ?? {};
 
-    const { messageId, leadId } = await this.tenantDb.tx(tenantId, async (tx) => {
+    // A voice note is answered with a voice note (the number's setting), when it suits speaking
+    const numberSettings = WhatsAppNumberSettings.parse(c.whatsappNumber.settings ?? {});
+    const toVoice = input.kind === "text" && pending.some((m) => m.type === "AUDIO" && m.transcript);
+    const replyId = randomUUID();
+    const spoken =
+      toVoice && numberSettings.voiceReplies !== "text" && this.media.canSpeak(text)
+        ? await this.media.speak(tenantId, conversationId, replyId, text, numberSettings.voice)
+        : null;
+    const alsoText = Boolean(spoken) && numberSettings.voiceReplies === "both";
+
+    const { messageIds, leadId } = await this.tenantDb.tx(tenantId, async (tx) => {
+      const meta = {
+        sources,
+        tools: executed,
+        deterministic: last ? last.metrics.deterministic : true,
+        latencyMs: turns.reduce((n, t) => n + t.metrics.totalMs, 0),
+        ...(control !== "listen" ? { control } : {}),
+        ...(toVoice && !spoken
+          ? { voiceFallback: numberSettings.voiceReplies === "text" ? "setting" : "text_only" }
+          : {}),
+      } as Prisma.InputJsonObject;
       const m = await tx.conversationMessage.create({
         data: {
+          id: replyId,
           tenantId,
           conversationId,
           direction: "OUTBOUND",
           sender: "AI",
-          type: "TEXT",
+          type: spoken ? "AUDIO" : "TEXT",
+          // The words are kept with a voice reply, for staff and the lead history
           text: text.slice(0, 4096),
+          ...(spoken ? { mediaKey: spoken.key, mediaMime: VOICE_MIME, mediaSeconds: spoken.seconds } : {}),
           status: "QUEUED",
-          meta: {
-            sources,
-            tools: executed,
-            deterministic: last ? last.metrics.deterministic : true,
-            latencyMs: turns.reduce((n, t) => n + t.metrics.totalMs, 0),
-            ...(control !== "listen" ? { control } : {}),
-          } as Prisma.InputJsonObject,
+          meta,
         },
       });
+      const ids = [m.id];
+      if (alsoText) {
+        const t = await tx.conversationMessage.create({
+          data: {
+            tenantId,
+            conversationId,
+            direction: "OUTBOUND",
+            sender: "AI",
+            type: "TEXT",
+            text: text.slice(0, 4096),
+            status: "QUEUED",
+          },
+        });
+        ids.push(t.id);
+      }
       if (control === "transfer") await note(tx, tenantId, conversationId, handoffNote(session, config));
       if (control === "hangup") await note(tx, tenantId, conversationId, "The agent ended the conversation");
       await tx.conversation.update({
@@ -323,7 +367,10 @@ export class WhatsAppAgentService implements OnModuleInit {
           agentVersionId: versionId,
           agentHandledAt: cursor,
           lastMessageAt: new Date(),
-          lastMessagePreview: previewOf({ type: "TEXT", text }),
+          lastMessagePreview: previewOf({
+            type: alsoText || !spoken ? "TEXT" : "AUDIO",
+            text: spoken && !alsoText ? null : text,
+          }),
           ...(session ? { engineSession: session as unknown as Prisma.InputJsonObject } : {}),
           ...(control === "transfer" ? { mode: "HUMAN" as const } : {}),
           ...(control === "hangup" ? { mode: "CLOSED" as const, closedAt: new Date() } : {}),
@@ -342,17 +389,28 @@ export class WhatsAppAgentService implements OnModuleInit {
         : null;
       await this.usage.record(tx, tenantId, null, [
         ...turns.flatMap((t) => turnUsage(t, { callerSpoke: false, spoken: false })),
-        { kind: "WHATSAPP_MESSAGES", quantity: 1, provider: "meta", model: null },
+        { kind: "WHATSAPP_MESSAGES", quantity: ids.length, provider: "meta", model: null },
+        ...(spoken
+          ? [
+              {
+                kind: "TTS_CHARACTERS" as const,
+                quantity: text.length,
+                provider: "gemini",
+                model: spoken.model,
+              },
+            ]
+          : []),
       ]);
-      return { messageId: m.id, leadId: lead?.id ?? null };
+      return { messageIds: ids, leadId: lead?.id ?? null };
     });
 
     // After commit: send, run background tools, sync the lead, tell staff about a hand-over
-    await this.queues.add(
-      "whatsapp",
-      { kind: "whatsapp_send", tenantId, messageId, label: `Send the agent's reply to ${c.contactPhone}` },
-      `wa-send-${messageId}`,
-    );
+    for (const messageId of messageIds)
+      await this.queues.add(
+        "whatsapp",
+        { kind: "whatsapp_send", tenantId, messageId, label: `Send the agent's reply to ${c.contactPhone}` },
+        `wa-send-${messageId}`,
+      );
     for (const call of backgroundTools) {
       await this.queues.add(
         queueForTool(call.tool),
@@ -374,7 +432,9 @@ export class WhatsAppAgentService implements OnModuleInit {
     }
     if (leadId) await this.crm.enqueueLead(tenantId, leadId);
     if (control === "transfer") await this.notifyStaff(tenantId, c, config, session);
-    this.metrics.whatsappReplies.inc({ result: control === "listen" ? input.kind : control });
+    this.metrics.whatsappReplies.inc({
+      result: control === "listen" ? (spoken ? "voice_reply" : input.kind) : control,
+    });
     return { replied: true };
   }
 

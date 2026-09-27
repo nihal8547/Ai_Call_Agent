@@ -428,7 +428,7 @@ function Thread({ id, canReply, onBack }: { id: string; canReply: boolean; onBac
               <p className="my-4 text-center text-xs font-medium text-slate-400">{g.day}</p>
               <ul className="space-y-2">
                 {g.items.map((m) => (
-                  <MessageRow key={m.id} m={m} />
+                  <MessageRow key={m.id} m={m} conversationId={id} />
                 ))}
               </ul>
             </div>
@@ -444,7 +444,7 @@ function Thread({ id, canReply, onBack }: { id: string; canReply: boolean; onBac
   );
 }
 
-function MessageRow({ m }: { m: ChatMessage }) {
+function MessageRow({ m, conversationId }: { m: ChatMessage; conversationId: string }) {
   if (m.direction === "INTERNAL")
     return (
       <li className="flex justify-center">
@@ -469,7 +469,7 @@ function MessageRow({ m }: { m: ChatMessage }) {
             {m.sender === "AI" ? "Agent" : (m.sentByName ?? "Staff")}
           </p>
         ) : null}
-        <Body m={m} out={out} />
+        <Body m={m} out={out} conversationId={conversationId} />
         <p
           className={cn(
             "mt-1 flex items-center justify-end gap-1 text-[11px]",
@@ -519,7 +519,7 @@ const TOOL_LABEL: Record<string, string> = {
   "leads.create": "Saved lead",
 };
 
-function Body({ m, out }: { m: ChatMessage; out: boolean }) {
+function Body({ m, out, conversationId }: { m: ChatMessage; out: boolean; conversationId: string }) {
   const media = (Icon: typeof Mic, label: string, note?: string) => (
     <div
       className={cn("flex items-center gap-2 rounded-lg px-2.5 py-2", out ? "bg-white/10" : "bg-slate-50")}
@@ -533,20 +533,7 @@ function Body({ m, out }: { m: ChatMessage; out: boolean }) {
   );
   switch (m.type) {
     case "AUDIO":
-      return (
-        <>
-          {media(
-            Mic,
-            "Voice message",
-            m.transcript ? undefined : "Playback and transcripts arrive with voice support",
-          )}
-          {m.transcript ? (
-            <p className="mt-1.5 text-sm italic opacity-90" dir="auto">
-              “{m.transcript}”
-            </p>
-          ) : null}
-        </>
-      );
+      return <Voice m={m} out={out} conversationId={conversationId} />;
     case "IMAGE":
     case "STICKER":
       return (
@@ -593,6 +580,49 @@ function Body({ m, out }: { m: ChatMessage; out: boolean }) {
       );
   }
 }
+
+/** A voice note: player, length and what was said (the transcript, or the agent's words) */
+function Voice({ m, out, conversationId }: { m: ChatMessage; out: boolean; conversationId: string }) {
+  const words = out ? m.text : m.transcript;
+  const note = m.meta?.tooLong
+    ? "Too long to transcribe"
+    : !m.hasMedia
+      ? "Processing…"
+      : !out && m.transcript === null
+        ? "No transcript"
+        : null;
+  return (
+    <div className="min-w-[15rem]">
+      <p
+        className={cn(
+          "mb-1.5 flex items-center gap-1.5 text-xs font-medium",
+          out ? "text-slate-300" : "text-slate-500",
+        )}
+      >
+        <Mic className="size-3.5" aria-hidden />
+        Voice message{m.mediaSeconds ? ` · ${fmtSeconds(m.mediaSeconds)}` : ""}
+        {m.meta?.sentAsText ? " · sent as text" : ""}
+      </p>
+      {m.hasMedia ? (
+        <audio
+          controls
+          preload="none"
+          src={`/api/v1/chats/${conversationId}/messages/${m.id}/media`}
+          className="h-9 w-full max-w-72"
+          aria-label="Play voice message"
+        />
+      ) : null}
+      {words ? (
+        <p className="mt-1.5 text-sm break-words whitespace-pre-wrap opacity-90" dir="auto">
+          {out ? words : `“${words}”`}
+        </p>
+      ) : null}
+      {note ? <p className="mt-1 text-xs opacity-70">{note}</p> : null}
+    </div>
+  );
+}
+
+const fmtSeconds = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
 function Tick({ status }: { status: ChatMessage["status"] }) {
   if (status === "QUEUED") return <Clock className="size-3.5" aria-label="Sending" />;

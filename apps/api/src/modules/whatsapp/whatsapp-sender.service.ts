@@ -6,6 +6,7 @@ import { TenantDbService } from "../../infra/tenant-db.service";
 import { MetricsService } from "../../observability/metrics.service";
 import { JobProcessors } from "../jobs/job-processors.service";
 import { WhatsAppAccountsService } from "./whatsapp-accounts.service";
+import { WhatsAppMediaService } from "./whatsapp-media.service";
 
 /**
  * Sends queued messages to customers (`whatsapp` queue). Meta has no idempotency key, so a job
@@ -18,6 +19,7 @@ export class WhatsAppSenderService implements OnModuleInit {
   constructor(
     private readonly tenantDb: TenantDbService,
     private readonly accounts: WhatsAppAccountsService,
+    private readonly media: WhatsAppMediaService,
     private readonly processors: JobProcessors,
     private readonly metrics: MetricsService,
   ) {}
@@ -53,19 +55,44 @@ export class WhatsAppSenderService implements OnModuleInit {
       await fail(err as Error);
       throw new UnrecoverableError("The WhatsApp number is disconnected");
     }
+    const to = m.conversation.contactWaId;
+    const sendText = () =>
+      this.accounts.graph.sendText(token, number.phoneNumberId, to, m.text ?? "", {
+        replyTo: m.replyToWamid,
+      });
     try {
-      const { wamid } = await this.accounts.graph.sendText(
-        token,
-        number.phoneNumberId,
-        m.conversation.contactWaId,
-        m.text ?? "",
-        {
-          replyTo: m.replyToWamid,
-        },
-      );
+      let wamid: string;
+      let sentAsText = false;
+      if (m.type === "AUDIO" && m.mediaKey) {
+        try {
+          wamid = (await this.media.sendVoice(token, number.phoneNumberId, to, m.mediaKey)).wamid;
+        } catch (err) {
+          // Meta refused the voice note (format, size): the words still reach the customer
+          if (
+            !(err instanceof WhatsAppError) ||
+            err.retryable ||
+            err.kind === "auth" ||
+            err.kind === "window_closed" ||
+            !m.text
+          )
+            throw err;
+          this.logger.warn({ tenantId, messageId, err: err.message }, "voice reply refused; sent as text");
+          wamid = (await sendText()).wamid;
+          sentAsText = true;
+        }
+      } else {
+        wamid = (await sendText()).wamid;
+      }
       await db.conversationMessage.update({
         where: { id: m.id },
-        data: { wamid, status: "SENT", sentAt: new Date(), errorCode: null, errorTitle: null },
+        data: {
+          wamid,
+          status: "SENT",
+          sentAt: new Date(),
+          errorCode: null,
+          errorTitle: null,
+          ...(sentAsText ? { meta: { ...(m.meta as object), sentAsText: true } } : {}),
+        },
       });
       this.metrics.whatsappSends.inc({ sender: m.sender, result: "sent" });
       return { wamid };

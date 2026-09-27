@@ -382,9 +382,10 @@ describe.skipIf(!hasTestDb)("P9: integrations, tools, appointments and handoff",
       expect(record.appointments).toEqual([
         expect.objectContaining({ externalRef: event.id, integrationId: calendarId, status: "UPCOMING" }),
       ]);
+      // Calendar attempts only: the lead is saved in the background and may be logged at any point
       const executed = record.events
-        .filter((e) => (e.payload as { phase?: string }).phase === "executed")
-        .map((e) => e.payload);
+        .map((e) => e.payload as { phase?: string; tool?: string })
+        .filter((p) => p.phase === "executed" && p.tool?.startsWith("calendar."));
       expect(executed).toEqual([
         expect.objectContaining({
           tool: "calendar.book",
@@ -516,7 +517,7 @@ describe.skipIf(!hasTestDb)("P9: integrations, tools, appointments and handoff",
 
       const record = await db().call.findUniqueOrThrow({
         where: { providerCallSid: call.callSid },
-        include: { events: { where: { type: "HANDOFF" } } },
+        include: { events: { where: { type: "HANDOFF" }, orderBy: { seq: "asc" } } },
       });
       expect(record.outcome).toBe("FOLLOW_UP_REQUIRED");
       // Same caller and name earlier today: their existing lead is updated rather than duplicated

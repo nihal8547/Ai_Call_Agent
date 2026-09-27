@@ -120,6 +120,14 @@ export const ApiEnvSchema = z
       .default("v23.0"),
     /** How long the agent waits for more messages before answering (customers often send several) */
     WHATSAPP_REPLY_DELAY_MS: z.coerce.number().int().min(0).max(30_000).default(2500),
+    /** Largest file downloaded from WhatsApp (voice notes, documents) */
+    WHATSAPP_MEDIA_MAX_MB: z.coerce.number().int().min(1).max(100).default(16),
+    /** Longer voice notes aren't transcribed: the customer is asked for a shorter one */
+    WHATSAPP_VOICE_MAX_SECONDS: z.coerce.number().int().min(10).max(900).default(180),
+    /** Gemini text-to-speech model for voice replies */
+    GEMINI_TTS_MODEL: z.string().min(3).max(80).optional(),
+    /** Gemini API origin for speech (tests point it at a fake) */
+    GEMINI_API_BASE_URL: envPrimitives.url.default("https://generativelanguage.googleapis.com/v1beta"),
     /** Graph API origin (tests point it at a fake) */
     META_GRAPH_BASE_URL: envPrimitives.url.default("https://graph.facebook.com"),
     /** HubSpot public app for "Connect with HubSpot"; private-app tokens work without it */

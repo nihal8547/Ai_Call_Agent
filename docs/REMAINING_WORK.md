@@ -1,6 +1,6 @@
 # Remaining work
 
-_Last updated: 27 September 2026, after one-click integrations (commit `654ab25`)._
+_Last updated: 27 September 2026, after WhatsApp W3 (voice notes)._
 
 What is still to be built, what exists but hasn't been proven against the real service, and known
 limits. What has been built is logged phase by phase in
@@ -50,6 +50,7 @@ reach the real service.
 | Integrations                 | Register the OAuth apps ([OAUTH_SETUP.md](OAUTH_SETUP.md)); connect real Google Calendar / Sheets / Gmail, Outlook, HubSpot, Zoho and SMTP accounts |
 | Google app verification      | Needed before customers can use Google sign-in outside "Testing" mode (sensitive scopes, including `gmail.send`)                                    |
 | Platform email delivery      | A real mail provider for `SMTP_URL`; SPF, DKIM and DMARC for the sending domain                                                                     |
+| WhatsApp on real Meta        | Connect a real number; text, voice notes (Gemini transcription and speech in Arabic, Malayalam, English), delivery ticks, App Review                |
 | Gemini at production load    | Paid quota (the free tier hit its per-minute limit during one call); latency from the Gulf region                                                   |
 | Load                         | Repeat the 50-call load test on production-like infrastructure, with the AI on                                                                      |
 
@@ -67,24 +68,24 @@ reach the real service.
 
 ## 4. Product gaps soon after launch (P2)
 
-| Item                             | Size | Notes                                                                                                                                                                          |
-| -------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Role editor UI                   | S    | Custom roles exist in the API (`/roles`); the web app only assigns the built-in roles                                                                                          |
-| Lead detail page                 | S    | `/leads/[id]` with all answers, calls, appointments, CRM sync history and notes                                                                                                |
-| Outbound event webhooks          | M    | Settings → Webhooks: signed `call.completed`, `lead.created`, `appointment.booked` events to the business's own systems (today only the per-agent webhook tool exists)         |
-| Business-wide AI defaults        | S    | Default language, voice, AI on/off and tone for new agents (today set per agent)                                                                                               |
-| Call recordings                  | M    | Record with consent wording, store encrypted, play with signed short-lived links, retention                                                                                    |
-| Outbound calls                   | L    | Call back new web leads within a minute, appointment reminders, campaigns (with do-not-call checks)                                                                            |
-| WhatsApp agent (W3–W5)           | L    | Connecting, the Inbox, staff replies (W1) and automatic agent replies (W2) are built. Next: voice notes, documents, templates, analytics: [WPIntegration.md](WPIntegration.md) |
-| SMS tools                        | M    | Shown as "coming soon" in the agent tools list; confirmations and reminders by message                                                                                         |
-| Outlook / Microsoft 365 Calendar | M    | The Microsoft sign-in exists; add calendar scopes, free/busy and booking like Google Calendar                                                                                  |
-| CRM workflow tools               | S    | `crm.*` tools inside workflows (today leads sync automatically after the call)                                                                                                 |
-| Alerts by email                  | S    | Plan-limit, call-spike and silent-SIP alerts show on the dashboard only; email them to owners                                                                                  |
-| Virus scanning of uploads        | S    | ClamAV (or a cloud scanner) before a document is processed                                                                                                                     |
-| Drag-and-drop workflow editor    | M    | Steps are reordered with buttons today                                                                                                                                         |
-| Live call monitoring             | L    | Staff listen in, whisper or take over (needs streaming voice, section 5)                                                                                                       |
-| Arabic dashboard (web UI)        | M    | Agents speak Arabic, but the web app itself is English only; add translations and a right-to-left layout                                                                       |
-| Dark mode                        | S    | The app is white-and-black by design; dark classes remain in the code and can be switched back on                                                                              |
+| Item                             | Size | Notes                                                                                                                                                                                      |
+| -------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Role editor UI                   | S    | Custom roles exist in the API (`/roles`); the web app only assigns the built-in roles                                                                                                      |
+| Lead detail page                 | S    | `/leads/[id]` with all answers, calls, appointments, CRM sync history and notes                                                                                                            |
+| Outbound event webhooks          | M    | Settings → Webhooks: signed `call.completed`, `lead.created`, `appointment.booked` events to the business's own systems (today only the per-agent webhook tool exists)                     |
+| Business-wide AI defaults        | S    | Default language, voice, AI on/off and tone for new agents (today set per agent)                                                                                                           |
+| Call recordings                  | M    | Record with consent wording, store encrypted, play with signed short-lived links, retention                                                                                                |
+| Outbound calls                   | L    | Call back new web leads within a minute, appointment reminders, campaigns (with do-not-call checks)                                                                                        |
+| WhatsApp agent (W4–W5)           | L    | Connecting, the Inbox, staff replies (W1), agent replies (W2) and voice notes (W3) are built. Next: images, documents, templates, opt-out, analytics: [WPIntegration.md](WPIntegration.md) |
+| SMS tools                        | M    | Shown as "coming soon" in the agent tools list; confirmations and reminders by message                                                                                                     |
+| Outlook / Microsoft 365 Calendar | M    | The Microsoft sign-in exists; add calendar scopes, free/busy and booking like Google Calendar                                                                                              |
+| CRM workflow tools               | S    | `crm.*` tools inside workflows (today leads sync automatically after the call)                                                                                                             |
+| Alerts by email                  | S    | Plan-limit, call-spike and silent-SIP alerts show on the dashboard only; email them to owners                                                                                              |
+| Virus scanning of uploads        | S    | ClamAV (or a cloud scanner) before a document is processed                                                                                                                                 |
+| Drag-and-drop workflow editor    | M    | Steps are reordered with buttons today                                                                                                                                                     |
+| Live call monitoring             | L    | Staff listen in, whisper or take over (needs streaming voice, section 5)                                                                                                                   |
+| Arabic dashboard (web UI)        | M    | Agents speak Arabic, but the web app itself is English only; add translations and a right-to-left layout                                                                                   |
+| Dark mode                        | S    | The app is white-and-black by design; dark classes remain in the code and can be switched back on                                                                                          |
 
 ## 5. P13 — Streaming voice (P2, L)
 

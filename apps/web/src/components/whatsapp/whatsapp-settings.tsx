@@ -83,7 +83,14 @@ export function WhatsAppSettingsPage() {
       {numbers.length ? (
         <div className="mb-8 space-y-4">
           {numbers.map((n) => (
-            <NumberCard key={n.id} number={n} agents={agentList} canManage={canManage} onChanged={refresh} />
+            <NumberCard
+              key={n.id}
+              number={n}
+              agents={agentList}
+              canManage={canManage}
+              speech={platform?.speech ?? false}
+              onChanged={refresh}
+            />
           ))}
         </div>
       ) : null}
@@ -190,11 +197,13 @@ function NumberCard({
   number: n,
   agents,
   canManage,
+  speech,
   onChanged,
 }: {
   number: WhatsAppNumber;
   agents: AgentListItem[];
   canManage: boolean;
+  speech: boolean;
   onChanged: () => void;
 }) {
   const [testing, setTesting] = useState(false);
@@ -202,6 +211,11 @@ function NumberCard({
   const assign = useMutation({
     mutationFn: (agentId: string | null) =>
       api(`/whatsapp/numbers/${n.id}`, { method: "PATCH", body: { agentId } }),
+    onSuccess: onChanged,
+  });
+  const saveSettings = useMutation({
+    mutationFn: (settings: Partial<WhatsAppNumber["settings"]>) =>
+      api(`/whatsapp/numbers/${n.id}`, { method: "PATCH", body: { settings } }),
     onSuccess: onChanged,
   });
   const register = useMutation({
@@ -283,6 +297,48 @@ function NumberCard({
           The agent answers customers on its own, using its questions, knowledge and tools. Take over any
           conversation from the Inbox.
         </p>
+      </div>
+
+      <div className="mt-6 border-t border-slate-100 pt-5">
+        <p className="text-sm font-medium text-slate-900">Voice notes</p>
+        <p className="mt-0.5 text-sm text-slate-500">
+          Customers&apos; voice notes are transcribed so the agent (and you) can read them.
+        </p>
+        {canManage ? (
+          <div className="mt-3 grid max-w-xl gap-4 sm:grid-cols-2">
+            <SelectField
+              label="Answer a voice note with"
+              value={n.settings.voiceReplies ?? "voice"}
+              disabled={saveSettings.isPending || !speech}
+              onChange={(e) =>
+                saveSettings.mutate({ voiceReplies: e.target.value as "voice" | "text" | "both" })
+              }
+            >
+              <option value="voice">A voice note</option>
+              <option value="text">A text message</option>
+              <option value="both">A voice note and the text</option>
+            </SelectField>
+            <SelectField
+              label="Agent's voice"
+              value={n.settings.voice ?? "Kore"}
+              disabled={saveSettings.isPending || !speech || n.settings.voiceReplies === "text"}
+              onChange={(e) => saveSettings.mutate({ voice: e.target.value })}
+            >
+              <option value="Kore">Kore: female, clear</option>
+              <option value="Aoede">Aoede: female, relaxed</option>
+              <option value="Puck">Puck: male, upbeat</option>
+              <option value="Charon">Charon: male, calm</option>
+            </SelectField>
+          </div>
+        ) : null}
+        {!speech ? (
+          <p className="mt-2 text-xs text-amber-700">
+            Voice notes need the platform&apos;s Gemini key. Until it&apos;s set, customers are asked to type.
+          </p>
+        ) : null}
+        {saveSettings.isError ? (
+          <p className="mt-1 text-sm text-red-600">{errorMessage(saveSettings.error)}</p>
+        ) : null}
       </div>
 
       <TestDialog open={testing} number={n} onClose={() => setTesting(false)} />

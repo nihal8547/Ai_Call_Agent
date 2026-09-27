@@ -73,6 +73,12 @@ export class MetricsService implements OnModuleDestroy {
     labelNames: ["result"] as const,
     registers: [this.registry],
   });
+  readonly whatsappVoice = new Counter({
+    name: "whatsapp_voice_total",
+    help: "Voice notes: downloads, transcriptions and spoken replies, by result",
+    labelNames: ["step", "result"] as const,
+    registers: [this.registry],
+  });
   readonly whatsappSends = new Counter({
     name: "whatsapp_sends_total",
     help: "WhatsApp messages sent to customers, by result",

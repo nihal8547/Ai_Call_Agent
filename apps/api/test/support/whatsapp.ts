@@ -9,10 +9,18 @@ export type GraphCall = { method: string; path: string; body: Record<string, unk
 
 /**
  * Meta's Graph API behind fetch: every business token works, the given WABA owns the given
- * numbers, messages get ids. Everything else goes to the real network.
+ * numbers, messages get ids, received media can be downloaded and files uploaded. Optionally
+ * Gemini too (`gemini`). Everything else goes to the real network.
  */
-export function fakeGraph(numbers: Record<string, string[]>) {
+export function fakeGraph(
+  numbers: Record<string, string[]>,
+  gemini?: (body: Record<string, unknown>) => Response | Promise<Response>,
+) {
   const calls: GraphCall[] = [];
+  /** Files customers "sent": media id → bytes */
+  const media = new Map<string, Buffer>();
+  /** Files the platform uploaded to Meta */
+  const uploads: { id: string; bytes: Buffer; type: string }[] = [];
   let sent = 0;
   const run = metaId();
   const realFetch = globalThis.fetch;
@@ -20,9 +28,24 @@ export function fakeGraph(numbers: Record<string, string[]>) {
     new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init = {}) => {
     const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+    if (url.hostname === "generativelanguage.googleapis.com" && gemini)
+      return gemini(JSON.parse(String(init.body)) as Record<string, unknown>);
+    if (url.hostname === "lookaside.test") {
+      const file = media.get(url.pathname.slice(1));
+      return file
+        ? new Response(new Uint8Array(file), { status: 200 })
+        : new Response("gone", { status: 404 });
+    }
     if (url.hostname !== "graph.facebook.com") return realFetch(input, init);
     const method = init.method ?? "GET";
     const path = url.pathname.replace(/^\/v\d+\.\d/, "");
+    if (init.body instanceof FormData) {
+      const file = init.body.get("file") as Blob;
+      const id = `UPLOADED-${uploads.length + 1}`;
+      uploads.push({ id, bytes: Buffer.from(await file.arrayBuffer()), type: String(init.body.get("type")) });
+      calls.push({ method, path, body: { upload: id }, auth: "" });
+      return json({ id });
+    }
     const body = typeof init.body === "string" ? (JSON.parse(init.body) as Record<string, unknown>) : null;
     calls.push({
       method,
@@ -38,6 +61,13 @@ export function fakeGraph(numbers: Record<string, string[]>) {
       return json({ messages: [{ id: `wamid.OUT-${sent}.${run}` }] });
     }
     if (path.endsWith("/subscribed_apps") || path.endsWith("/register")) return json({ success: true });
+    const mediaFile = media.get(path.slice(1));
+    if (mediaFile)
+      return json({
+        url: `https://lookaside.test/${path.slice(1)}`,
+        mime_type: "audio/ogg; codecs=opus",
+        file_size: mediaFile.length,
+      });
     if (/^\/\d+$/.test(path))
       return json({
         id: path.slice(1),
@@ -49,6 +79,13 @@ export function fakeGraph(numbers: Record<string, string[]>) {
   });
   return {
     calls,
+    media,
+    uploads,
+    /** Audio messages sent to customers: the uploaded media id */
+    audios: () =>
+      calls
+        .filter((c) => c.path.endsWith("/messages") && c.body?.type === "audio")
+        .map((c) => ({ to: String(c.body!.to), mediaId: String((c.body!.audio as { id: string }).id) })),
     /** Text messages sent to customers, in order */
     texts: () =>
       calls
@@ -91,10 +128,10 @@ export function webhookPoster(app: NestFastifyApplication, appSecret: string, ph
   return {
     post,
     text: (from: string, name: string, body: string) => message(from, name, { type: "text", text: { body } }),
-    voice: (from: string, name: string) =>
+    voice: (from: string, name: string, mediaId = metaId()) =>
       message(from, name, {
         type: "audio",
-        audio: { id: metaId(), mime_type: "audio/ogg; codecs=opus", voice: true },
+        audio: { id: mediaId, mime_type: "audio/ogg; codecs=opus", voice: true },
       }),
   };
 }

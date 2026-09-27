@@ -121,6 +121,46 @@ export class GraphClient {
     });
   }
 
+  /** An uploaded file (voice note, document) sent to the customer */
+  async sendAudio(
+    token: string,
+    phoneNumberId: string,
+    to: string,
+    mediaId: string,
+  ): Promise<{ wamid: string }> {
+    return this.send(token, phoneNumberId, { to, type: "audio", audio: { id: mediaId } });
+  }
+
+  /** Upload a file to send (valid for 30 days); returns Meta's media id */
+  async uploadMedia(
+    token: string,
+    phoneNumberId: string,
+    file: Buffer,
+    mimeType: string,
+    filename: string,
+  ): Promise<string> {
+    const form = new FormData();
+    form.append("messaging_product", "whatsapp");
+    form.append("type", mimeType);
+    form.append("file", new Blob([new Uint8Array(file)], { type: mimeType }), filename);
+    const res = await this.fetchWithTimeout(`${this.base}/${enc(phoneNumberId)}/media`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      body: form,
+    });
+    const json = (await res.json().catch(() => ({}))) as { id?: string } & GraphErrorBody;
+    if (!res.ok || !json.id) {
+      const e = json.error;
+      throw new WhatsAppError(
+        kindForGraphError(res.status, e?.code),
+        e?.message?.replace(/^\(#\d+\)\s*/, "") ?? `Upload failed (${res.status})`,
+        e?.code ?? null,
+        res.status,
+      );
+    }
+    return json.id;
+  }
+
   /** Blue ticks for the customer, optionally with "typing…" until the reply is sent */
   async markRead(token: string, phoneNumberId: string, wamid: string, typing = false): Promise<void> {
     await this.call("POST", `/${enc(phoneNumberId)}/messages`, token, {

@@ -9,6 +9,7 @@ import { ChatsController } from "./chats.controller";
 import { ChatsService } from "./chats.service";
 import { WhatsAppAccountsService } from "./whatsapp-accounts.service";
 import { WhatsAppAgentService } from "./whatsapp-agent.service";
+import { WhatsAppMediaService } from "./whatsapp-media.service";
 import { WhatsAppController } from "./whatsapp.controller";
 import { WhatsAppInboundService } from "./whatsapp-inbound.service";
 import { WhatsAppSenderService } from "./whatsapp-sender.service";
@@ -23,6 +24,7 @@ import { WhatsAppWebhookController } from "./whatsapp-webhook.controller";
     WhatsAppInboundService,
     WhatsAppSenderService,
     WhatsAppAgentService,
+    WhatsAppMediaService,
     ChatsService,
   ],
   exports: [WhatsAppAccountsService, WhatsAppInboundService],

@@ -68,15 +68,18 @@ export function systemLines(language: string) {
         /** WhatsApp: the customer asked for a person (or the workflow hands over) */
         chatHandoff: "شكراً لك، حوّلت محادثتك لفريقنا وبيرد عليك أحد هنا قريباً.",
         /** WhatsApp: a voice note before voice support */
-        chatVoiceUnsupported: "عذراً، ما أقدر أسمع الرسائل الصوتية حالياً. ممكن تكتب لي رسالتك؟",
+        chatVoiceUnsupported: "عذراً، ما قدرت أسمع الرسالة الصوتية. ممكن تكتب لي رسالتك؟",
         /** WhatsApp: only a photo, file or sticker without words */
         chatMediaOnly: "شكراً، وصلني. ممكن تكتب لي كيف أقدر أساعدك؟",
+        /** WhatsApp: a voice note longer than the platform transcribes */
+        chatVoiceTooLong: "الرسالة الصوتية طويلة شوي. ممكن ترسل رسالة أقصر أو تكتبها لي؟",
       }
     : {
         maxDuration:
           "We've reached the time limit for this call. I've noted everything you told me, and our team will follow up. Goodbye.",
         chatHandoff: "Thanks, I've passed your conversation to our team. Someone will reply here shortly.",
-        chatVoiceUnsupported: "Sorry, I can't listen to voice messages yet. Could you type your message?",
+        chatVoiceUnsupported: "Sorry, I couldn't listen to that voice message. Could you type your message?",
         chatMediaOnly: "Thanks, I've got that. Could you write how I can help you?",
+        chatVoiceTooLong: "That voice message is a bit long for me. Could you send a shorter one or type it?",
       };
 }

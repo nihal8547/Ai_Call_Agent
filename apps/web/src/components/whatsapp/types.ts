@@ -8,6 +8,7 @@ export type WhatsAppNumber = {
   qualityRating: string | null;
   lastError: string | null;
   connectedAt: string;
+  settings: { voiceReplies?: "voice" | "text" | "both"; voice?: string };
   agent: { id: string; name: string; status: string } | null;
 };
 
@@ -19,6 +20,7 @@ export type WhatsAppOverview = {
     graphVersion: string;
     webhookUrl: string;
     webhookReady: boolean;
+    speech: boolean;
   };
   numbers: WhatsAppNumber[];
 };
@@ -66,8 +68,15 @@ export type ChatMessage = {
   sentAt: string | null;
   createdAt: string;
   sentByName: string | null;
+  /** A stored file (voice note) staff can play */
+  hasMedia?: boolean;
+  mediaSeconds?: number | null;
+  transcriptLanguage?: string | null;
   /** Agent replies: what they were based on (staff only) */
   meta?: {
+    tooLong?: boolean;
+    sentAsText?: boolean;
+    voiceFallback?: string;
     sources?: { documentId: string; title: string; page?: number }[];
     tools?: { tool: string; ok: boolean; error: string | null }[];
     control?: "transfer" | "hangup";

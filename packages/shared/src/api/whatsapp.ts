@@ -29,7 +29,21 @@ export const WhatsAppManualConnectBody = z.object({
 });
 export type WhatsAppManualConnectBody = z.infer<typeof WhatsAppManualConnectBody>;
 
-export const UpdateWhatsAppNumberBody = z.object({ agentId: z.uuid().nullable() });
+/** How a WhatsApp number's agent behaves (stored on whatsapp_numbers.settings) */
+export const WhatsAppNumberSettings = z.object({
+  /** Answering a voice note: with a voice note, in writing, or both */
+  voiceReplies: z.enum(["voice", "text", "both"]).default("voice"),
+  /** Gemini voice used for spoken replies */
+  voice: z.enum(["Kore", "Aoede", "Puck", "Charon"]).default("Kore"),
+});
+export type WhatsAppNumberSettings = z.infer<typeof WhatsAppNumberSettings>;
+
+export const UpdateWhatsAppNumberBody = z
+  .object({
+    agentId: z.uuid().nullable().optional(),
+    settings: WhatsAppNumberSettings.partial().optional(),
+  })
+  .refine((b) => b.agentId !== undefined || b.settings !== undefined, "Nothing to change");
 
 export const WhatsAppTestMessageBody = z.object({
   to: z

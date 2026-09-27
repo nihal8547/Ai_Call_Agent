@@ -149,7 +149,7 @@ describe.skipIf(!hasTestDb)("WhatsApp: the agent answers customers", () => {
     expect(back.length).toBeGreaterThan(0);
   });
 
-  it("asks voice-note senders to type (until voice support)", async () => {
+  it("asks voice-note senders to type when there's no speech service", async () => {
     const from = "97455100004";
     const before = graph.texts().filter((t) => t.to === from).length;
     await hook.voice(from, "Sara");
@@ -157,7 +157,7 @@ describe.skipIf(!hasTestDb)("WhatsApp: the agent answers customers", () => {
       const mine = graph.texts().filter((t) => t.to === from);
       return mine.length > before ? mine.at(-1)!.text : null;
     });
-    expect(reply).toBe("Sorry, I can't listen to voice messages yet. Could you type your message?");
+    expect(reply).toBe("Sorry, I couldn't listen to that voice message. Could you type your message?");
   });
 
   it("stays quiet without a published agent, and for blocked numbers", async () => {

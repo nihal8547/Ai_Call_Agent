@@ -40,3 +40,4 @@ export function createEmbeddingProvider(
   if (provider === "gemini") throw new Error("EMBEDDINGS_PROVIDER=gemini requires GEMINI_API_KEY");
   return null;
 }
+export * from "./speech";

@@ -1,9 +1,10 @@
 import { HttpStatus, Inject, Injectable, Logger } from "@nestjs/common";
 import { Prisma, type WhatsAppNumber } from "@platform/db";
-import type {
-  UpdateWhatsAppNumberBody,
-  WhatsAppEmbeddedSignupBody,
-  WhatsAppManualConnectBody,
+import {
+  type UpdateWhatsAppNumberBody,
+  type WhatsAppEmbeddedSignupBody,
+  type WhatsAppManualConnectBody,
+  WhatsAppNumberSettings,
 } from "@platform/shared";
 import { GraphClient, WhatsAppError } from "@platform/whatsapp";
 import { randomInt, randomUUID } from "node:crypto";
@@ -37,6 +38,7 @@ export const NUMBER_VIEW = {
   qualityRating: true,
   lastError: true,
   connectedAt: true,
+  settings: true,
   agent: { select: { id: true, name: true, status: true } },
 } as const;
 
@@ -95,6 +97,8 @@ export class WhatsAppAccountsService {
       graphVersion: e.META_GRAPH_VERSION,
       webhookUrl: `${e.PUBLIC_BASE_URL}/api/v1/webhooks/whatsapp`,
       webhookReady: Boolean(e.META_APP_SECRET && e.WHATSAPP_VERIFY_TOKEN),
+      /** Voice notes are transcribed and spoken with Gemini */
+      speech: Boolean(e.GEMINI_API_KEY),
     };
   }
 
@@ -241,17 +245,23 @@ export class WhatsAppAccountsService {
     return this.tenantDb.tx(auth.tenantId, async (tx) => {
       const before = await tx.whatsAppNumber.findUnique({ where: { id } });
       if (!before || before.status === "DISCONNECTED") throw numberNotFound();
+      const settings = body.settings
+        ? WhatsAppNumberSettings.parse({ ...(before.settings as object), ...body.settings })
+        : undefined;
       const number = await tx.whatsAppNumber.update({
         where: { id },
-        data: { agentId: body.agentId },
+        data: {
+          ...(body.agentId !== undefined ? { agentId: body.agentId } : {}),
+          ...(settings ? { settings } : {}),
+        },
         select: NUMBER_VIEW,
       });
       await this.audit.record(tx, auth, {
         action: "whatsapp.updated",
         entityType: "whatsapp_number",
         entityId: id,
-        before: { agentId: before.agentId },
-        after: { agentId: body.agentId },
+        before: { agentId: before.agentId, settings: before.settings },
+        after: { agentId: number.agent?.id ?? null, settings: number.settings },
         ...meta,
       });
       return number;

@@ -1578,6 +1578,33 @@ Plan and review: [WPIntegration.md](WPIntegration.md); operator guide:
   configured replies are rephrased in WhatsApp style, without it the deterministic wording is
   sent.
 
+### WhatsApp W3: voice notes in and out ✅
+
+- **Customers' voice notes:** downloaded from Meta straight away (their links expire), kept in
+  object storage (`tenants/{id}/whatsapp/{conversation}/{message}.ogg`), measured and transcribed
+  by Gemini in the language spoken (sent as Ogg; as 16 kHz WAV if Gemini refuses the format).
+  The transcript is what the agent answers. Notes longer than `WHATSAPP_VOICE_MAX_SECONDS` get
+  "send a shorter one or type it"; nothing heard gets "please type". Notes are transcribed for
+  staff even while they handle the chat.
+- **Spoken replies:** a voice note is answered with a voice note (Gemini speech, 24 kHz, encoded
+  to Ogg / Opus with libopus in WebAssembly and our own Ogg writer, so no ffmpeg), uploaded to
+  Meta and sent as audio. Per number: answer with a voice note, a text message or both, and one
+  of four voices. Long replies or replies with links are written; if speech or Meta's upload
+  fails the words go as text. Typed messages always get text.
+- **Inbox:** a player (served through the API with byte ranges, never a public link) with the
+  length and the transcript, or the agent's words under its own notes. Settings → WhatsApp has
+  the **Voice notes** options.
+- **Metering:** `STT_SECONDS` and tokens for transcription, `TTS_CHARACTERS` for speech.
+- **Verified:** codec tests (encode → decode round trip, length, damaged file), Gemini speech
+  client tests, API 5 new tests with Meta and Gemini faked (voice in and out, the three reply
+  modes, speech failure → text, too long, nothing heard, staff mode); our Ogg files decode and
+  play in Chromium with the right length. Browser with the Meta / Gemini stand-in: a 4 s note
+  transcribed, a 3 s voice reply sent (download → transcribe → speak → upload → send), both
+  playable in the Inbox, no console errors.
+- **Not verified:** real Meta media and real Gemini transcription / speech (network policy); the
+  speech model is a preview name, configurable with `GEMINI_TTS_MODEL`. Quality for Malayalam and
+  Gulf Arabic voice notes needs checking with real recordings.
+
 ### ✅ M3 — Level 3 milestone
 
 - The production readiness checklist (plan §18) passes.
