@@ -51,7 +51,13 @@ export async function api<T>(path: string, { method = "GET", body, retry = true 
     window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`;
     throw new ApiError(401, { detail: "Session expired" });
   }
-  if (!res.ok) throw await toApiError(res);
+  if (!res.ok) {
+    const err = await toApiError(res);
+    // The platform suspended this business: nothing in the app works until it is reactivated
+    if (err.problem.code === "TENANT_SUSPENDED" && !path.startsWith("/auth/"))
+      window.location.href = "/suspended";
+    throw err;
+  }
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
 

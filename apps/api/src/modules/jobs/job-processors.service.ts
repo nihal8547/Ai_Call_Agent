@@ -36,11 +36,21 @@ export class JobProcessors {
 
   async process(job: Job<QueueJob>): Promise<unknown> {
     const d = job.data;
+    // A suspended business's queued work (webhooks, emails, replies, CRM) is dropped
+    if ("tenantId" in d && d.tenantId && !(await this.active(d.tenantId)))
+      return { skipped: "business suspended" };
     if (d.kind === "tool") return this.tool(job as Job<ToolJob>);
     if (d.kind === "email") return this.email(job as Job<EmailJob>);
     const handler = this.handlers.get(d.kind);
     if (!handler) throw new UnrecoverableError(`No handler for ${d.kind} jobs`);
     return handler(job);
+  }
+
+  private async active(tenantId: string): Promise<boolean> {
+    const t = await this.tenantDb
+      .db(tenantId)
+      .tenant.findUnique({ where: { id: tenantId }, select: { status: true } });
+    return t?.status === "ACTIVE";
   }
 
   /** A background tool from a call (webhook, email, sheet row), with the agent's published grants */

@@ -30,6 +30,7 @@ import { TestConsoleModule } from "./modules/test-console/test-console.module";
 import { TenantsModule } from "./modules/tenants/tenants.module";
 import { UsersModule } from "./modules/users/users.module";
 import { WhatsAppModule } from "./modules/whatsapp/whatsapp.module";
+import { PlatformModule } from "./modules/platform/platform.module";
 
 @Module({})
 export class AppModule {
@@ -77,6 +78,7 @@ export class AppModule {
         TestConsoleModule,
         KnowledgeModule,
         AppointmentsModule,
+        PlatformModule,
         WhatsAppModule,
       ],
       providers: [

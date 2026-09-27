@@ -1605,6 +1605,22 @@ Plan and review: [WPIntegration.md](WPIntegration.md); operator guide:
   speech model is a preview name, configurable with `GEMINI_TTS_MODEL`. Quality for Malayalam and
   Gulf Arabic voice notes needs checking with real recordings.
 
+### Platform console and suspending a business ✅
+
+- **Platform → Businesses** (platform owners only; two-step sign-in required in production):
+  every business with owner, members, agents, numbers, calls, minutes, estimated cost and failed
+  jobs over 30 days, totals, search and status filter; a business page with plan and usage limits
+  (applied at once), suspend with a reason, reactivate, and the history of platform changes
+  (written to the business's own audit log).
+- **Suspended businesses:** calls hear "not in service", WhatsApp isn't answered, sign-in says
+  the account is suspended, open sessions land on a "suspended" page, API keys are refused and
+  queued jobs are dropped; nothing is deleted. Cross-business reads and changes go through
+  SECURITY DEFINER functions (`platform_tenants`, `platform_set_tenant_status`, `…_plan`).
+- **Verified:** API tests (owners only, API keys refused, plan and limits with validation and
+  audit, suspending blocks session, sign-in, API key, calls and queued work; reactivating
+  restores them; you can't suspend your own business); browser: list, search, limits, suspend,
+  the customer's app and sign-in, reactivate.
+
 ### WhatsApp: connection and Inbox, checked and completed ✅
 
 - **Connection:** numbers that stay on the WhatsApp Business app (Meta coexistence: not

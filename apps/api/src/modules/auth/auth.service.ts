@@ -1,6 +1,12 @@
 import { HttpStatus, Inject, Injectable } from "@nestjs/common";
 import { hashPassword, parseMasterKey, verifyDummyPassword, verifyPassword } from "@platform/crypto";
-import { Prisma, provisionTenant, userMemberships, type UserMembership } from "@platform/db";
+import {
+  Prisma,
+  provisionTenant,
+  userMemberships,
+  type UserMembership,
+  userSuspendedBusiness,
+} from "@platform/db";
 import { type LoginBody, type MeResponse, type RegisterBody } from "@platform/shared";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { randomBytes } from "node:crypto";
@@ -127,6 +133,13 @@ export class AuthService {
       ? memberships.find((m) => m.tenantSlug === body.tenantSlug)
       : memberships[0];
     if (!target) {
+      const suspended = await userSuspendedBusiness(this.prisma.client, user.id);
+      if (suspended)
+        throw new AppException(
+          HttpStatus.FORBIDDEN,
+          "TENANT_SUSPENDED",
+          `${suspended}'s account is suspended. Contact the platform's support to reactivate it.`,
+        );
       throw new AppException(HttpStatus.FORBIDDEN, "FORBIDDEN", "You are not a member of an active business");
     }
     // Two-step sign-in: the password alone opens nothing

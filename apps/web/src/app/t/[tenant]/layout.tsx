@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { AppShell } from "@/components/app/app-shell";
 import { MeProvider } from "@/components/app/me-context";
 import { SessionGate, TenantSwitch } from "@/components/app/session-gate";
+import { ApiError } from "@/lib/api/errors";
 import { getMe } from "@/lib/api/server";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +16,11 @@ export default async function TenantLayout({
   params: Promise<{ tenant: string }>;
 }) {
   const { tenant } = await params;
-  const me = await getMe();
+  const me = await getMe().catch((err: unknown) => {
+    // The platform suspended this business: say so instead of failing
+    if (err instanceof ApiError && err.problem.code === "TENANT_SUSPENDED") redirect("/suspended");
+    throw err;
+  });
   if (!me) return <SessionGate />;
 
   if (me.tenant.slug !== tenant) {

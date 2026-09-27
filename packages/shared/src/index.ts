@@ -17,3 +17,4 @@ export * from "./api/integrations";
 export * from "./usage/prices";
 export * from "./usage/analytics";
 export * from "./api/whatsapp";
+export * from "./api/platform";

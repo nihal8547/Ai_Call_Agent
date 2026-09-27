@@ -147,3 +147,18 @@ Twilio number points at us without being added (Phone numbers → Add).
 - **The business's SIP line went quiet**: the hourly check raises a "SIP connection quiet"
   alert when a connection that normally has calls had none for a day. Ask the carrier whether
   their side changed (IP addresses, credentials).
+
+## Platform console (businesses, limits, suspending)
+
+Platform owners see **Platform → Businesses** in the sidebar: every business with its calls,
+minutes, estimated cost and failed jobs (last 30 days), searchable; each business's plan and
+usage limits; **Suspend** (with a reason) and **Reactivate**. Every change is written to that
+business's audit log with who made it. In production the console requires two-step sign-in.
+
+- **Make someone a platform owner** (the seed's owner already is), with the owner connection:
+  `psql "$DATABASE_MIGRATION_URL" -c "UPDATE users SET is_platform_owner = true WHERE email = 'ops@example.com'"`
+- **Suspending** keeps every row. Until reactivated: calls to its numbers hear "not in
+  service", WhatsApp messages get no reply (they aren't stored either), members can't sign in (the
+  sign-in page says the account is suspended; open sessions land on a "suspended" page), API
+  keys are refused, and queued jobs (webhooks, emails, CRM sync, replies) are dropped.
+- You can't suspend the business you're signed in to (you'd lock yourself out); switch first.

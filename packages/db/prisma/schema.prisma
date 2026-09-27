@@ -169,6 +169,9 @@ model Tenant {
   /// Calls are ended politely after this long (toll-fraud and runaway-call protection)
   maxCallMinutes Int          @default(20) @map("max_call_minutes")
   status         TenantStatus @default(ACTIVE)
+  /// Why the platform suspended (or reactivated) the business, shown to the operator
+  statusReason   String?      @map("status_reason")
+  statusChangedAt DateTime?   @map("status_changed_at") @db.Timestamptz(3)
   plan           String       @default("free") @db.VarChar(40)
   /// zod: TenantLimits (max calls/day, minutes/month, documents, storage, tokens)
   usageLimits    Json         @default("{}") @map("usage_limits")

@@ -171,3 +171,84 @@ export async function releaseWhatsAppNumber(prisma: PrismaClient, phoneNumberId:
   const rows = await prisma.$queryRaw<{ n: number }[]>`SELECT release_whatsapp_number(${phoneNumberId}) AS n`;
   return Number(rows[0]?.n ?? 0);
 }
+
+export type PlatformTenant = {
+  id: string;
+  name: string;
+  slug: string;
+  status: "ACTIVE" | "SUSPENDED";
+  statusReason: string | null;
+  statusChangedAt: Date | null;
+  plan: string;
+  country: string;
+  usageLimits: unknown;
+  createdAt: Date;
+  ownerEmail: string | null;
+  members: number;
+  agents: number;
+  phoneNumbers: number;
+  whatsappNumbers: number;
+  calls30d: number;
+  minutes30d: number;
+  costMicros30d: number;
+  failedJobs: number;
+  lastCallAt: Date | null;
+};
+
+/** Platform console: every business with its last 30 days (only for platform owners) */
+export async function platformTenants(prisma: PrismaClient): Promise<PlatformTenant[]> {
+  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`SELECT * FROM platform_tenants()`;
+  const n = (v: unknown) => Number(v ?? 0);
+  return rows.map((r) => ({
+    id: String(r.id),
+    name: String(r.name),
+    slug: String(r.slug),
+    status: r.status as PlatformTenant["status"],
+    statusReason: (r.status_reason as string | null) ?? null,
+    statusChangedAt: (r.status_changed_at as Date | null) ?? null,
+    plan: String(r.plan),
+    country: String(r.country),
+    usageLimits: r.usage_limits ?? {},
+    createdAt: r.created_at as Date,
+    ownerEmail: (r.owner_email as string | null) ?? null,
+    members: n(r.members),
+    agents: n(r.agents),
+    phoneNumbers: n(r.phone_numbers),
+    whatsappNumbers: n(r.whatsapp_numbers),
+    calls30d: n(r.calls_30d),
+    minutes30d: n(r.minutes_30d),
+    costMicros30d: n(r.cost_micros_30d),
+    failedJobs: n(r.failed_jobs),
+    lastCallAt: (r.last_call_at as Date | null) ?? null,
+  }));
+}
+
+/** Suspend or reactivate a business; false if there is no such business */
+export async function setTenantStatus(
+  prisma: PrismaClient,
+  tenantId: string,
+  status: "ACTIVE" | "SUSPENDED",
+  reason: string | null,
+): Promise<boolean> {
+  const rows = await prisma.$queryRaw<{ n: number }[]>`
+    SELECT platform_set_tenant_status(${tenantId}::uuid, ${status}, ${reason}) AS n`;
+  return Number(rows[0]?.n ?? 0) > 0;
+}
+
+export async function setTenantPlan(
+  prisma: PrismaClient,
+  tenantId: string,
+  plan: string,
+  limits: Record<string, unknown>,
+): Promise<boolean> {
+  const rows = await prisma.$queryRaw<{ n: number }[]>`
+    SELECT platform_set_tenant_plan(${tenantId}::uuid, ${plan}, ${JSON.stringify(limits)}::jsonb) AS n`;
+  return Number(rows[0]?.n ?? 0) > 0;
+}
+
+/** A suspended business the user belongs to (its name), for a clear sign-in message */
+export async function userSuspendedBusiness(prisma: PrismaClient, userId: string): Promise<string | null> {
+  const rows = await prisma.$queryRaw<{ name: string | null }[]>`
+    SELECT user_suspended_business(${userId}::uuid) AS name`;
+  return rows[0]?.name ?? null;
+}

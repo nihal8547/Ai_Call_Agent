@@ -24,6 +24,7 @@ const TONE_OF: Record<string, keyof typeof TONES> = {
   FOLLOW_UP_REQUIRED: "warn",
   INACTIVE: "neutral",
   FAILED: "bad",
+  SUSPENDED: "bad",
   READY: "good",
   CONNECTED: "good",
   UPCOMING: "info",

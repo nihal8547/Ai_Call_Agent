@@ -8,6 +8,7 @@ import {
   Building2,
   CalendarDays,
   ChevronsUpDown,
+  Globe2,
   KeyRound,
   LayoutDashboard,
   ListChecks,
@@ -132,10 +133,18 @@ export function AppShell({ children }: { children: ReactNode }) {
     router.refresh();
   };
 
-  const groups = NAV.map((g) => ({
-    ...g,
-    items: g.items.filter((it) => !it.permission || me.permissions.includes(it.permission)),
-  })).filter((g) => g.items.length);
+  const groups = [
+    ...NAV,
+    // The operator's console, for platform owners only (the API checks it too)
+    ...(me.user.isPlatformOwner
+      ? [{ group: "Platform", items: [{ label: "Businesses", href: "platform", icon: Globe2 }] }]
+      : []),
+  ]
+    .map((g) => ({
+      ...g,
+      items: g.items.filter((it: NavItem) => !it.permission || me.permissions.includes(it.permission)),
+    }))
+    .filter((g) => g.items.length);
 
   return (
     <div className="min-h-dvh bg-white">

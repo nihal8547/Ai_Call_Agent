@@ -12,30 +12,29 @@ or more.
 
 ## 0. Where the project stands
 
-| Area                                                                                | State                   |
-| ----------------------------------------------------------------------------------- | ----------------------- |
-| Multi-tenant platform, sign-in, 2FA, roles, invitations, password reset, audit log  | Built                   |
-| Agents: editor, versions, workflows, test console, templates (incl. Qatar / Arabic) | Built                   |
-| Phone calls through Twilio (webhook mode), existing numbers by forwarding and SIP   | Built, not on real line |
-| Knowledge base (RAG) with live-call answers and knowledge gaps                      | Built                   |
-| Leads, appointments, lead board, CRM sync (HubSpot, Zoho)                           | Built                   |
-| Integrations with one-click sign-in (Google, Microsoft, HubSpot, Zoho) or manual    | Built, not on real APIs |
-| Queues, retries, failed deliveries, analytics, usage metering, cost estimates       | Built                   |
-| Security hardening, observability, Docker deployment, backups, runbook              | Built                   |
-| Streaming voice (Twilio ConversationRelay, per agent)                               | Built, not on real line |
-| Billing, platform admin console                                                     | **Not built**           |
+| Area                                                                                 | State                   |
+| ------------------------------------------------------------------------------------ | ----------------------- |
+| Multi-tenant platform, sign-in, 2FA, roles, invitations, password reset, audit log   | Built                   |
+| Agents: editor, versions, workflows, test console, templates (incl. Qatar / Arabic)  | Built                   |
+| Phone calls through Twilio (webhook mode), existing numbers by forwarding and SIP    | Built, not on real line |
+| Knowledge base (RAG) with live-call answers and knowledge gaps                       | Built                   |
+| Leads, appointments, lead board, CRM sync (HubSpot, Zoho)                            | Built                   |
+| Integrations with one-click sign-in (Google, Microsoft, HubSpot, Zoho) or manual     | Built, not on real APIs |
+| Queues, retries, failed deliveries, analytics, usage metering, cost estimates        | Built                   |
+| Security hardening, observability, Docker deployment, backups, runbook               | Built                   |
+| Streaming voice (Twilio ConversationRelay, per agent)                                | Built, not on real line |
+| Platform console: businesses, usage and cost, plans and limits, suspend / reactivate | Built                   |
+| Billing                                                                              | **Not built**           |
 
 ## 1. Before launch: must build (P1)
 
-| Item                                | Size | What to build                                                                                                                                                                                                                           |
-| ----------------------------------- | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Billing**                         | L    | Plans, subscriptions and invoices (Stripe; Razorpay for India), payment webhooks, usage from `usage_records` charged as overage, trial period, "payment failed" grace period then calls refused. A Billing page in Settings.            |
-| **Platform admin console**          | L    | `/admin` for the operator only: list businesses with usage and cost, set plan limits (today `tenants.usage_limits` is changed directly in the database), suspend / reactivate a business, failed jobs and alerts across all businesses. |
-| **Suspend a business**              | S    | A tenant status that refuses calls, sign-ins and API keys while keeping the data; needed for unpaid bills and abuse.                                                                                                                    |
-| **Email verification at sign-up**   | S    | Registration doesn't confirm the email today. Send a link (platform mail exists) and limit what an unverified account can do (e.g. no number purchase).                                                                                 |
-| **Twilio subaccount per business**  | M    | Every number is on the platform account today; subaccounts separate billing, limits and suspension.                                                                                                                                     |
-| **Terms, privacy, consent wording** | S    | Accept terms at sign-up; greeting templates that say the caller is talking to an AI assistant (and recorded, once recordings exist), as Qatar PDPPL and India DPDP require.                                                             |
-| **Browser tests in CI**             | M    | The Playwright checks are run by hand today; put the main flows (sign up, create agent, test call, connect an integration) in CI.                                                                                                       |
+| Item                                | Size | What to build                                                                                                                                                                                                                |
+| ----------------------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Billing**                         | L    | Plans, subscriptions and invoices (Stripe; Razorpay for India), payment webhooks, usage from `usage_records` charged as overage, trial period, "payment failed" grace period then calls refused. A Billing page in Settings. |
+| **Email verification at sign-up**   | S    | Registration doesn't confirm the email today. Send a link (platform mail exists) and limit what an unverified account can do (e.g. no number purchase).                                                                      |
+| **Twilio subaccount per business**  | M    | Every number is on the platform account today; subaccounts separate billing, limits and suspension.                                                                                                                          |
+| **Terms, privacy, consent wording** | S    | Accept terms at sign-up; greeting templates that say the caller is talking to an AI assistant (and recorded, once recordings exist), as Qatar PDPPL and India DPDP require.                                                  |
+| **Browser tests in CI**             | M    | The Playwright checks are run by hand today; put the main flows (sign up, create agent, test call, connect an integration) in CI.                                                                                            |
 
 ## 2. Before launch: prove on real services (P1)
 
@@ -137,7 +136,7 @@ Still open:
 ## 8. Suggested order
 
 1. Operations basics and real-service checks (sections 2 and 3), so problems show up early.
-2. Suspend a business, email verification, platform admin console.
+2. Email verification (the platform console and suspending are built).
 3. Billing and Twilio subaccounts.
 4. Terms and consent wording, browser tests in CI; then launch to the first businesses.
 5. P2 items by customer demand (recordings, outbound calls and WhatsApp are usually asked for
