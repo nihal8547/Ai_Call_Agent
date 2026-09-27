@@ -3,12 +3,7 @@ import { cn } from "@/lib/cn";
 
 export function Card({ className, children }: { className?: string; children: ReactNode }) {
   return (
-    <div
-      className={cn(
-        "rounded-2xl border border-slate-200 bg-white p-6 shadow-xs dark:border-slate-800 dark:bg-slate-900",
-        className,
-      )}
-    >
+    <div className={cn("rounded-xl border border-slate-200 bg-white p-6 shadow-card", className)}>
       {children}
     </div>
   );
@@ -47,10 +42,10 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-        {description ? <p className="mt-1 text-sm text-slate-500">{description}</p> : null}
+        <h1 className="text-[26px] leading-tight font-semibold tracking-tight text-slate-950">{title}</h1>
+        {description ? <p className="mt-1.5 text-[15px] text-slate-500">{description}</p> : null}
       </div>
       {actions}
     </div>

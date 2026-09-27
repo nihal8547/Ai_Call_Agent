@@ -5,6 +5,8 @@ A multi-tenant, configurable, RAG-powered platform for AI phone agents. Any busi
 - Architecture: [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md)
 - Build phases and progress: [`docs/DEVELOPMENT_PHASES.md`](docs/DEVELOPMENT_PHASES.md)
 - Running it in production: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) and the [runbook](docs/RUNBOOK.md)
+- Full project documentation (overview, architecture, how it works, stack and formats, security, build and run): [`docs/project/`](docs/project/README.md)
+- What is still to be built: [`docs/REMAINING_WORK.md`](docs/REMAINING_WORK.md)
 
 ## Stack
 

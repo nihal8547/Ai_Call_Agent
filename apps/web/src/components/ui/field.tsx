@@ -8,7 +8,7 @@ import {
 import { cn } from "@/lib/cn";
 
 const control =
-  "block h-10 w-full rounded-lg border bg-white px-3 text-sm text-slate-900 shadow-xs placeholder:text-slate-400 focus:outline-2 focus:outline-offset-0 focus:outline-brand-500 dark:bg-slate-900 dark:text-slate-100";
+  "block h-10 w-full rounded-lg border bg-white px-3 text-sm text-slate-950 shadow-xs transition-colors placeholder:text-slate-400 hover:border-slate-300 focus:border-slate-950 focus:outline-none focus:ring-4 focus:ring-slate-950/5";
 
 type FieldProps = { label: string; error?: string; hint?: ReactNode };
 
@@ -30,7 +30,7 @@ export const TextField = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLIn
           dir="auto"
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? `${inputId}-error` : hint ? `${inputId}-hint` : undefined}
-          className={cn(control, error ? "border-red-500" : "border-slate-300 dark:border-slate-700")}
+          className={cn(control, error ? "border-red-500" : "border-slate-200")}
           {...props}
         />
         {error ? (
@@ -66,7 +66,7 @@ export const SelectField = forwardRef<
         id={selectId}
         aria-invalid={error ? true : undefined}
         aria-describedby={hint && !error ? `${selectId}-hint` : undefined}
-        className={cn(control, error ? "border-red-500" : "border-slate-300 dark:border-slate-700")}
+        className={cn(control, error ? "border-red-500" : "border-slate-200")}
         {...props}
       >
         {children}

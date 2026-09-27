@@ -1393,14 +1393,15 @@ number (forwarding or SIP), or buys a Twilio number in the app.
   is only known from the test call on a real line.
 - **Twilio has few or no Qatar numbers:** forwarding goes to a number abroad (the carrier charges
   its international rate) or the business connects over SIP.
-- **PII redaction:** retention removes transcripts and caller numbers; events are not redacted
-  while they are kept. Recordings aren't stored yet, so signed recording URLs wait for them.
+- **PII redaction:** the call timeline is redacted before it is stored (emails, phone numbers,
+  card numbers, PAN/Aadhaar), and retention later removes transcripts and caller numbers.
+  Recordings aren't stored yet, so signed recording URLs wait for them.
 - **Per-caller rate limits:** covered by the per-number cap, blocklist and volume alerts rather
   than a separate per-caller limiter.
 - The worker's quiet-SIP alerts show on the dashboard but are not emailed.
 - No virus scan of uploaded documents yet (the ClamAV hook deferred from P8); uploads are
   type-checked and size-limited, parsed in the worker and only downloaded back as attachments.
-- Arabic conversations (plan §4) are still to do.
+- Arabic conversations came right after P12 (see "Qatar localisation" below).
 
 ### Qatar localisation: Arabic agents ✅
 

@@ -75,11 +75,11 @@ export function Section({
   actions?: ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs dark:border-slate-800 dark:bg-slate-900">
+    <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-card">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h2 className="font-semibold">{title}</h2>
-          {description ? <p className="text-sm text-slate-500">{description}</p> : null}
+          <h2 className="text-[15px] font-semibold text-slate-950">{title}</h2>
+          {description ? <p className="mt-0.5 text-sm text-slate-500">{description}</p> : null}
         </div>
         {actions}
       </div>
