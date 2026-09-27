@@ -43,6 +43,16 @@ export const ApiEnvSchema = z
     PUBLIC_BASE_URL: envPrimitives.url.default("http://localhost:4000"),
     /** Base URL of the web app, used in invitation links */
     WEB_BASE_URL: envPrimitives.url.default("http://localhost:3000"),
+    /**
+     * The platform's own mail server, for invitations and password resets (not the businesses'
+     * SMTP integrations): smtp://user:pass@host:587 (STARTTLS) or smtps://user:pass@host:465.
+     * Without it, invitation links are shown to copy and reset links are only logged in development.
+     */
+    SMTP_URL: z
+      .string()
+      .regex(/^smtps?:\/\/.+/, "smtp:// or smtps:// URL")
+      .optional(),
+    MAIL_FROM: z.string().min(3).max(200).default("Voice Agent Platform <no-reply@localhost>"),
     /** HMAC key for access tokens (≥ 32 characters) */
     JWT_SECRET: z.string().min(32, "must be at least 32 characters"),
     ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(900),

@@ -18,7 +18,9 @@ type Values = z.input<typeof LoginBody>;
 
 export function LoginForm() {
   const router = useRouter();
-  const next = useSearchParams().get("next");
+  const params = useSearchParams();
+  const next = params.get("next");
+  const justReset = params.get("reset") === "1";
   const [error, setError] = useState<string | null>(null);
   // Set when the password was right and the account has two-step sign-in
   const [mfaToken, setMfaToken] = useState<string | null>(null);
@@ -65,6 +67,9 @@ export function LoginForm() {
       <h1 className="text-xl font-semibold">Sign in</h1>
       <p className="mt-1 text-sm text-slate-500">Manage your AI voice agents.</p>
       <form onSubmit={onSubmit} noValidate className="mt-6 space-y-4">
+        {justReset && !error ? (
+          <Alert tone="success">Your password was changed. Sign in with the new one.</Alert>
+        ) : null}
         {error ? <Alert>{error}</Alert> : null}
         <TextField
           label="Email"
@@ -73,13 +78,23 @@ export function LoginForm() {
           error={form.formState.errors.email?.message}
           {...form.register("email")}
         />
-        <TextField
-          label="Password"
-          type="password"
-          autoComplete="current-password"
-          error={form.formState.errors.password?.message}
-          {...form.register("password")}
-        />
+        <div>
+          <TextField
+            label="Password"
+            type="password"
+            autoComplete="current-password"
+            error={form.formState.errors.password?.message}
+            {...form.register("password")}
+          />
+          <p className="mt-1.5 text-right text-sm">
+            <Link
+              href="/forgot-password"
+              className="font-medium text-slate-600 hover:text-slate-950 hover:underline"
+            >
+              Forgot password?
+            </Link>
+          </p>
+        </div>
         <Button type="submit" className="w-full" loading={form.formState.isSubmitting}>
           Sign in
         </Button>

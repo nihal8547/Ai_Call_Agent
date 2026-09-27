@@ -45,6 +45,22 @@ export function MembersPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["members"] }),
     onError: (e) => setNotice({ tone: "error", text: errorMessage(e) }),
   });
+  const resendInvite = useMutation({
+    mutationFn: (id: string) =>
+      api<{ email: string; inviteUrl: string; emailed: boolean }>(`/invitations/${id}/resend`, {
+        method: "POST",
+      }),
+    onSuccess: (res) => {
+      setNotice({
+        tone: "success",
+        text: res.emailed
+          ? `A new invitation was emailed to ${res.email}; the earlier link no longer works. New link:`
+          : `New invitation link for ${res.email} (the earlier one no longer works):`,
+        link: res.inviteUrl,
+      });
+      void qc.invalidateQueries({ queryKey: ["invitations"] });
+    },
+  });
   const revokeInvite = useMutation({
     mutationFn: (id: string) => api(`/invitations/${id}`, { method: "DELETE" }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["invitations"] }),
@@ -76,12 +92,20 @@ export function MembersPage() {
       {canWrite && roles.data ? (
         <InviteForm
           roles={roles.data.items}
-          onInvited={(email, link) => {
-            setNotice({
-              tone: "success",
-              text: `Invitation created for ${email}. Share this link with them (it is shown only once):`,
-              link,
-            });
+          onInvited={(email, link, emailed) => {
+            setNotice(
+              emailed
+                ? {
+                    tone: "success",
+                    text: `Invitation emailed to ${email}. You can also share this link with them (shown only once):`,
+                    link,
+                  }
+                : {
+                    tone: "success",
+                    text: `Invitation created for ${email}. Email isn't set up on this platform, so share this link with them (shown only once):`,
+                    link,
+                  },
+            );
             void qc.invalidateQueries({ queryKey: ["invitations"] });
           }}
         />
@@ -164,9 +188,19 @@ export function MembersPage() {
                   <span className="text-slate-500">expires {fmtDate(i.expiresAt)}</span>
                 </span>
                 {canWrite ? (
-                  <Button variant="ghost" onClick={() => revokeInvite.mutate(i.id)}>
-                    Revoke
-                  </Button>
+                  <span className="flex gap-1">
+                    <Button
+                      variant="secondary"
+                      className="h-9"
+                      loading={resendInvite.isPending && resendInvite.variables === i.id}
+                      onClick={() => resendInvite.mutate(i.id)}
+                    >
+                      Resend
+                    </Button>
+                    <Button variant="ghost" className="h-9" onClick={() => revokeInvite.mutate(i.id)}>
+                      Revoke
+                    </Button>
+                  </span>
                 ) : null}
               </li>
             ))}
@@ -184,7 +218,7 @@ function InviteForm({
   onInvited,
 }: {
   roles: Role[];
-  onInvited: (email: string, link: string) => void;
+  onInvited: (email: string, link: string, emailed: boolean) => void;
 }) {
   const [error, setError] = useState<string | null>(null);
   const form = useForm<InviteValues>({
@@ -194,12 +228,12 @@ function InviteForm({
   const onSubmit = form.handleSubmit(async (values) => {
     setError(null);
     try {
-      const res = await api<{ email: string; inviteUrl: string }>("/invitations", {
+      const res = await api<{ email: string; inviteUrl: string; emailed: boolean }>("/invitations", {
         method: "POST",
         body: values,
       });
       form.reset({ email: "", roleId: values.roleId });
-      onInvited(res.email, res.inviteUrl);
+      onInvited(res.email, res.inviteUrl, res.emailed);
     } catch (err) {
       if (!applyServerErrors(err, form.setError)) setError(errorMessage(err));
     }

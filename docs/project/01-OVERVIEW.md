@@ -75,7 +75,9 @@ others, each with its own users, agents, numbers, data and settings.
 ### Business and security settings
 
 - Country (calling code, currency, time zone), longest call, how long records are kept.
-- Members and roles with fine-grained permissions, invitations, API keys, audit log.
+- Members and roles with fine-grained permissions, emailed invitations (with resend), API keys,
+  audit log.
+- "Forgot password" by email.
 - Two-step sign-in (authenticator app), sessions list with sign-out everywhere.
 
 ### Languages

@@ -7,6 +7,7 @@ import { ProblemDetailsFilter } from "./common/filters/problem-details.filter";
 import { RateLimitGuard } from "./common/rate-limit/rate-limit";
 import { API_ENV, type ApiEnv } from "./config/env";
 import { InfraModule } from "./infra/infra.module";
+import { MailModule } from "./modules/mail/mail.module";
 import { ApiKeysModule } from "./modules/api-keys/api-keys.module";
 import { AuditModule } from "./modules/audit/audit.module";
 import { AuthModule } from "./modules/auth/auth.module";
@@ -53,6 +54,7 @@ export class AppModule {
           },
         }),
         InfraModule,
+        MailModule,
         ObservabilityModule,
         HealthModule,
         AuditModule,

@@ -1,5 +1,7 @@
 # Remaining work
 
+_Done since this list was written: password reset by email and emailed invitations (with resend)._
+
 What is still to be built, what exists but hasn't been proven against the real service, and known
 limits. Priorities: **P1** needed before selling to real businesses, **P2** important soon after,
 **P3** later growth. Built so far: phases P1–P12 and Arabic agents (see
@@ -22,21 +24,19 @@ reach the real service.
 
 ## 2. Product gaps (P1–P2)
 
-| Priority | Item                                                     | Notes                                                                                                                                                    |
-| -------- | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| P1       | **Billing**                                              | Plans, subscriptions and invoices (Stripe / Razorpay), usage from `usage_records`, overage alerts. Plan limits already exist but are set by the operator |
-| P1       | **Invitation and notification emails from the platform** | Invitations currently show a link to copy; password reset by email doesn't exist yet                                                                     |
-| P1       | **Password reset**                                       | "Forgot password" flow                                                                                                                                   |
-| P1       | **Twilio subaccount per business**                       | Today every number is on the platform account; subaccounts separate billing and limits                                                                   |
-| P2       | Role editor UI                                           | Custom roles exist in the API; the web app only assigns system roles                                                                                     |
-| P2       | Call recordings                                          | Record (with consent wording), store encrypted, play with signed short-lived links                                                                       |
-| P2       | Virus scanning of uploads                                | ClamAV (or a cloud scanner) before processing                                                                                                            |
-| P2       | Outbound calls                                           | Call back new web leads within a minute, appointment reminders, campaigns                                                                                |
-| P2       | SMS / WhatsApp tools                                     | Catalogued as "coming soon"; confirmations and reminders by message                                                                                      |
-| P2       | CRM workflow tools                                       | `crm.*` tools in workflows (today leads sync automatically)                                                                                              |
-| P2       | Drag-and-drop workflow editor                            | Steps are reordered with buttons today                                                                                                                   |
-| P2       | Live call monitoring                                     | Staff listen in, whisper or take over                                                                                                                    |
-| P2       | Dark mode                                                | The app is white-and-black by design now; dark classes remain in the code and can be switched back on                                                    |
+| Priority | Item                               | Notes                                                                                                                                                    |
+| -------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P1       | **Billing**                        | Plans, subscriptions and invoices (Stripe / Razorpay), usage from `usage_records`, overage alerts. Plan limits already exist but are set by the operator |
+| P1       | **Twilio subaccount per business** | Today every number is on the platform account; subaccounts separate billing and limits                                                                   |
+| P2       | Role editor UI                     | Custom roles exist in the API; the web app only assigns system roles                                                                                     |
+| P2       | Call recordings                    | Record (with consent wording), store encrypted, play with signed short-lived links                                                                       |
+| P2       | Virus scanning of uploads          | ClamAV (or a cloud scanner) before processing                                                                                                            |
+| P2       | Outbound calls                     | Call back new web leads within a minute, appointment reminders, campaigns                                                                                |
+| P2       | SMS / WhatsApp tools               | Catalogued as "coming soon"; confirmations and reminders by message                                                                                      |
+| P2       | CRM workflow tools                 | `crm.*` tools in workflows (today leads sync automatically)                                                                                              |
+| P2       | Drag-and-drop workflow editor      | Steps are reordered with buttons today                                                                                                                   |
+| P2       | Live call monitoring               | Staff listen in, whisper or take over                                                                                                                    |
+| P2       | Dark mode                          | The app is white-and-black by design now; dark classes remain in the code and can be switched back on                                                    |
 
 ## 3. P13 — Streaming voice (P2)
 

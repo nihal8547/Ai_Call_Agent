@@ -1467,6 +1467,28 @@ an overloaded model (503) gets one retry on `gemini-flash-lite-latest` within th
 - The rules path doesn't take corrections to earlier answers (English neither); the AI does.
 - Hijri dates, Ramadan hours and Levantine month names (تشرين …) are not handled.
 
+### Password reset and invitation emails ✅
+
+- **Platform email** through `SMTP_URL` (smtps, or smtp with STARTTLS required except to a local
+  mail catcher) and `MAIL_FROM`, sent from a `mail` queue with retries; jobs holding links are
+  removed once sent (failed ones within an hour). Businesses' own SMTP integrations are separate.
+- **Forgot password** (`POST /auth/password/forgot`, `POST /auth/password/reset`): single-use
+  token, 30 minutes, SHA-256 in Redis, a newer link cancels the older one, token in the URL
+  fragment (removed from the address bar), same answer for unknown emails, rate limits per IP and
+  per email; resetting signs out every session and is audited in each of the user's businesses.
+- **Invitations** are emailed (black-and-white HTML + text, user input escaped); "Resend" issues a
+  fresh link and the old one stops working. Without `SMTP_URL`, the link is still shown to copy.
+- Web: "Forgot password?" on sign-in, forgot and reset pages, Members page says whether the
+  invitation was emailed, with Resend.
+- **Verified:** API tests with a fake SMTP server (invite + resend + old link refused; unknown
+  email gets the same answer and no mail; reset once, older link cancelled, weak password refused,
+  both earlier sessions signed out, audit entry). Browser: invite emailed → resend → the invitee
+  joins from the emailed link; forgot → email → link → token gone from the address bar → new
+  password → old session signed out → sign in; reused link refused; no CSP violations. The HTML
+  email was rendered and checked.
+- **Not verified:** delivery through a real mail provider (SPF/DKIM/DMARC for the sending domain
+  must be set up in production).
+
 ### ✅ M3 — Level 3 milestone
 
 - The production readiness checklist (plan §18) passes.

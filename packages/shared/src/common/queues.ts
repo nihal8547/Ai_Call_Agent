@@ -7,6 +7,8 @@ export const QUEUES = {
   notifications: "notifications",
   analytics: "analytics",
   webhooks: "webhooks",
+  /** The platform's own emails (invitations, password resets); not tied to one business */
+  mail: "mail",
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
@@ -49,6 +51,16 @@ export type EmailJob = TenantJob & {
 
 /** Push a lead to one CRM integration (`crm`); the job reads the lead as it is when it runs */
 export type LeadSyncJob = TenantJob & { kind: "lead_sync"; leadId: string; integrationId: string };
+
+/** An email from the platform itself, sent through SMTP_URL (`mail`) */
+export type PlatformMailJob = {
+  kind: "platform_mail";
+  purpose: "invitation" | "password_reset";
+  to: string;
+  subject: string;
+  text: string;
+  html: string;
+};
 
 /** Recompute analytics roll-ups (`analytics`) */
 export type AnalyticsJob =

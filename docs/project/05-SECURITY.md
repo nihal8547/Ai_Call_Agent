@@ -32,6 +32,8 @@
   platform master key (`MASTER_ENCRYPTION_KEY`). Integration credentials (Google, HubSpot, Zoho,
   SMTP, webhook secrets), SIP passwords and TOTP secrets are stored encrypted, bound to what they
   belong to (additional authenticated data), so a value can't be moved to another record.
+- Platform emails go through a queue with retries; jobs holding links are deleted as soon as they
+  are sent (failed ones within an hour), and logs record only the recipient.
 - Secrets are never returned by the API after creation, and never logged (authorization headers
   and cookies are redacted from logs).
 - The **call timeline is redacted before it is stored**: email addresses, phone numbers, card

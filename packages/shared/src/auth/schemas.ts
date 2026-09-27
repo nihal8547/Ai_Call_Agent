@@ -60,6 +60,14 @@ export const SwitchTenantBody = z.object({ tenantId: z.uuid() });
 // ── Two-step sign-in (TOTP) and sessions ────────────────────────────────────
 /** A 6-digit authenticator code, or a recovery code like 7GQ4-X2MP-KT9A */
 const MfaCode = z.string().trim().min(6).max(20);
+/** "Forgot password": always answered the same way, whether or not the account exists */
+export const ForgotPasswordBody = z.object({ email: Email });
+/** The token from the emailed link, and the new password */
+export const ResetPasswordBody = z.object({
+  token: z.string().trim().min(20).max(200),
+  password: Password,
+});
+
 export const LoginMfaBody = z.object({ mfaToken: z.string().min(20).max(100), code: MfaCode });
 export const EnableTotpBody = z.object({
   code: z

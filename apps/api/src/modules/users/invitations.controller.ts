@@ -28,6 +28,8 @@ import { PrismaService } from "../../infra/prisma.service";
 import { TenantDbService } from "../../infra/tenant-db.service";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
+import { PlatformMailService } from "../mail/platform-mail.service";
+import { invitationEmail } from "../mail/templates";
 import { assertCanGrant } from "./access-policy";
 
 const INVITE_TTL_DAYS = 7;
@@ -41,7 +43,37 @@ export class InvitationsController {
     private readonly audit: AuditService,
     private readonly tokens: TokenService,
     private readonly authService: AuthService,
+    private readonly mail: PlatformMailService,
   ) {}
+
+  /** Email the invitation (when the platform mail server is set up); the link is also returned */
+  private async sendInvite(
+    auth: AuthContext,
+    invite: { email: string; roleName: string; token: string },
+  ): Promise<{ inviteUrl: string; emailed: boolean }> {
+    const inviteUrl = `${this.env.WEB_BASE_URL}/invite/${invite.token}`;
+    if (!this.mail.enabled) return { inviteUrl, emailed: false };
+    const [tenant, inviter] = await Promise.all([
+      this.tenantDb
+        .db(auth.tenantId)
+        .tenant.findUniqueOrThrow({ where: { id: auth.tenantId }, select: { name: true } }),
+      auth.kind === "user"
+        ? this.prisma.client.user.findUnique({ where: { id: auth.userId }, select: { name: true } })
+        : null,
+    ]);
+    const emailed = await this.mail.enqueue({
+      purpose: "invitation",
+      to: invite.email,
+      ...invitationEmail({
+        businessName: tenant.name,
+        inviterName: inviter?.name ?? tenant.name,
+        roleName: invite.roleName,
+        url: inviteUrl,
+        expiresDays: INVITE_TTL_DAYS,
+      }),
+    });
+    return { inviteUrl, emailed };
+  }
 
   @RequirePermissions("users:read")
   @Get()
@@ -64,12 +96,12 @@ export class InvitationsController {
   @RequirePermissions("users:write")
   @UserOnly()
   @Post()
-  create(
+  async create(
     @CurrentAuth() auth: AuthContext,
     @Body(new ZodValidationPipe(CreateInvitationBody)) body: z.output<typeof CreateInvitationBody>,
     @Req() req: FastifyRequest,
   ) {
-    return this.tenantDb.tx(auth.tenantId, async (tx) => {
+    const created = await this.tenantDb.tx(auth.tenantId, async (tx) => {
       const role = await tx.role.findUnique({ where: { id: body.roleId } });
       if (!role)
         throw new AppException(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "Unknown role", [
@@ -101,12 +133,60 @@ export class InvitationsController {
         after: { email: body.email, role: role.key },
         ...requestMeta(req),
       });
-      return {
-        ...invitation,
-        role: { id: role.id, key: role.key, name: role.name },
-        inviteUrl: `${this.env.WEB_BASE_URL}/invite/${token}`,
-      };
+      return { invitation, role: { id: role.id, key: role.key, name: role.name }, token };
     });
+    // After the commit: the email never goes out for an invitation that wasn't saved
+    const sent = await this.sendInvite(auth, {
+      email: created.invitation.email,
+      roleName: created.role.name,
+      token: created.token,
+    });
+    return { ...created.invitation, role: created.role, ...sent };
+  }
+
+  /** A fresh link (the old one stops working), emailed again */
+  @RequirePermissions("users:write")
+  @UserOnly()
+  @Post(":id/resend")
+  @HttpCode(200)
+  @RateLimit({ name: "invite-resend", limit: 20, windowSeconds: 3600, by: "ip" })
+  async resend(
+    @CurrentAuth() auth: AuthContext,
+    @Param(new ZodValidationPipe(IdParam)) { id }: { id: string },
+    @Req() req: FastifyRequest,
+  ) {
+    const token = randomToken(32);
+    const invitation = await this.tenantDb.tx(auth.tenantId, async (tx) => {
+      const found = await tx.invitation.findFirst({
+        where: { id, acceptedAt: null },
+        select: { id: true, role: { select: { permissions: true } } },
+      });
+      if (!found) throw new AppException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Invitation not found");
+      assertCanGrant(auth, found.role.permissions);
+      const updated = await tx.invitation.update({
+        where: { id },
+        data: { tokenHash: sha256Hex(token), expiresAt: new Date(Date.now() + INVITE_TTL_DAYS * 86_400_000) },
+        select: {
+          id: true,
+          email: true,
+          expiresAt: true,
+          role: { select: { id: true, key: true, name: true } },
+        },
+      });
+      await this.audit.record(tx, auth, {
+        action: "invitation.resent",
+        entityType: "invitation",
+        entityId: id,
+        ...requestMeta(req),
+      });
+      return updated;
+    });
+    const sent = await this.sendInvite(auth, {
+      email: invitation.email,
+      roleName: invitation.role.name,
+      token,
+    });
+    return { ...invitation, ...sent };
   }
 
   @RequirePermissions("users:write")

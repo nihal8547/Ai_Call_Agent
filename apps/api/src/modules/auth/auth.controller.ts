@@ -2,9 +2,11 @@ import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Req, 
 import {
   DisableTotpBody,
   EnableTotpBody,
+  ForgotPasswordBody,
   LoginBody,
   LoginMfaBody,
   RegisterBody,
+  ResetPasswordBody,
   SwitchTenantBody,
 } from "@platform/shared";
 import type { FastifyReply, FastifyRequest } from "fastify";
@@ -20,6 +22,7 @@ import { AuditService } from "../audit/audit.service";
 import { TenantDbService } from "../../infra/tenant-db.service";
 import { AuthService } from "./auth.service";
 import { MfaService } from "./mfa.service";
+import { PasswordResetService } from "./password-reset.service";
 
 const FamilyParam = z.object({ id: z.uuid() });
 
@@ -31,6 +34,7 @@ export class AuthController {
     private readonly tokens: TokenService,
     private readonly audit: AuditService,
     private readonly tenantDb: TenantDbService,
+    private readonly passwordReset: PasswordResetService,
   ) {}
 
   /** Second step of sign-in, with the ticket the password step returned */
@@ -158,6 +162,36 @@ export class AuthController {
     @Res({ passthrough: true }) reply: FastifyReply,
   ) {
     return this.auth.login(body, req, reply);
+  }
+
+  /**
+   * "Forgot password": emails a single-use link when the account exists. The answer is the same
+   * either way, so it can't be used to find out who has an account.
+   */
+  @Public()
+  @Post("password/forgot")
+  @HttpCode(202)
+  @RateLimit(
+    { name: "pw-forgot-ip", limit: 5, windowSeconds: 900, by: "ip" },
+    { name: "pw-forgot-email", limit: 3, windowSeconds: 3600, by: { bodyField: "email" } },
+  )
+  async forgotPassword(
+    @Body(new ZodValidationPipe(ForgotPasswordBody)) body: z.output<typeof ForgotPasswordBody>,
+  ): Promise<{ ok: true }> {
+    await this.passwordReset.request(body.email);
+    return { ok: true };
+  }
+
+  /** Set a new password with the emailed token; signs the account out everywhere */
+  @Public()
+  @Post("password/reset")
+  @HttpCode(204)
+  @RateLimit({ name: "pw-reset-ip", limit: 10, windowSeconds: 900, by: "ip" })
+  async resetPassword(
+    @Body(new ZodValidationPipe(ResetPasswordBody)) body: z.output<typeof ResetPasswordBody>,
+    @Req() req: FastifyRequest,
+  ): Promise<void> {
+    await this.passwordReset.reset(body.token, body.password, requestMeta(req));
   }
 
   /** Public because the access token may already be expired; authenticated by the refresh cookie + CSRF */

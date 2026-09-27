@@ -4,12 +4,13 @@ import { AuditModule } from "../audit/audit.module";
 import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
 import { MfaService } from "./mfa.service";
+import { PasswordResetService } from "./password-reset.service";
 
 @Global()
 @Module({
   imports: [AuditModule],
   controllers: [AuthController],
-  providers: [AuthService, TokenService, MfaService],
+  providers: [AuthService, TokenService, MfaService, PasswordResetService],
   exports: [AuthService, TokenService],
 })
 export class AuthModule {}
