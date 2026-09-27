@@ -27,7 +27,9 @@ type TenantJob = { tenantId: string; label: string };
  */
 export type ToolJob = TenantJob & {
   kind: "tool";
-  callId: string;
+  /** The call, or null when the tool ran in a WhatsApp conversation (conversationId) */
+  callId: string | null;
+  conversationId?: string;
   agentId: string;
   agentVersionId: string;
   callerNumber: string;
@@ -75,7 +77,10 @@ export type AnalyticsJob =
 /** Send one queued WhatsApp message (`whatsapp`); the job reads the message row when it runs */
 export type WhatsAppSendJob = TenantJob & { kind: "whatsapp_send"; messageId: string };
 
-export type QueueJob = ToolJob | EmailJob | LeadSyncJob | WhatsAppSendJob;
+/** Let the agent answer a conversation's new customer messages (`whatsapp`) */
+export type WhatsAppReplyJob = TenantJob & { kind: "whatsapp_reply"; conversationId: string };
+
+export type QueueJob = ToolJob | EmailJob | LeadSyncJob | WhatsAppSendJob | WhatsAppReplyJob;
 
 /** Where a background tool's job goes: webhooks, messages to people, or records (leads, sheets, CRMs) */
 export function queueForTool(tool: string): "webhooks" | "notifications" | "crm" {

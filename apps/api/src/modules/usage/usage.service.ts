@@ -15,7 +15,10 @@ const providerOf = (model: string) =>
  * What one conversational turn consumed: LLM tokens (understanding, phrasing, knowledge answers),
  * the query embedding, the reply's text-to-speech characters, and speech recognition of the caller.
  */
-export function turnUsage(turn: RuntimeTurn, opts: { callerSpoke: boolean }): UsageLine[] {
+export function turnUsage(
+  turn: RuntimeTurn,
+  opts: { callerSpoke: boolean; /** false for chats: nothing is spoken or recognised */ spoken?: boolean },
+): UsageLine[] {
   const lines: UsageLine[] = [];
   const llm = (model: string, input: number, output: number) => {
     lines.push({ kind: "LLM_INPUT_TOKENS", quantity: input, provider: providerOf(model), model });
@@ -35,6 +38,7 @@ export function turnUsage(turn: RuntimeTurn, opts: { callerSpoke: boolean }): Us
       if (u.llmModel) llm(u.llmModel, u.inputTokens ?? 0, u.outputTokens ?? 0);
     }
   }
+  if (opts.spoken === false) return mergeUsage(lines);
   if (turn.speech)
     lines.push({ kind: "TTS_CHARACTERS", quantity: turn.speech.length, provider: "twilio", model: null });
   if (opts.callerSpoke)

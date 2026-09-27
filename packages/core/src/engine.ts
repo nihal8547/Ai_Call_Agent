@@ -537,8 +537,9 @@ function understandWithRules(c: Ctx, text: string): Understanding {
     return { intent: question ? "question" : "unclear", fields, question: question ? text : null };
   }
 
-  if (s.awaiting?.kind === "field") {
-    const f = fieldByKey(c, s.awaiting.fieldKey);
+  // Nothing pending happens when a chat starts: the customer writes first and never saw a question
+  if (s.awaiting?.kind === "field" || s.awaiting === null) {
+    const f = s.awaiting ? fieldByKey(c, s.awaiting.fieldKey) : undefined;
     const freeText = f?.type === "text" || f?.type === "name";
     if (f && !(question && freeText)) {
       const candidate = extractCandidate(f, text);

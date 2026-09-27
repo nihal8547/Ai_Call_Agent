@@ -11,7 +11,9 @@ import { upsertLeadForCall } from "../telephony/lead-writer";
 
 export type CallToolContext = {
   tenantId: string;
-  callId: string;
+  /** The call the tools run in, or null in a WhatsApp conversation (conversationId) */
+  callId: string | null;
+  conversationId?: string | null;
   agentId: string;
   callerNumber: string;
   timezone: string;
@@ -57,7 +59,13 @@ export class ToolService {
             // A taken slot or a closed day is a normal conversation outcome, not an incident
             const level = BUSINESS_OUTCOMES.has(e.error ?? "") ? "log" : "warn";
             this.logger[level](
-              { callId: t.callId, tool: e.tool, error: e.error, detail: e.detail },
+              {
+                callId: t.callId,
+                conversationId: t.conversationId,
+                tool: e.tool,
+                error: e.error,
+                detail: e.detail,
+              },
               "tool did not complete",
             );
           }
@@ -107,7 +115,7 @@ export class ToolService {
           // One booking at a time per agent, so two callers can't both take the last place
           await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`booking:${t.agentId}`}, 0))`;
           const existing = await tx.appointment.findFirst({
-            where: { callId: t.callId, startsAt: a.start, status: "UPCOMING" },
+            where: { ...origin(t), startsAt: a.start, status: "UPCOMING" },
           });
           if (existing) return { ok: true as const, appointmentId: existing.id };
           if (a.capacity !== null) {
@@ -125,6 +133,7 @@ export class ToolService {
               tenantId: t.tenantId,
               agentId: t.agentId,
               callId: t.callId,
+              conversationId: t.conversationId ?? null,
               leadId: lead.id,
               title: a.title.slice(0, 200),
               startsAt: a.start,
@@ -138,7 +147,7 @@ export class ToolService {
         }),
 
       discard: async (id) => {
-        await this.tenantDb.db(t.tenantId).appointment.deleteMany({ where: { id, callId: t.callId } });
+        await this.tenantDb.db(t.tenantId).appointment.deleteMany({ where: { id, ...origin(t) } });
       },
 
       nextForCaller: async () => {
@@ -164,4 +173,11 @@ export class ToolService {
       },
     };
   }
+}
+
+/** Rows created in this call or conversation (a chat has no call id) */
+function origin(t: CallToolContext): { callId: string } | { conversationId: string } {
+  if (t.callId) return { callId: t.callId };
+  if (t.conversationId) return { conversationId: t.conversationId };
+  throw new Error("Tools need a call or a conversation");
 }

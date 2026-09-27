@@ -9,6 +9,7 @@ export const USAGE_KINDS = [
   "TTS_CHARACTERS",
   "STT_SECONDS",
   "STORAGE_BYTES",
+  "WHATSAPP_MESSAGES",
 ] as const;
 export type UsageKind = (typeof USAGE_KINDS)[number];
 
@@ -28,6 +29,8 @@ export const DEFAULT_PRICES: Readonly<Record<string, number>> = {
   TTS_CHARACTERS: 16,
   STT_SECONDS: 20_000 / 15,
   STORAGE_BYTES: 0,
+  // Replies inside the 24-hour customer service window are free on Meta; set your rate if charged
+  WHATSAPP_MESSAGES: 0,
 };
 
 export type PriceTable = Readonly<Record<string, number>>;

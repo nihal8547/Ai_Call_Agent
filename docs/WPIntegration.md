@@ -6,7 +6,9 @@ _Written 27 September 2026, after reviewing commits `fb860a9` and `1d3c770`._
 (signatures, webhook parsing, Graph client), the data model with RLS, the signed webhook,
 Continue with Facebook (Embedded Signup) and access-token connect, Settings → WhatsApp and the
 Inbox with staff replies, take over / hand back and delivery ticks. Operator guide:
-[WHATSAPP_SETUP.md](WHATSAPP_SETUP.md). Next: W2 (the agent answers automatically).
+[WHATSAPP_SETUP.md](WHATSAPP_SETUP.md). W2: the agent answers automatically with the same
+runtime as calls (knowledge, questions, workflow, bookings, leads), written for WhatsApp, with
+hand-over to staff. Next: W3 (voice notes in and out).
 
 **Goal:** a business connects its WhatsApp number (official WhatsApp Business Cloud API) with a
 few clicks. Customers' messages, text or voice, get answered automatically by the same agent that

@@ -50,6 +50,7 @@ export class JobProcessors {
     const runner = this.tools.forCall({
       tenantId: d.tenantId,
       callId: d.callId,
+      conversationId: d.conversationId ?? null,
       agentId: d.agentId,
       callerNumber: d.callerNumber,
       timezone: d.timezone,
@@ -66,11 +67,13 @@ export class JobProcessors {
     // Email may already have been delivered when a send times out: don't risk sending it twice
     const retry = transient && !(d.call.tool.startsWith("email.") && result.error === "timeout");
     const last = !retry || job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
-    if (result.ok || last) {
+    const callId = d.callId;
+    // Calls show background results on their timeline; chats show failures in the failed-jobs list
+    if ((result.ok || last) && callId) {
       await this.tenantDb.tx(d.tenantId, (tx) =>
         appendBackgroundEvent(tx, {
           tenantId: d.tenantId,
-          callId: d.callId,
+          callId,
           type: "TOOL_CALL",
           payload: {
             phase: "executed",

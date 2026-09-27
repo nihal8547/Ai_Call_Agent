@@ -5,7 +5,9 @@ const DEDUPE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export type LeadSource = {
   tenantId: string;
-  callId: string;
+  /** The call the lead came from, or null for a WhatsApp conversation */
+  callId: string | null;
+  conversationId?: string | null;
   agentId: string;
   callerNumber: string;
   collected: Record<string, unknown>;
@@ -13,8 +15,9 @@ export type LeadSource = {
 };
 
 /**
- * Create or update the lead for a call. One lead per call; a repeat caller within 24 hours
- * updates their existing lead instead of creating a duplicate.
+ * Create or update the lead for a call or WhatsApp conversation. One lead per call or
+ * conversation; a repeat customer within 24 hours updates their existing lead instead of
+ * creating a duplicate.
  */
 export async function upsertLeadForCall(
   tx: TenantTx,
@@ -41,10 +44,16 @@ export async function upsertLeadForCall(
     (!customerName ||
       !recent.customerName ||
       recent.customerName.toLowerCase() === customerName.toLowerCase());
-  const existing =
-    (await tx.lead.findFirst({ where: { callId: src.callId } })) ?? (samePerson ? recent : null);
+  const own = src.callId
+    ? await tx.lead.findFirst({ where: { callId: src.callId } })
+    : src.conversationId
+      ? await tx.lead.findFirst({ where: { conversations: { some: { id: src.conversationId } } } })
+      : null;
+  const existing = own ?? (samePerson ? recent : null);
 
   if (existing) {
+    if (src.conversationId && !own)
+      await tx.conversation.update({ where: { id: src.conversationId }, data: { leadId: existing.id } });
     await tx.lead.update({
       where: { id: existing.id },
       data: {
@@ -68,9 +77,11 @@ export async function upsertLeadForCall(
       phone,
       customerName: customerName ?? null,
       email: email ?? null,
-      source: "inbound_call",
+      source: src.conversationId ? "whatsapp" : "inbound_call",
       data: src.collected as object,
     },
   });
+  if (src.conversationId)
+    await tx.conversation.update({ where: { id: src.conversationId }, data: { leadId: lead.id } });
   return { id: lead.id, created: true };
 }

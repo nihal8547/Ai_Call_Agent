@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest";
 import {
   checkPhrase,
   createRuntime,
+  phrasePrompt,
+  understandPrompt,
   type KnowledgeRetriever,
   type KnowledgeSearchResult,
   type ToolRunner,
@@ -363,5 +365,33 @@ describe("checkPhrase", () => {
     const r = checkPhrase(draft, reply);
     expect(r.ok).toBe(ok);
     if (!r.ok) expect(r.reasons).toEqual(expect.arrayContaining(reasons as string[]));
+  });
+});
+
+describe("chat channel (WhatsApp)", () => {
+  const config = instantiateTemplate("clinic-reception");
+
+  it("asks for written WhatsApp messages, not speech", () => {
+    const voice = phrasePrompt(config, "hi", "Hello there.");
+    const chat = phrasePrompt(config, "hi", "Hello there.", "chat");
+    expect(voice.system).toContain("spoken aloud");
+    expect(chat.system).toContain("WhatsApp message");
+    expect(chat.system).not.toContain("spoken aloud");
+    expect(chat.user).toContain("Customer wrote");
+  });
+
+  it("runs the same turn graph and sends the chat prompts to the model", async () => {
+    const seen: string[] = [];
+    const model = new ScriptedLLM((p) => {
+      seen.push(p.system);
+      return isUnderstand(p) ? { json: { intent: "unclear", fields: {} } } : { json: { reply: "Sure." } };
+    });
+    const rt = createRuntime({ llm: model, tools: okTools, channel: "chat" });
+    const start = await rt.start(config, ctx, "conv-1");
+    await rt.turn(config, start.output.session, { transcript: "hello" }, ctx);
+    expect(seen.some((s) => s.includes("WhatsApp assistant"))).toBe(true);
+    expect(understandPrompt(config, start.output.session, "hi", "chat").user).toContain(
+      "Customer's latest message",
+    );
   });
 });

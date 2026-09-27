@@ -132,6 +132,8 @@ export const StartTestSessionBody = z.object({
   simulatedAt: z.coerce.date().optional(),
   /** Make every tool call fail, to rehearse outages */
   failTools: z.boolean().default(false),
+  /** "chat": reply as the agent writes on WhatsApp; "voice" (default): as it speaks on calls */
+  channel: z.enum(["voice", "chat"]).default("voice"),
 });
 export const TestMessageBody = z.object({ text: z.string().max(1000) });
 

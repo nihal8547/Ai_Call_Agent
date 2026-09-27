@@ -4,10 +4,15 @@ Businesses connect their WhatsApp number in **Settings → WhatsApp** with **Con
 Facebook** (Meta's Embedded Signup). For that, the platform operator sets up **one Meta app**
 once. This guide covers that setup, the environment variables, and how to check it.
 
-What businesses get today (W1): their number connected through the official WhatsApp Business
-Cloud API, every customer message in the **Inbox** with full history, staff replies, take over /
-hand back, delivery ticks. Automatic replies by the agent come in W2, voice notes in W3 (see
-[WPIntegration.md](WPIntegration.md)).
+What businesses get today (W1–W2): their number connected through the official WhatsApp Business
+Cloud API; the chosen agent answers customers automatically (its questions, knowledge base,
+bookings and leads, written for WhatsApp); every conversation in the **Inbox** with full
+history; staff take over and hand back; customers asking for a person are handed to staff, who
+are emailed (the agent's hand-off emails, through the business's email integration). Voice notes
+come in W3 (see [WPIntegration.md](WPIntegration.md)).
+
+The agent waits `WHATSAPP_REPLY_DELAY_MS` (default 2500) after a customer's last message before
+answering, so several short messages get one reply.
 
 ## 1. Meta business and app
 

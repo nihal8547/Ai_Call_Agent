@@ -82,6 +82,7 @@ type S = typeof State.State;
  */
 export function createRuntime(deps: RuntimeDeps) {
   const toolTimeoutMs = deps.toolTimeoutMs ?? 8000;
+  const channel = deps.channel ?? "voice";
 
   /**
    * Understanding, plus a speculative knowledge search when the caller's words already look like a
@@ -114,7 +115,7 @@ export function createRuntime(deps: RuntimeDeps) {
     const llm = deps.llm;
     if (!llm || s.session.fallbackOnly || !s.transcript.trim())
       return { understanding: null, llmError: false };
-    const { system, user } = understandPrompt(s.config, s.session, s.transcript);
+    const { system, user } = understandPrompt(s.config, s.session, s.transcript, channel);
     const r = await llm.generate({
       model: s.config.llm.model,
       system,
@@ -294,7 +295,7 @@ export function createRuntime(deps: RuntimeDeps) {
         runtimeEvents: [{ type: "phrase_skipped", reason: "latency_budget", spentMs: spent }],
       };
     }
-    const { system, user } = phrasePrompt(s.config, s.transcript, draft);
+    const { system, user } = phrasePrompt(s.config, s.transcript, draft, channel);
     const r = await llm.generate({
       model: s.config.llm.model,
       system,

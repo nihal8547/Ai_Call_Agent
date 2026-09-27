@@ -27,10 +27,12 @@ import {
 } from "./slots";
 import { postWebhook } from "./webhook";
 
-/** Everything a tool may know about the call it runs in */
+/** Everything a tool may know about the call or WhatsApp conversation it runs in */
 export type ToolContext = {
   tenantId: string;
-  callId: string;
+  /** null in a WhatsApp conversation */
+  callId: string | null;
+  conversationId?: string | null;
   agentId: string;
   callerNumber: string;
   timezone: string;
@@ -387,6 +389,7 @@ export const HANDLERS: Partial<Record<ToolName, Handler>> = {
         event: "call.tool",
         occurredAt: env.ctx.now.toISOString(),
         callId: env.ctx.callId,
+        ...(env.ctx.conversationId ? { conversationId: env.ctx.conversationId, channel: "whatsapp" } : {}),
         agentId: env.ctx.agentId,
         stepId: env.call.stepId,
         callerNumber: env.ctx.callerNumber,

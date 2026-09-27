@@ -118,6 +118,8 @@ export const ApiEnvSchema = z
       .string()
       .regex(/^v\d{1,3}\.\d$/)
       .default("v23.0"),
+    /** How long the agent waits for more messages before answering (customers often send several) */
+    WHATSAPP_REPLY_DELAY_MS: z.coerce.number().int().min(0).max(30_000).default(2500),
     /** Graph API origin (tests point it at a fake) */
     META_GRAPH_BASE_URL: envPrimitives.url.default("https://graph.facebook.com"),
     /** HubSpot public app for "Connect with HubSpot"; private-app tokens work without it */

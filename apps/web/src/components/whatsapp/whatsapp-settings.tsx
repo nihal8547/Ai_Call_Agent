@@ -280,7 +280,8 @@ function NumberCard({
         )}
         {assign.isError ? <p className="mt-1 text-sm text-red-600">{errorMessage(assign.error)}</p> : null}
         <p className="mt-2 text-xs text-slate-500">
-          Automatic replies by the agent arrive in the next update; for now staff reply from the Inbox.
+          The agent answers customers on its own, using its questions, knowledge and tools. Take over any
+          conversation from the Inbox.
         </p>
       </div>
 

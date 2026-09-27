@@ -19,6 +19,7 @@ import { AppException } from "../../common/filters/problem-details.filter";
 import { RateLimit } from "../../common/rate-limit/rate-limit";
 import { API_ENV, type ApiEnv } from "../../config/env";
 import { MetricsService } from "../../observability/metrics.service";
+import { WhatsAppAgentService } from "./whatsapp-agent.service";
 import { WhatsAppInboundService } from "./whatsapp-inbound.service";
 
 /**
@@ -33,6 +34,7 @@ export class WhatsAppWebhookController {
   constructor(
     @Inject(API_ENV) private readonly env: ApiEnv,
     private readonly inbound: WhatsAppInboundService,
+    private readonly agent: WhatsAppAgentService,
     private readonly metrics: MetricsService,
   ) {}
 
@@ -79,7 +81,8 @@ export class WhatsAppWebhookController {
       throw new AppException(HttpStatus.UNAUTHORIZED, "UNAUTHENTICATED", "Invalid signature");
     }
     // Stored before answering: if this fails, Meta retries and the unique wamid drops repeats
-    await this.inbound.handle(parseWebhook(req.body));
+    const stored = await this.inbound.handle(parseWebhook(req.body));
+    await this.agent.schedule(stored);
     return { ok: true };
   }
 }

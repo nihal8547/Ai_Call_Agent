@@ -26,6 +26,9 @@ export function previewOf(m: { type: string; text: string | null; mediaFilename?
   return (text ? `${base}: ${text}` : base).slice(0, 200);
 }
 
+/** A conversation without messages for this long is closed when the customer writes again */
+export const IDLE_CLOSE_MS = 24 * 60 * 60 * 1000;
+
 const STATUS_RANK = { QUEUED: 0, SENT: 1, DELIVERED: 2, READ: 3 } as const;
 
 export type StoredInbound = { tenantId: string; conversationId: string; messageId: string };
@@ -84,10 +87,29 @@ export class WhatsAppInboundService {
         if (await tx.conversationMessage.findUnique({ where: { wamid: e.wamid }, select: { id: true } }))
           return null; // Meta retried the webhook
 
-        const open = await tx.conversation.findFirst({
+        let open = await tx.conversation.findFirst({
           where: { whatsappNumberId: route.whatsappNumberId, contactWaId: e.from, mode: { not: "CLOSED" } },
           orderBy: { createdAt: "desc" },
         });
+        // A day of silence ends a conversation: the customer starts a fresh one (new agent session)
+        if (open && open.lastMessageAt.getTime() < Date.now() - IDLE_CLOSE_MS) {
+          await tx.conversation.update({
+            where: { id: open.id },
+            data: { mode: "CLOSED", closedAt: new Date() },
+          });
+          await tx.conversationMessage.create({
+            data: {
+              tenantId: route.tenantId,
+              conversationId: open.id,
+              direction: "INTERNAL",
+              sender: "SYSTEM",
+              type: "NOTE",
+              text: "Closed after 24 hours without messages",
+              status: "RECEIVED",
+            },
+          });
+          open = null;
+        }
         const conversation =
           open ??
           (await tx.conversation.create({

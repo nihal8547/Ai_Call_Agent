@@ -66,7 +66,11 @@ export type RuntimeDeps = {
   tools: ToolRunner;
   retriever?: KnowledgeRetriever | null;
   toolTimeoutMs?: number;
+  /** "voice" (default): replies are spoken on a call. "chat": replies are written (WhatsApp). */
+  channel?: Channel;
 };
+
+export type Channel = "voice" | "chat";
 
 export type RuntimeEvent =
   | {

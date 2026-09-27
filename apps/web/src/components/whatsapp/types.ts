@@ -66,4 +66,10 @@ export type ChatMessage = {
   sentAt: string | null;
   createdAt: string;
   sentByName: string | null;
+  /** Agent replies: what they were based on (staff only) */
+  meta?: {
+    sources?: { documentId: string; title: string; page?: number }[];
+    tools?: { tool: string; ok: boolean; error: string | null }[];
+    control?: "transfer" | "hangup";
+  } | null;
 };

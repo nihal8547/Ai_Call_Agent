@@ -415,3 +415,19 @@ describe("resilience", () => {
     expect(booking.input.collected).toMatchObject({ patient_name: "Priya" });
   });
 });
+
+describe("a conversation the customer starts (WhatsApp)", () => {
+  it("takes choices named in the first message, but not a greeting as the awaited name", () => {
+    const config = clinic();
+    const start = startCall(config, ctx, "chat-1");
+    // The customer never saw the first question
+    const session = { ...start.session, awaiting: null };
+    const hi = handleTurn(session, config, { transcript: "Hi" }, ctx);
+    expect(hi.session.collected.patient_name).toBeUndefined();
+    expect(hi.prompt?.fieldKey).toBe("patient_name");
+
+    const early = handleTurn(session, config, { transcript: "Hi, I'd like a dental cleaning please" }, ctx);
+    expect(early.session.collected.service_required).toBe("Dental cleaning");
+    expect(early.prompt?.fieldKey).toBe("patient_name");
+  });
+});

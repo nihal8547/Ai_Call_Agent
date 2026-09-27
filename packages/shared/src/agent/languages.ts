@@ -65,9 +65,18 @@ export function systemLines(language: string) {
   return isArabicCode(language)
     ? {
         maxDuration: "وصلنا للحد الأقصى لمدة المكالمة. سجلت كل اللي قلته، وفريقنا بيتابع معك. مع السلامة!",
+        /** WhatsApp: the customer asked for a person (or the workflow hands over) */
+        chatHandoff: "شكراً لك، حوّلت محادثتك لفريقنا وبيرد عليك أحد هنا قريباً.",
+        /** WhatsApp: a voice note before voice support */
+        chatVoiceUnsupported: "عذراً، ما أقدر أسمع الرسائل الصوتية حالياً. ممكن تكتب لي رسالتك؟",
+        /** WhatsApp: only a photo, file or sticker without words */
+        chatMediaOnly: "شكراً، وصلني. ممكن تكتب لي كيف أقدر أساعدك؟",
       }
     : {
         maxDuration:
           "We've reached the time limit for this call. I've noted everything you told me, and our team will follow up. Goodbye.",
+        chatHandoff: "Thanks, I've passed your conversation to our team. Someone will reply here shortly.",
+        chatVoiceUnsupported: "Sorry, I can't listen to voice messages yet. Could you type your message?",
+        chatMediaOnly: "Thanks, I've got that. Could you write how I can help you?",
       };
 }

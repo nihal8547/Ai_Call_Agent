@@ -145,6 +145,8 @@ enum UsageKind {
   TTS_CHARACTERS
   STT_SECONDS
   STORAGE_BYTES
+  /// Messages the platform sent on WhatsApp (agent and staff)
+  WHATSAPP_MESSAGES
 }
 
 // ─────────────────────── Tenancy, users, access ───────────────────────
@@ -703,6 +705,8 @@ model Appointment {
   agentId           String?           @map("agent_id") @db.Uuid
   leadId            String?           @map("lead_id") @db.Uuid
   callId            String?           @map("call_id") @db.Uuid
+  /// Booked in a WhatsApp conversation (instead of a call)
+  conversationId    String?           @map("conversation_id") @db.Uuid
   title             String            @db.VarChar(200)
   startsAt          DateTime          @map("starts_at") @db.Timestamptz(3)
   endsAt            DateTime          @map("ends_at") @db.Timestamptz(3)
@@ -716,14 +720,16 @@ model Appointment {
   createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  agent       Agent?       @relation(fields: [agentId], references: [id], onDelete: SetNull)
-  lead        Lead?        @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  call        Call?        @relation(fields: [callId], references: [id], onDelete: SetNull)
-  integration Integration? @relation(fields: [integrationId], references: [id], onDelete: SetNull)
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agent        Agent?        @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  lead         Lead?         @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  call         Call?         @relation(fields: [callId], references: [id], onDelete: SetNull)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  integration  Integration?  @relation(fields: [integrationId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, startsAt])
   @@index([tenantId, status])
+  @@index([conversationId])
   @@map("appointments")
 }
 
@@ -1029,6 +1035,8 @@ model Conversation {
   assigneeId         String?          @map("assignee_id") @db.Uuid
   leadId             String?          @map("lead_id") @db.Uuid
   closedAt           DateTime?        @map("closed_at") @db.Timestamptz(3)
+  /// The agent has answered every customer message up to this time
+  agentHandledAt     DateTime?        @map("agent_handled_at") @db.Timestamptz(3)
   createdAt          DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt          DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -1038,6 +1046,7 @@ model Conversation {
   assignee       Membership?           @relation("ConversationAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   lead           Lead?                 @relation(fields: [leadId], references: [id], onDelete: SetNull)
   messages       ConversationMessage[]
+  appointments   Appointment[]
 
   @@unique([id, tenantId])
   @@index([tenantId, lastMessageAt(sort: Desc)])

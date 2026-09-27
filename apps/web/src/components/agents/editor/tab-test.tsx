@@ -44,6 +44,7 @@ export function TestTab() {
   const [target, setTarget] = useState<"draft" | "published">(agent.draft ? "draft" : "published");
   const [at, setAt] = useState("");
   const [failTools, setFailTools] = useState(false);
+  const [chat, setChat] = useState(false);
   const [lines, setLines] = useState<Line[]>([]);
   const [last, setLast] = useState<TestReply | null>(null);
   const [text, setText] = useState("");
@@ -78,6 +79,7 @@ export function TestTab() {
           ...(versionId ? { versionId } : {}),
           ...(at ? { simulatedAt: new Date(at).toISOString() } : {}),
           failTools,
+          channel: chat ? "chat" : "voice",
         },
       });
     },
@@ -133,6 +135,7 @@ export function TestTab() {
           </label>
           <div className="sm:mt-7">
             <Check label="Make tools fail" checked={failTools} onChange={setFailTools} />
+            <Check label="WhatsApp style (written replies)" checked={chat} onChange={setChat} />
           </div>
         </div>
         {dirty ? <Alert tone="info">You have unsaved changes. Save the draft to test them.</Alert> : null}

@@ -35,7 +35,7 @@ import type {
 
 const FILTERS = [
   { key: "open", label: "Open" },
-  { key: "human", label: "Staff" },
+  { key: "human", label: "With staff" },
   { key: "ai", label: "Agent" },
   { key: "unread", label: "Unread" },
   { key: "closed", label: "Closed" },
@@ -44,7 +44,7 @@ type Filter = (typeof FILTERS)[number]["key"];
 
 const MODE_LABEL: Record<ConversationMode, string> = {
   AI: "Agent",
-  HUMAN: "Staff replying",
+  HUMAN: "With staff",
   CLOSED: "Closed",
 };
 
@@ -485,10 +485,39 @@ function MessageRow({ m }: { m: ChatMessage }) {
             <span>Not delivered{m.errorTitle ? `: ${m.errorTitle}` : ""}</span>
           </p>
         ) : null}
+        {m.sender === "AI" ? <AgentDetails meta={m.meta} /> : null}
       </div>
     </li>
   );
 }
+
+/** For staff only: what the agent's reply was based on (never shown to the customer) */
+function AgentDetails({ meta }: { meta: ChatMessage["meta"] }) {
+  const sources = meta?.sources ?? [];
+  const tools = meta?.tools ?? [];
+  if (!sources.length && !tools.length) return null;
+  return (
+    <div className="mt-2 space-y-0.5 border-t border-white/15 pt-1.5 text-[11px] text-slate-300">
+      {sources.length ? (
+        <p>From: {sources.map((s) => `${s.title}${s.page ? ` (p. ${s.page})` : ""}`).join(", ")}</p>
+      ) : null}
+      {tools.map((t, i) => (
+        <p key={i}>
+          {TOOL_LABEL[t.tool] ?? t.tool}:{" "}
+          {t.ok ? "done" : `failed${t.error ? ` (${t.error.replace(/_/g, " ")})` : ""}`}
+        </p>
+      ))}
+    </div>
+  );
+}
+
+const TOOL_LABEL: Record<string, string> = {
+  "appointments.create": "Booked appointment",
+  "calendar.book": "Booked in calendar",
+  "calendar.find_slots": "Checked free times",
+  "calendar.cancel": "Cancelled booking",
+  "leads.create": "Saved lead",
+};
 
 function Body({ m, out }: { m: ChatMessage; out: boolean }) {
   const media = (Icon: typeof Mic, label: string, note?: string) => (

@@ -1546,6 +1546,38 @@ Plan and review: [WPIntegration.md](WPIntegration.md); operator guide:
 - **Not verified:** real Meta (network policy). Meta requires business verification, Tech
   Provider status and App Review before other businesses can connect.
 
+### WhatsApp W2: the agent answers ✅
+
+- **Same brain as calls:** every customer message runs through the call runtime (understanding,
+  knowledge answers with the same grounding checks, workflow, bookings, lead capture, guards)
+  with a new `chat` channel: prompts ask for written WhatsApp messages instead of speech.
+- **Conversation handling:** the reply job waits until the customer pauses
+  (`WHATSAPP_REPLY_DELAY_MS`), answers all new messages at once, one reply per conversation at a
+  time (Redis lock), with a read receipt and "typing…" while it works. The first reply is the
+  greeting plus the next question; a bare "Hi" is not taken as the answer to a question the
+  customer never saw (the engine now also recognises early answers when nothing is pending).
+- **Hand-over:** a request for a person (or a workflow hand-off, e.g. an emergency) sends
+  "someone will reply here shortly", switches the chat to staff, adds a note with the details
+  collected and emails the hand-off addresses with a link to the conversation. Staff hand back
+  and the agent continues with new messages only.
+- **Records:** leads (`source = whatsapp`, linked from the conversation) and appointments
+  (`appointments.conversation_id`) come from the same tools as calls; background tools run on the
+  queues; usage metered (tokens and `WHATSAPP_MESSAGES`). Voice notes get "please type" until W3;
+  photos without words get a prompt to write; reactions are ignored. Blocked numbers, no
+  published agent, staff mode and more than 30 messages in 10 minutes get no automatic reply.
+  A conversation silent for 24 hours is closed when the customer writes again.
+- **Inbox:** agent replies show (to staff only) the knowledge used and the tools run; "With
+  staff" filter. The agent test console has a "WhatsApp style" option.
+- **Verified:** API 5 new tests with Meta faked (a full booking by WhatsApp: greeting, questions,
+  confirmation, appointment, lead, closed conversation, metering; quick messages answered once
+  with a read receipt; emergency hand-over with note and email job; voice note; no agent and
+  blocked number stay quiet); core and runtime tests for the chat changes. Browser with the Graph
+  API stand-in: the same booking end to end in the Inbox, hand-over shown under "With staff",
+  replies about 2.5 s after the customer's last message, no console errors.
+- **Not verified:** real Meta and real Gemini phrasing for chat (network policy); with Gemini
+  configured replies are rephrased in WhatsApp style, without it the deterministic wording is
+  sent.
+
 ### ✅ M3 — Level 3 milestone
 
 - The production readiness checklist (plan §18) passes.

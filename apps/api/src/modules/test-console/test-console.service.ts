@@ -27,6 +27,8 @@ type TestState = {
   simulatedAt: string | null;
   startedAt: number;
   failTools: boolean;
+  /** Absent in sessions started before chat style existed */
+  channel?: "voice" | "chat";
 };
 
 const TTL_SECONDS = 30 * 60;
@@ -56,7 +58,7 @@ export class TestConsoleService {
   async start(
     auth: AuthContext,
     agentId: string,
-    opts: { versionId?: string; simulatedAt?: Date; failTools: boolean },
+    opts: { versionId?: string; simulatedAt?: Date; failTools: boolean; channel?: "voice" | "chat" },
   ) {
     const db = this.tenantDb.db(auth.tenantId);
     const agent = await db.agent.findUnique({
@@ -92,6 +94,7 @@ export class TestConsoleService {
       simulatedAt: opts.simulatedAt?.toISOString() ?? null,
       startedAt: Date.now(),
       failTools: opts.failTools,
+      channel: opts.channel ?? "voice",
     };
     const toolLog: ToolCall[] = [];
     const turn = await this.runtime(base, toolLog).start(config, this.ctx(base), `test-${id}`);
@@ -124,6 +127,7 @@ export class TestConsoleService {
     const llm = createLLMProvider(state.config.llm.provider, { gemini: this.env.GEMINI_API_KEY });
     return createRuntime({
       llm,
+      channel: state.channel ?? "voice",
       // Real knowledge answers (read-only), so the console shows what callers would hear
       retriever: this.retrievers.forAgent(state, state.config, llm),
       tools: {
