@@ -31,6 +31,10 @@ export const ApiEnvSchema = z
       .transform((v) => v === "true"),
     /** Multiplies retry backoff delays (tests use a tiny factor) */
     QUEUE_BACKOFF_SCALE: z.coerce.number().min(0.0001).max(10).default(1),
+    /** Bearer token Prometheus sends to /metrics; without it only private-network scrapers are answered */
+    METRICS_TOKEN: z.string().min(16).optional(),
+    /** Send traces to an OpenTelemetry collector (OTLP/HTTP), e.g. http://otel-collector:4318 */
+    OTEL_EXPORTER_OTLP_ENDPOINT: envPrimitives.url.optional(),
     /** Enables the queue dashboard at /admin/queues (HTTP basic auth, user "admin"). Platform operators only. */
     ADMIN_BOARD_PASSWORD: z.string().min(16).optional(),
     /** Origins allowed to call the API directly (the web app normally goes through its same-origin proxy) */
@@ -51,6 +55,21 @@ export const ApiEnvSchema = z
     MASTER_ENCRYPTION_KEY: envPrimitives.key32,
     /** Twilio account auth token (validates webhook signatures). Telephony endpoints return 503 without it. */
     TWILIO_AUTH_TOKEN: z.string().min(16).optional(),
+    /**
+     * Twilio account for buying numbers and creating SIP domains from the app (AC…). With an API key
+     * (SK… + secret) the REST calls use it; otherwise the account SID and auth token.
+     */
+    TWILIO_ACCOUNT_SID: z
+      .string()
+      .regex(/^AC[0-9a-fA-F]{32}$/, "must be an account SID (AC…)")
+      .optional(),
+    TWILIO_API_KEY_SID: z
+      .string()
+      .regex(/^SK[0-9a-fA-F]{32}$/, "must be an API key SID (SK…)")
+      .optional(),
+    TWILIO_API_KEY_SECRET: z.string().min(16).optional(),
+    /** Base URL of Twilio's REST API (tests point it at a fake) */
+    TWILIO_API_BASE_URL: envPrimitives.url.default("https://api.twilio.com"),
     /** Without it, calls run on deterministic understanding and wording */
     GEMINI_API_KEY: z.string().min(10).optional(),
     /** Country calling code for phone numbers spoken without one */

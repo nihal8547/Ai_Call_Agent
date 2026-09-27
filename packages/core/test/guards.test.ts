@@ -37,6 +37,13 @@ describe("guardOutput", () => {
     );
     expect(unsupportedNumbers("Implants cost 15000 and we open at 9.", sources)).toEqual(["15000"]);
   });
+
+  it("reads Arabic-Indic digits as numbers, both ways", () => {
+    // "Consultation is 500 riyals" in Arabic digits, checked against a Latin-digit source
+    expect(unsupportedNumbers("الاستشارة ٥٠٠ ريال", ["Consultation: 500 QAR"])).toEqual([]);
+    expect(unsupportedNumbers("الاستشارة ٣٥٠ ريال", ["Consultation: 500 QAR"])).toEqual(["350"]);
+    expect(unsupportedNumbers("Rent is 12,000 QAR", ["الإيجار ١٢٬٠٠٠ ريال"])).toEqual([]);
+  });
 });
 
 describe("redactPII", () => {

@@ -4,6 +4,7 @@ export * from "./common/pagination";
 export * from "./common/queues";
 export * from "./auth/permissions";
 export * from "./tenancy/defaults";
+export * from "./tenancy/countries";
 export * from "./auth/schemas";
 export * from "./agent/config";
 export * from "./agent/fields";

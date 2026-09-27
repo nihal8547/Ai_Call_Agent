@@ -3,6 +3,7 @@ import type { TenantTx } from "@platform/db";
 import { costMicros, mergeUsage, type PriceTable, priceTable, type UsageLine } from "@platform/shared";
 import type { RuntimeEvent, RuntimeTurn } from "@platform/runtime";
 import { API_ENV, type ApiEnv } from "../../config/env";
+import { MetricsService } from "../../observability/metrics.service";
 
 /** Twilio bills <Gather> speech recognition per 15-second block */
 const STT_BLOCK_SECONDS = 15;
@@ -46,7 +47,10 @@ export function turnUsage(turn: RuntimeTurn, opts: { callerSpoke: boolean }): Us
 export class UsageService {
   readonly prices: PriceTable;
 
-  constructor(@Inject(API_ENV) env: ApiEnv) {
+  constructor(
+    @Inject(API_ENV) env: ApiEnv,
+    private readonly metrics: MetricsService,
+  ) {
     this.prices = priceTable(env.USAGE_PRICES);
   }
 
@@ -62,6 +66,7 @@ export class UsageService {
       model: l.model?.slice(0, 80) ?? null,
     }));
     if (!rows.length) return 0n;
+    for (const r of rows) this.metrics.cost.inc({ kind: r.kind }, Number(r.costMicros));
     await tx.usageRecord.createMany({ data: rows });
     const total = rows.reduce((n, r) => n + r.costMicros, 0n);
     if (callId && total > 0n)

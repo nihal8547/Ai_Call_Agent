@@ -1,6 +1,8 @@
 import { type PrismaClient, type Tenant } from "@prisma/client";
 import { generateDataKey } from "@platform/crypto";
 import {
+  COUNTRIES,
+  COUNTRY_CODES,
   DEFAULT_LEAD_STATUSES,
   SYSTEM_ROLE_KEYS,
   SYSTEM_ROLES,
@@ -17,7 +19,9 @@ export const ProvisionTenantInput = z.object({
   name: z.string().trim().min(2).max(120),
   slug: TenantSlug,
   industry: z.string().trim().max(60).optional(),
-  timezone: z.string().min(1).max(64).default("Asia/Kolkata"),
+  /** Calling code, currency and the default time zone follow the country */
+  country: z.enum(COUNTRY_CODES).default("IN"),
+  timezone: z.string().min(1).max(64).optional(),
   plan: z.string().max(40).default("free"),
   ownerUserId: z.uuid(),
 });
@@ -43,7 +47,10 @@ export async function provisionTenant(
         name: data.name,
         slug: data.slug,
         industry: data.industry ?? null,
-        timezone: data.timezone,
+        country: data.country,
+        callingCode: COUNTRIES[data.country].callingCode,
+        currency: COUNTRIES[data.country].currency,
+        timezone: data.timezone ?? COUNTRIES[data.country].timezone,
         plan: data.plan,
         usageLimits: writeJson(TenantLimits, {}, "tenants.usage_limits"),
         encryptedDek: new Uint8Array(encryptedDek),

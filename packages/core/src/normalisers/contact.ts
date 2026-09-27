@@ -1,5 +1,21 @@
 import { normalizeUtterance, titleCase } from "./text";
 
+/**
+ * Digits in a national number (without the trunk "0"), by country calling code. Countries not
+ * listed accept 7–12 digits. India 10, Gulf states 8–9, North America 10, UK 10.
+ */
+export const NATIONAL_NUMBER_LENGTH: Record<string, number[]> = {
+  "91": [10],
+  "974": [8], // Qatar: 3/5/6/7… mobiles, 4… landlines
+  "971": [8, 9], // UAE
+  "966": [9], // Saudi Arabia
+  "965": [8], // Kuwait
+  "968": [8], // Oman
+  "973": [8], // Bahrain
+  "1": [10],
+  "44": [10],
+};
+
 /** Spoken or typed phone number → E.164 using the business's default country code */
 export function parsePhone(input: string, defaultCountryCode = "91"): string | undefined {
   const text = normalizeUtterance(input)
@@ -15,12 +31,19 @@ export function parsePhone(input: string, defaultCountryCode = "91"): string | u
     .replace(/\bnine\b/g, "9")
     .replace(/\bdouble (\d)/g, "$1$1")
     .replace(/\btriple (\d)/g, "$1$1$1");
-  const plus = text.trim().startsWith("+");
-  const digits = text.replace(/\D/g, "");
-  if (plus && digits.length >= 8 && digits.length <= 15) return `+${digits}`;
-  if (digits.length === 10) return `+${defaultCountryCode}${digits}`;
-  if (digits.length === 11 && digits.startsWith("0")) return `+${defaultCountryCode}${digits.slice(1)}`;
-  if (digits.length > 10 && digits.length <= 15 && digits.startsWith(defaultCountryCode)) return `+${digits}`;
+  const trimmed = text.trim();
+  let digits = text.replace(/\D/g, "");
+  // "+974 …" or the international prefix "00974 …"
+  if (trimmed.startsWith("+") || (digits.startsWith("00") && digits.length >= 10)) {
+    if (!trimmed.startsWith("+")) digits = digits.slice(2);
+    return digits.length >= 8 && digits.length <= 15 ? `+${digits}` : undefined;
+  }
+  const national = NATIONAL_NUMBER_LENGTH[defaultCountryCode] ?? [7, 8, 9, 10, 11, 12];
+  if (national.includes(digits.length)) return `+${defaultCountryCode}${digits}`;
+  if (digits.startsWith("0") && national.includes(digits.length - 1))
+    return `+${defaultCountryCode}${digits.slice(1)}`;
+  if (digits.startsWith(defaultCountryCode) && national.includes(digits.length - defaultCountryCode.length))
+    return `+${digits}`;
   return undefined;
 }
 

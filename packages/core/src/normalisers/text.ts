@@ -1,6 +1,16 @@
+/** Arabic-Indic (٠-٩) and Persian (۰-۹) digits → 0-9, so numbers read the same in any script */
+export function toAsciiDigits(text: string): string {
+  return text.replace(/[\u0660-\u0669\u06F0-\u06F9]/g, (d) => String((d.charCodeAt(0) & 0xf) % 10));
+}
+
 /** Lower-case, strip punctuation noise from ASR, collapse whitespace */
 export function normalizeUtterance(text: string): string {
-  return text.toLowerCase().replace(/[“”"]/g, "").replace(/[’`]/g, "'").replace(/\s+/g, " ").trim();
+  return toAsciiDigits(text)
+    .toLowerCase()
+    .replace(/[“”"]/g, "")
+    .replace(/[’`]/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 const FILLERS =

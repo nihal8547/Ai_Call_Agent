@@ -1,7 +1,6 @@
 import { HttpStatus, Inject, Injectable, Logger } from "@nestjs/common";
 import { createLLMProvider } from "@platform/ai";
-import { type EngineContext, endCall, renderTemplate, type ToolCall } from "@platform/core";
-import { resolvePhoneNumber } from "@platform/db";
+import { type EngineContext, endCall, parsePhone, renderTemplate, type ToolCall } from "@platform/core";
 import { createRuntime, type RuntimeTurn } from "@platform/runtime";
 import type { AgentConfig } from "@platform/shared";
 import { type InboundCall, TwilioAdapter, type VoiceReply } from "@platform/telephony";
@@ -16,6 +15,10 @@ import { queueForTool, TOOL_SPECS, type ToolName } from "@platform/shared";
 import type { ToolRunEvent } from "@platform/tools";
 import { QueueService } from "../../infra/queue.service";
 import { CrmSyncService } from "../crm/crm-sync.service";
+import { CallGate } from "./call-gate";
+import { type CallRoute, CallRouter } from "./call-router";
+import { TenantSettingsService } from "./tenant-settings.service";
+import { MetricsService } from "../../observability/metrics.service";
 import { RetrieverFactory } from "../knowledge/retriever.factory";
 import { type CallTools, ToolService } from "../tools/tool.service";
 import { upsertLeadForCall } from "./lead-writer";
@@ -23,6 +26,8 @@ import { upsertLeadForCall } from "./lead-writer";
 type CallContext = Pick<CallState, "tenantId" | "callId" | "agentId" | "callerNumber" | "timezone">;
 
 const NOT_IN_SERVICE = "Sorry, this number is not in service right now. Please try again later. Goodbye.";
+const MAX_DURATION =
+  "We've reached the time limit for this call. I've noted everything you told me, and our team will follow up. Goodbye.";
 const LOST_CALL = "Sorry, we had a problem on our side. Please call us back. Goodbye.";
 
 const PROVIDER_STATUS: Record<string, "COMPLETED" | "FAILED" | "NO_ANSWER" | "BUSY" | "CANCELED"> = {
@@ -49,6 +54,10 @@ export class TelephonyService {
     private readonly queues: QueueService,
     private readonly crm: CrmSyncService,
     private readonly retrievers: RetrieverFactory,
+    private readonly router: CallRouter,
+    private readonly gate: CallGate,
+    private readonly settings: TenantSettingsService,
+    private readonly metrics: MetricsService,
   ) {
     this.twilio = env.TWILIO_AUTH_TOKEN ? new TwilioAdapter(env.TWILIO_AUTH_TOKEN) : null;
   }
@@ -68,24 +77,54 @@ export class TelephonyService {
     const existing = await this.store.get(call.callSid);
     if (existing) return existing.lastReply; // provider retry of the first webhook
 
-    const route = await resolvePhoneNumber(this.prisma.client, call.to);
-    if (!route?.agentId || !route.agentVersionId) {
+    const route = await this.router.route(call, async (t) => (await this.settings.get(t)).callingCode);
+    if (!route) {
+      this.metrics.calls.inc({ connection: call.to.startsWith("sip:") ? "SIP" : "TWILIO", result: "unknown_number" });
+      this.logger.warn({ to: call.to }, "inbound call to an unknown number or SIP domain");
+      return this.render({ say: NOT_IN_SERVICE, hangup: true });
+    }
+    // "Test forwarding": the staff member's test call proves the line reaches the agent
+    const pending = route.verificationPending;
+    if (pending && (!pending.from || pending.from === route.callerNumber)) {
+      this.metrics.calls.inc({ connection: route.connection, result: "verification" });
+      return this.verified(route, call);
+    }
+
+    const settings = await this.settings.get(route.tenantId);
+    const gate = await this.gate.check(route, call.callSid, settings);
+    if (!gate.ok) {
+      this.metrics.calls.inc({ connection: route.connection, result: `refused_${gate.reason}` });
+      this.logger.warn({ tenantId: route.tenantId, reason: gate.reason }, "call refused before answering");
+      return gate.reject
+        ? this.render({ say: "", reject: gate.reject })
+        : this.render({ say: gate.say ?? NOT_IN_SERVICE, hangup: true });
+    }
+    if (!route.agentId || !route.agentVersionId) {
+      await this.gate.release(route.phoneNumberId, call.callSid);
       this.logger.warn({ to: call.to }, "inbound call to a number without an active agent");
       return this.render({ say: NOT_IN_SERVICE, hangup: true });
     }
+    this.metrics.calls.inc({ connection: route.connection, result: "answered" });
+    void this.gate.watchVolume(route.tenantId);
     const { config, timezone } = await this.configs.published(route.tenantId, route.agentVersionId);
-    const record = await this.tenantDb.db(route.tenantId).call.create({
+    const db = this.tenantDb.db(route.tenantId);
+    const record = await db.call.create({
       data: {
         tenantId: route.tenantId,
         agentId: route.agentId,
         agentVersionId: route.agentVersionId,
         providerCallSid: call.callSid,
-        fromNumber: call.from.slice(0, 20),
-        toNumber: call.to.slice(0, 20),
+        fromNumber: route.callerNumber.slice(0, 20),
+        toNumber: route.dialled.slice(0, 20),
+        connection: route.connection,
+        forwardedFrom: route.forwardedFrom?.slice(0, 20) ?? null,
         status: "IN_PROGRESS",
         answeredAt: new Date(),
       },
     });
+    void db.phoneNumber
+      .update({ where: { id: route.phoneNumberId }, data: { lastCallAt: new Date() } })
+      .catch(() => undefined);
 
     const base = {
       callSid: call.callSid,
@@ -94,7 +133,12 @@ export class TelephonyService {
       agentId: route.agentId,
       agentVersionId: route.agentVersionId,
       timezone: config.workingHours?.timezone ?? timezone,
-      callerNumber: call.from,
+      callerNumber: route.callerNumber,
+      callingCode: settings.callingCode,
+      phoneNumberId: route.phoneNumberId,
+      businessNumber: route.businessNumber,
+      startedAt: Date.now(),
+      maxCallMinutes: settings.maxCallMinutes,
     };
     const tools = this.tools(base, config);
     const turn = await this.runtimeFor(base, config, tools).start(config, this.ctx(base), record.id);
@@ -109,7 +153,13 @@ export class TelephonyService {
     const rows = [
       {
         type: "CALL_STARTED" as const,
-        payload: { from: call.from, to: call.to, agentVersionId: route.agentVersionId },
+        payload: {
+          from: route.callerNumber,
+          to: route.dialled,
+          via: route.connection,
+          ...(route.forwardedFrom ? { forwardedFrom: route.forwardedFrom } : {}),
+          agentVersionId: route.agentVersionId,
+        },
       },
       ...timelineEvents(turn),
       ...executionEvents(tools.drain()),
@@ -125,6 +175,10 @@ export class TelephonyService {
       if (seq !== state.seq || state.finalized) return state.lastReply; // retry or stale request
       const { config } = await this.configs.published(state.tenantId, state.agentVersionId);
       const speech = call.speech ?? { transcript: "" };
+      if (state.startedAt && state.maxCallMinutes && Date.now() - state.startedAt > state.maxCallMinutes * 60_000) {
+        const end = this.systemEnd(state, config, "max_duration", MAX_DURATION);
+        return this.complete(state, config, end, timelineEvents(end, speech));
+      }
       const tools = this.tools(state, config);
       const turn = await this.runtimeFor(state, config, tools).turn(
         config,
@@ -154,30 +208,14 @@ export class TelephonyService {
       if (!status) return; // intermediate statuses (ringing, in-progress)
       if (!state.finalized) {
         const { config } = await this.configs.published(state.tenantId, state.agentVersionId);
-        const out = endCall(state.session, config, this.ctx(state), "caller_hung_up");
-        const turn: RuntimeTurn = {
-          output: out,
-          speech: "",
-          engineEvents: out.events,
-          runtimeEvents: [],
-          metrics: {
-            totalMs: 0,
-            understandMs: 0,
-            retrieveMs: 0,
-            decideMs: 0,
-            toolMs: 0,
-            phraseMs: 0,
-            llmCalls: 0,
-            inputTokens: 0,
-            outputTokens: 0,
-            deterministic: true,
-          },
-        };
+        const turn = this.systemEnd(state, config, "caller_hung_up", "");
         state.eventSeq = await this.recorder.recordTurn(state, turn, timelineEvents(turn));
-        await this.recorder.finalize(state, out.session, config);
+        await this.recorder.finalize(state, turn.output.session, config);
       }
       await this.recorder.markStatus(state, status, call.durationSeconds);
       await this.store.delete(call.callSid, state);
+      if (state.phoneNumberId) await this.gate.release(state.phoneNumberId, call.callSid);
+      await this.gate.clearTransfer(state.tenantId, state.callerNumber);
       // Refresh this business's analytics shortly (calls ending in the same minute share one job)
       const now = Date.now();
       await this.queues
@@ -206,7 +244,23 @@ export class TelephonyService {
     state.eventSeq = await this.recorder.recordTurn(state, turn, rows);
 
     let reply: VoiceReply | { say: string; hangup: true };
-    if (out.control === "transfer" && out.transferTo) {
+    const toOwnLine =
+      out.control === "transfer" &&
+      out.transferTo &&
+      state.businessNumber &&
+      (parsePhone(out.transferTo, state.callingCode ?? this.env.DEFAULT_COUNTRY_CODE) ?? out.transferTo) ===
+        state.businessNumber;
+    if (toOwnLine) {
+      // The business line forwards to this agent: dialling it would ring straight back here
+      this.logger.warn({ callId: state.callId }, "transfer to the business's own forwarded line refused");
+      state.missedTransfer = true;
+      await this.recordMissedTransfer(state, config, "loop_protected");
+      reply = {
+        say: renderTemplate(config.handoff.unavailableMessage, config, out.session.collected, this.ctx(state)),
+        hangup: true,
+      };
+    } else if (out.control === "transfer" && out.transferTo) {
+      await this.gate.markTransfer(state.tenantId, state.callerNumber);
       reply = {
         say: turn.speech,
         transfer: {
@@ -227,7 +281,7 @@ export class TelephonyService {
     } else {
       reply = { say: turn.speech, hangup: true };
     }
-    if (out.control !== "listen") {
+    if (out.control !== "listen" || toOwnLine) {
       await this.recorder.finalize(state, out.session, config);
       state.finalized = true;
     }
@@ -276,6 +330,7 @@ export class TelephonyService {
     const result = await this.store.withLock(call.callSid, async () => {
       const state = await this.store.get(call.callSid);
       if (!state) return this.render({ say: "", hangup: true });
+      await this.gate.clearTransfer(state.tenantId, state.callerNumber);
       const { config } = await this.configs.published(state.tenantId, state.agentVersionId);
       if (answered) return this.render({ say: "", hangup: true }, config);
       if (!state.missedTransfer) {
@@ -376,13 +431,72 @@ export class TelephonyService {
     }
   }
 
-  private ctx(state: CallContext): EngineContext {
+  private ctx(state: CallContext & Pick<CallState, "callingCode">): EngineContext {
     return {
       now: new Date(),
       timezone: state.timezone,
       callerNumber: state.callerNumber,
-      defaultCountryCode: this.env.DEFAULT_COUNTRY_CODE,
+      defaultCountryCode: state.callingCode ?? this.env.DEFAULT_COUNTRY_CODE,
     };
+  }
+
+  /** The platform ends the call (caller hung up, time limit), with the engine's bookkeeping */
+  private systemEnd(state: CallState, config: AgentConfig, reason: string, speech: string): RuntimeTurn {
+    const out = endCall(state.session, config, this.ctx(state), reason);
+    return {
+      output: out,
+      speech,
+      engineEvents: out.events,
+      runtimeEvents: [],
+      metrics: {
+        totalMs: 0,
+        understandMs: 0,
+        retrieveMs: 0,
+        decideMs: 0,
+        toolMs: 0,
+        phraseMs: 0,
+        llmCalls: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        deterministic: true,
+      },
+    };
+  }
+
+  /**
+   * The test call for "Test forwarding" (or a SIP route) arrived: record what the carrier passed
+   * and tell the staff member it works. Not a customer call, so no call record or agent.
+   */
+  private async verified(route: CallRoute, call: InboundCall): Promise<string> {
+    const db = this.tenantDb.db(route.tenantId);
+    const agent = route.agentId
+      ? await db.agent.findUnique({ where: { id: route.agentId }, select: { name: true } })
+      : null;
+    const details = {
+      from: route.callerNumber,
+      forwardedFrom: route.forwardedFrom,
+      via: route.connection,
+      // Leads get the real caller only when the carrier keeps the caller's number when forwarding
+      callerIdKept: Boolean(route.callerNumber) && route.callerNumber !== route.businessNumber,
+      forwardedFromMatches: route.forwardedFrom ? route.forwardedFrom === route.businessNumber : null,
+      callSid: call.callSid,
+    };
+    await db.phoneNumber.update({
+      where: { id: route.phoneNumberId },
+      data: {
+        verificationStatus: "VERIFIED",
+        verifiedAt: new Date(),
+        verificationExpiresAt: null,
+        verification: details,
+        lastCallAt: new Date(),
+      },
+    });
+    this.logger.log({ tenantId: route.tenantId, phoneNumberId: route.phoneNumberId }, "number verified");
+    const who = agent ? `${agent.name}` : "your AI agent, once you choose one";
+    return this.render({
+      say: `Your number is connected. Calls will be answered by ${who}. You can hang up now.`,
+      hangup: true,
+    });
   }
 }
 

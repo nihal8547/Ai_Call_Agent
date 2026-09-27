@@ -1,0 +1,16 @@
+title = "Voice agent platform secret scan"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Test fixtures and documented placeholders, never real credentials"
+paths = [
+  '''(^|/)test/''',
+  '''\.env\.example$''',
+  '''package-lock\.json$''',
+]
+regexes = [
+  '''ci-only-jwt-secret''',
+  '''test-only-jwt-secret''',
+]

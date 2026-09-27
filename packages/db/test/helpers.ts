@@ -36,6 +36,9 @@ export const TENANT_TABLES: { table: string; column: string }[] = [
     "audit_logs",
     "failed_jobs",
     "analytics_hourly",
+    "sip_trunks",
+    "blocked_callers",
+    "tenant_alerts",
   ].map((table) => ({ table, column: "tenant_id" })),
 ];
 
@@ -137,6 +140,13 @@ export async function createPopulatedTenant(prisma: ReturnType<typeof appClient>
         error: "rejected",
         attempts: 1,
       },
+    });
+    await tx.sipTrunk.create({
+      data: { tenantId, name: "Ooredoo SIP", carrier: "ooredoo", domainName: `t-${randomUUID().slice(0, 12)}` },
+    });
+    await tx.blockedCaller.create({ data: { tenantId, pattern: "+882*" } });
+    await tx.tenantAlert.create({
+      data: { tenantId, kind: "call_spike", dedupeKey: `spike-${randomUUID()}`, message: "Unusual volume" },
     });
     await tx.analyticsHourly.create({
       data: { tenantId, agentId: agent.id, hour: new Date("2026-09-28T10:00:00Z"), calls: 1 },

@@ -150,55 +150,70 @@ enum UsageKind {
 // ─────────────────────── Tenancy, users, access ───────────────────────
 
 model Tenant {
-  id           String       @id @default(uuid(7)) @db.Uuid
-  name         String       @db.VarChar(120)
-  slug         String       @unique @db.Citext
-  industry     String?      @db.VarChar(60)
-  timezone     String       @default("Asia/Kolkata") @db.VarChar(64)
-  status       TenantStatus @default(ACTIVE)
-  plan         String       @default("free") @db.VarChar(40)
+  id             String       @id @default(uuid(7)) @db.Uuid
+  name           String       @db.VarChar(120)
+  slug           String       @unique @db.Citext
+  industry       String?      @db.VarChar(60)
+  timezone       String       @default("Asia/Kolkata") @db.VarChar(64)
+  /// ISO 3166-1 alpha-2; drives the calling code, currency and defaults (IN, QA, AE, …)
+  country        String       @default("IN") @db.VarChar(2)
+  /// Country calling code for numbers spoken or sent without one ("91", "974")
+  callingCode    String       @default("91") @map("calling_code") @db.VarChar(4)
+  currency       String       @default("INR") @db.VarChar(3)
+  /// Call transcripts and details older than this are purged nightly (analytics and leads stay)
+  retentionDays  Int          @default(365) @map("retention_days")
+  /// Calls are ended politely after this long (toll-fraud and runaway-call protection)
+  maxCallMinutes Int          @default(20) @map("max_call_minutes")
+  status         TenantStatus @default(ACTIVE)
+  plan           String       @default("free") @db.VarChar(40)
   /// zod: TenantLimits (max calls/day, minutes/month, documents, storage, tokens)
-  usageLimits  Json         @default("{}") @map("usage_limits")
+  usageLimits    Json         @default("{}") @map("usage_limits")
   /// Per-tenant data-encryption key, itself encrypted with the platform master key (envelope encryption)
-  encryptedDek Bytes        @map("encrypted_dek")
-  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+  encryptedDek   Bytes        @map("encrypted_dek")
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  memberships   Membership[]
-  roles         Role[]
-  invitations   Invitation[]
-  apiKeys       ApiKey[]
-  agents        Agent[]
-  agentVersions AgentVersion[]
-  phoneNumbers  PhoneNumber[]
-  collections   KnowledgeCollection[]
-  documents     Document[]
-  chunks        DocumentChunk[]
-  integrations  Integration[]
-  agentTools    AgentTool[]
-  calls         Call[]
-  callEvents    CallEvent[]
-  leadStatuses  LeadStatus[]
-  leads         Lead[]
-  appointments  Appointment[]
-  usageRecords  UsageRecord[]
-  auditLogs     AuditLog[]
-  failedJobs    FailedJob[]
-  analytics     AnalyticsHourly[]
+  memberships    Membership[]
+  roles          Role[]
+  invitations    Invitation[]
+  apiKeys        ApiKey[]
+  agents         Agent[]
+  agentVersions  AgentVersion[]
+  phoneNumbers   PhoneNumber[]
+  collections    KnowledgeCollection[]
+  documents      Document[]
+  chunks         DocumentChunk[]
+  integrations   Integration[]
+  agentTools     AgentTool[]
+  calls          Call[]
+  callEvents     CallEvent[]
+  leadStatuses   LeadStatus[]
+  leads          Lead[]
+  appointments   Appointment[]
+  usageRecords   UsageRecord[]
+  auditLogs      AuditLog[]
+  failedJobs     FailedJob[]
+  analytics      AnalyticsHourly[]
+  sipTrunks      SipTrunk[]
+  blockedCallers BlockedCaller[]
+  alerts         TenantAlert[]
 
   @@map("tenants")
 }
 
 model User {
-  id              String    @id @default(uuid(7)) @db.Uuid
-  email           String    @unique @db.Citext
-  name            String    @db.VarChar(120)
-  passwordHash    String    @map("password_hash")
-  isPlatformOwner Boolean   @default(false) @map("is_platform_owner")
-  totpSecretEnc   Bytes?    @map("totp_secret_enc")
-  lastLoginAt     DateTime? @map("last_login_at") @db.Timestamptz(3)
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id                 String    @id @default(uuid(7)) @db.Uuid
+  email              String    @unique @db.Citext
+  name               String    @db.VarChar(120)
+  passwordHash       String    @map("password_hash")
+  isPlatformOwner    Boolean   @default(false) @map("is_platform_owner")
+  totpSecretEnc      Bytes?    @map("totp_secret_enc")
+  totpEnabledAt      DateTime? @map("totp_enabled_at") @db.Timestamptz(3)
+  /// SHA-256 hashes of unused one-time recovery codes
+  totpRecoveryHashes String[]  @default([]) @map("totp_recovery_hashes")
+  lastLoginAt        DateTime? @map("last_login_at") @db.Timestamptz(3)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   memberships   Membership[]
   refreshTokens RefreshToken[]
@@ -357,21 +372,40 @@ model AgentVersion {
 }
 
 model PhoneNumber {
-  id           String            @id @default(uuid(7)) @db.Uuid
-  tenantId     String            @map("tenant_id") @db.Uuid
-  agentId      String?           @map("agent_id") @db.Uuid
-  e164         String            @unique @db.VarChar(20)
-  provider     TelephonyProvider @default(TWILIO)
-  providerSid  String?           @map("provider_sid") @db.VarChar(64)
-  friendlyName String?           @map("friendly_name") @db.VarChar(80)
-  isActive     Boolean           @default(true) @map("is_active")
-  createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt    DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id                    String            @id @default(uuid(7)) @db.Uuid
+  tenantId              String            @map("tenant_id") @db.Uuid
+  agentId               String?           @map("agent_id") @db.Uuid
+  e164                  String            @unique @db.VarChar(20)
+  provider              TelephonyProvider @default(TWILIO)
+  providerSid           String?           @map("provider_sid") @db.VarChar(64)
+  friendlyName          String?           @map("friendly_name") @db.VarChar(80)
+  isActive              Boolean           @default(true) @map("is_active")
+  /// TWILIO numbers: the business's existing number (Ooredoo, Vodafone, …) that forwards to this one
+  forwardedFrom         String?           @unique @map("forwarded_from") @db.VarChar(20)
+  /// ooredoo | vodafone_qa | other (drives the setup instructions)
+  carrier               String?           @db.VarChar(30)
+  /// NO_ANSWER_BUSY_UNREACHABLE (staff first) | ALL
+  forwardingMode        String?           @map("forwarding_mode") @db.VarChar(40)
+  /// NONE | PENDING | VERIFIED | FAILED: a test call proved forwarding reaches the agent
+  verificationStatus    String            @default("NONE") @map("verification_status") @db.VarChar(10)
+  verificationExpiresAt DateTime?         @map("verification_expires_at") @db.Timestamptz(3)
+  verifiedAt            DateTime?         @map("verified_at") @db.Timestamptz(3)
+  /// What the carrier passed on the test call: { from, forwardedFrom, callerIdKept }
+  verification          Json              @default("{}")
+  /// SIP numbers: the trunk they arrive on
+  sipTrunkId            String?           @map("sip_trunk_id") @db.Uuid
+  /// Simultaneous calls allowed on this number (null = no limit)
+  maxConcurrentCalls    Int?              @map("max_concurrent_calls")
+  lastCallAt            DateTime?         @map("last_call_at") @db.Timestamptz(3)
+  createdAt             DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  agent  Agent? @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agent    Agent?    @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  sipTrunk SipTrunk? @relation(fields: [sipTrunkId], references: [id], onDelete: Restrict)
 
   @@index([tenantId])
+  @@index([sipTrunkId])
   @@map("phone_numbers")
 }
 
@@ -562,6 +596,10 @@ model Call {
   costMicros          BigInt              @default(0) @map("cost_micros")
   /// Live call state, mirrored on every turn so a call survives losing Redis; cleared when the call ends
   sessionSnapshot     Json?               @map("session_snapshot")
+  /// How the call reached us: TWILIO (dialled a Twilio number), FORWARDED (from the business's own line), SIP
+  connection          String              @default("TWILIO") @db.VarChar(10)
+  /// The business number that forwarded the call, when the carrier passed it
+  forwardedFrom       String?             @map("forwarded_from") @db.VarChar(20)
 
   tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   agent        Agent         @relation(fields: [agentId], references: [id], onDelete: Restrict)
@@ -795,4 +833,79 @@ model AnalyticsHourly {
   @@id([tenantId, agentId, hour])
   @@index([tenantId, hour])
   @@map("analytics_hourly")
+}
+
+// ─────────────────────── Existing numbers over SIP, abuse controls ───────────────────────
+
+/**
+ * A SIP connection from the business's carrier or PBX (Ooredoo SIP-T, Vodafone business SIP, a
+ * PBX/SBC) to a platform SIP domain. Calls to its numbers (phone_numbers.sip_trunk_id) reach the agents.
+ */
+model SipTrunk {
+  id                String    @id @default(uuid(7)) @db.Uuid
+  tenantId          String    @map("tenant_id") @db.Uuid
+  name              String    @db.VarChar(80)
+  /// ooredoo | vodafone_qa | pbx | other
+  carrier           String    @db.VarChar(30)
+  /// Platform-unique label; the full SIP domain is <domainName>.sip.twilio.com
+  domainName        String    @unique @map("domain_name") @db.VarChar(63)
+  /// Source addresses allowed to send calls (IPv4 CIDRs); checked by the SIP domain
+  allowedIps        String[]  @default([]) @map("allowed_ips")
+  authUsername      String?   @map("auth_username") @db.VarChar(40)
+  /// Sealed with the tenant key; the password is shown once when generated
+  authSecretEnc     Bytes?    @map("auth_secret_enc")
+  twilioDomainSid   String?   @map("twilio_domain_sid") @db.VarChar(40)
+  twilioIpAclSid    String?   @map("twilio_ip_acl_sid") @db.VarChar(40)
+  twilioCredListSid String?   @map("twilio_cred_list_sid") @db.VarChar(40)
+  /// PENDING_SETUP (platform must create the domain) | ACTIVE | ERROR | DISABLED
+  status            String    @default("PENDING_SETUP") @db.VarChar(16)
+  lastError         String?   @map("last_error")
+  lastCallAt        DateTime? @map("last_call_at") @db.Timestamptz(3)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant  Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  numbers PhoneNumber[]
+
+  @@unique([tenantId, name])
+  @@map("sip_trunks")
+}
+
+/**
+ * Callers a business never wants the agent to answer (spam, abuse, toll fraud)
+ */
+model BlockedCaller {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  /// E.164, or a prefix ending in * (e.g. +882*) to block whole ranges
+  pattern   String   @db.VarChar(21)
+  reason    String?  @db.VarChar(200)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, pattern])
+  @@map("blocked_callers")
+}
+
+/**
+ * Things the business owner should know about: limits reached, unusual call volume, a silent SIP trunk
+ */
+model TenantAlert {
+  id             String    @id @default(uuid(7)) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  /// usage_limit | call_spike | sip_trunk_silent | …
+  kind           String    @db.VarChar(40)
+  /// Same key → one open alert, not a new one each time
+  dedupeKey      String    @map("dedupe_key") @db.VarChar(120)
+  message        String    @db.VarChar(500)
+  data           Json      @default("{}")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  acknowledgedAt DateTime? @map("acknowledged_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, dedupeKey])
+  @@index([tenantId, acknowledgedAt])
+  @@map("tenant_alerts")
 }

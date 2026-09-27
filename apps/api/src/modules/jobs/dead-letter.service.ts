@@ -6,6 +6,7 @@ import type { AuthContext } from "../../common/auth/auth.types";
 import { AppException } from "../../common/filters/problem-details.filter";
 import { QueueService } from "../../infra/queue.service";
 import { TenantDbService } from "../../infra/tenant-db.service";
+import { MetricsService } from "../../observability/metrics.service";
 import { AuditService } from "../audit/audit.service";
 
 type Meta = { ip?: string; userAgent?: string };
@@ -38,6 +39,7 @@ export class DeadLetterService {
     private readonly tenantDb: TenantDbService,
     private readonly queues: QueueService,
     private readonly audit: AuditService,
+    private readonly metrics: MetricsService,
   ) {}
 
   async record(queue: TenantQueue, job: Job<QueueJob>, err: Error): Promise<void> {
@@ -62,6 +64,7 @@ export class DeadLetterService {
         update: { error: row.error, attempts: row.attempts, status: "FAILED", resolvedAt: null },
       }),
     );
+    this.metrics.deadLetters.inc({ queue });
     this.logger.warn({ queue, jobId: job.id, tenantId: d.tenantId, error: row.error }, "job failed for good");
   }
 

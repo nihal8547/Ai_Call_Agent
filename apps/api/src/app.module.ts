@@ -14,7 +14,9 @@ import { AgentsModule } from "./modules/agents/agents.module";
 import { AnalyticsModule } from "./modules/analytics/analytics.module";
 import { CallsModule } from "./modules/calls/calls.module";
 import { CrmModule } from "./modules/crm/crm.module";
+import { AlertsModule } from "./modules/alerts/alerts.module";
 import { HealthModule } from "./modules/health/health.module";
+import { ObservabilityModule } from "./observability/observability.module";
 import { UsageModule } from "./modules/usage/usage.module";
 import { JobsModule } from "./modules/jobs/jobs.module";
 import { AppointmentsModule } from "./modules/appointments/appointments.module";
@@ -41,11 +43,17 @@ export class AppModule {
             level: env.LOG_LEVEL,
             // Never log credentials or session cookies
             redact: ["req.headers.authorization", "req.headers.cookie", 'res.headers["set-cookie"]'],
+            // Every request log says which business and person it was for
+            customProps: (req) => {
+              const auth = (req as { auth?: { tenantId: string; kind: string; userId?: string } }).auth;
+              return auth ? { tenantId: auth.tenantId, ...(auth.userId ? { userId: auth.userId } : {}) } : {};
+            },
             ...(env.NODE_ENV === "development" ? { transport: { target: "pino-pretty" } } : {}),
             autoLogging: { ignore: (req) => req.url === "/health" },
           },
         }),
         InfraModule,
+        ObservabilityModule,
         HealthModule,
         AuditModule,
         ToolsModule,
@@ -55,6 +63,7 @@ export class AppModule {
         ApiKeysModule,
         TelephonyModule,
         UsageModule,
+        AlertsModule,
         JobsModule,
         CrmModule,
         CallsModule,

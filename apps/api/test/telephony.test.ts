@@ -178,6 +178,12 @@ describe.skipIf(!hasTestDb)("telephony: real phone calls through Twilio webhooks
     expect(call.last.dial).toBe("+911140000099");
     const record = await db().call.findUniqueOrThrow({ where: { providerCallSid: call.callSid } });
     expect(record.outcome).toBe("HUMAN_HANDOFF");
+    // While the transfer rings, a call in from the same caller is the transfer looping back
+    const loop = await phoneCall(app, clinic.e164, []);
+    expect(loop.last.xml).toContain('<Reject reason="busy"/>');
+    // Twilio reports the end of the call; the caller can ring again straight away
+    await twilioPost(app, "/telephony/twilio/status", { ...call.base, CallStatus: "completed", CallDuration: "40" });
+    expect((await phoneCall(app, clinic.e164, [])).last.say).toContain("May I have the patient's name?");
   });
 
   it("keeps what was collected when the caller hangs up mid-call", async () => {

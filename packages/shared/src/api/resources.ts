@@ -79,6 +79,8 @@ export const UpdatePhoneNumberBody = z
     friendlyName: z.string().trim().max(80).nullable(),
     agentId: z.uuid().nullable(),
     isActive: z.boolean(),
+    /** Simultaneous calls allowed (null = no limit) */
+    maxConcurrentCalls: z.number().int().min(1).max(500).nullable(),
   })
   .partial()
   .refine((b) => Object.keys(b).length > 0, "Nothing to update");
@@ -205,4 +207,69 @@ export const FAILED_JOB_STATUSES = ["FAILED", "RETRIED", "DISMISSED"] as const;
 export const FailedJobsQuery = z.object({
   status: z.enum(FAILED_JOB_STATUSES).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
+});
+
+// ── Existing numbers: forwarding and SIP ─────────────────────────────────────
+export const CARRIER_KEYS = ["ooredoo", "vodafone_qa", "other"] as const;
+export const FORWARDING_MODE_KEYS = ["NO_ANSWER_BUSY_UNREACHABLE", "ALL"] as const;
+/** A phone number as typed by staff: E.164, or local digits in the business's country */
+const TypedNumber = z.string().trim().min(6).max(24);
+
+/** Point the business's existing line (Ooredoo, Vodafone, …) at one of its Twilio numbers */
+export const ConnectForwardingBody = z.object({
+  businessNumber: TypedNumber,
+  carrier: z.enum(CARRIER_KEYS),
+  mode: z.enum(FORWARDING_MODE_KEYS).default("NO_ANSWER_BUSY_UNREACHABLE"),
+});
+/** Open a 10-minute window for a test call; optionally only from the phone staff will call from */
+export const VerifyNumberBody = z.object({ from: TypedNumber.optional() });
+
+export const TWILIO_NUMBER_TYPES = ["local", "mobile", "toll_free"] as const;
+export const SearchTwilioNumbersQuery = z.object({
+  country: z.string().regex(/^[A-Z]{2}$/, "Two-letter country code"),
+  type: z.enum(TWILIO_NUMBER_TYPES).default("local"),
+  contains: z.string().regex(/^[0-9*]{1,10}$/).optional(),
+});
+export const BuyTwilioNumberBody = z.object({
+  phoneNumber: E164,
+  agentId: z.uuid().nullable().optional(),
+  friendlyName: z.string().trim().max(80).optional(),
+});
+/** A number already on the platform's Twilio account (bought in the Twilio console) */
+export const ImportTwilioNumberBody = z.object({
+  sid: z.string().regex(/^PN[0-9a-f]{32}$/i, "Twilio number SID (PN…)"),
+  agentId: z.uuid().nullable().optional(),
+  friendlyName: z.string().trim().max(80).optional(),
+});
+
+export const SIP_CARRIER_KEYS = ["ooredoo", "vodafone_qa", "pbx", "other"] as const;
+export const CreateSipTrunkBody = z.object({
+  name: z.string().trim().min(2).max(80),
+  carrier: z.enum(SIP_CARRIER_KEYS),
+  /** The carrier's or PBX's public signalling addresses (IPv4 or CIDR, /16 or narrower) */
+  allowedIps: z.array(z.string().trim().max(18)).max(20).default([]),
+  /** Also require a SIP username/password (digest auth) */
+  useCredentials: z.boolean().default(false),
+});
+export const UpdateSipTrunkBody = z
+  .object({
+    name: z.string().trim().min(2).max(80),
+    allowedIps: z.array(z.string().trim().max(18)).max(20),
+    status: z.enum(["ACTIVE", "DISABLED"]),
+  })
+  .partial()
+  .refine((b) => Object.keys(b).length > 0, "Nothing to update");
+export const AddSipNumberBody = z.object({
+  number: TypedNumber,
+  agentId: z.uuid().nullable().optional(),
+  friendlyName: z.string().trim().max(80).optional(),
+});
+
+export const BlockCallerBody = z.object({
+  /** A number, or a prefix ending in * (e.g. +882* for satellite ranges) */
+  pattern: z
+    .string()
+    .trim()
+    .regex(/^\+[1-9]\d{1,14}\*?$/, "A number in +country format, optionally ending in * for a whole range"),
+  reason: z.string().trim().max(200).optional(),
 });

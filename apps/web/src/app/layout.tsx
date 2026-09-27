@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import type { ReactNode } from "react";
 import "./globals.css";
 import { Providers } from "./providers";
@@ -8,7 +9,9 @@ export const metadata: Metadata = {
   description: "Build, run and monitor AI voice agents for your business",
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  // Reading the request makes every page render per request, so Next adds the CSP nonce to its scripts
+  await headers();
   return (
     <html lang="en">
       <body>

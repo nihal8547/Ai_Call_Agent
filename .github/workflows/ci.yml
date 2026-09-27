@@ -81,3 +81,34 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # High/critical advisories in production dependencies fail the build (reviewed exceptions in scripts/audit.mjs)
+      - name: Dependency audit
+        run: npm run audit:prod
+
+      # Secrets committed by mistake (keys, tokens, passwords) in the whole history
+      - name: Secret scan
+        run: |
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.21.2 detect --source /repo --redact --no-banner --config /repo/.gitleaks.toml
+
+      # Alert rules parse and fire when they should
+      - name: Alert rules
+        run: |
+          docker run --rm -v "$PWD/infra/observability:/o" -w /o --entrypoint promtool prom/prometheus:v2.55.1 check rules alerts.yml
+          docker run --rm -v "$PWD/infra/observability:/o" -w /o --entrypoint promtool prom/prometheus:v2.55.1 test rules alerts.test.yml

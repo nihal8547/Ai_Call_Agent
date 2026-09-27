@@ -23,6 +23,8 @@ const attrs = (a: Record<string, string | number | undefined>) =>
  * - hangup: false (without listen/transfer): <Say> only; the call carries on.
  */
 export function renderTwiml(reply: VoiceReply): string {
+  if (reply.reject)
+    return `<?xml version="1.0" encoding="UTF-8"?><Response><Reject reason="${reply.reject}"/></Response>`;
   const say = reply.say.trim()
     ? `<Say${attrs({ voice: reply.voice, language: reply.language })}>${escapeXml(reply.say)}</Say>`
     : "";

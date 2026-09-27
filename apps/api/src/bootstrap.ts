@@ -7,6 +7,7 @@ import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fa
 import { randomUUID } from "node:crypto";
 import { Logger } from "nestjs-pino";
 import { mountQueueBoard } from "./admin/queue-board";
+import { MetricsService } from "./observability/metrics.service";
 import { AppModule } from "./app.module";
 import { type ApiEnv } from "./config/env";
 
@@ -37,9 +38,23 @@ export async function createApp(
   });
   app.enableCors({ origin: env.CORS_ORIGINS, credentials: true });
   // Provider webhooks keep stable, unversioned URLs (they are configured in the provider console)
-  app.setGlobalPrefix("api/v1", { exclude: ["health", "ready", "telephony/{*path}"] });
+  app.setGlobalPrefix("api/v1", { exclude: ["health", "ready", "metrics", "telephony/{*path}"] });
   app.enableShutdownHooks();
   await mountQueueBoard(app, env);
+
+  // Request durations by route pattern (never the raw URL: ids would explode the series)
+  const metrics = app.get(MetricsService);
+  app
+    .getHttpAdapter()
+    .getInstance()
+    .addHook("onResponse", async (req, reply) => {
+      const route = req.routeOptions.url ?? "unmatched";
+      if (route === "/metrics") return;
+      metrics.http.observe(
+        { method: req.method, route, status: `${Math.floor(reply.statusCode / 100)}xx` },
+        reply.elapsedTime / 1000,
+      );
+    });
 
   // Echo the request id so clients and logs can be correlated
   app

@@ -5,16 +5,48 @@ import { type PrismaClient } from "@prisma/client";
  * These are the only queries that run before the tenant is known.
  */
 
-export type PhoneRoute = { tenantId: string; agentId: string | null; agentVersionId: string | null };
+export type PhoneRoute = {
+  tenantId: string;
+  agentId: string | null;
+  agentVersionId: string | null;
+  phoneNumberId: string;
+};
 
-/** Inbound call routing: "To" number → tenant, agent and its published version (null when inactive) */
+/** Inbound call routing: "To" Twilio number → tenant, agent and its published version (null when inactive) */
 export async function resolvePhoneNumber(prisma: PrismaClient, e164: string): Promise<PhoneRoute | null> {
   const rows = await prisma.$queryRaw<
-    { tenant_id: string; agent_id: string | null; agent_version_id: string | null }[]
+    { tenant_id: string; agent_id: string | null; agent_version_id: string | null; phone_number_id: string }[]
   >`
-    SELECT tenant_id, agent_id, agent_version_id FROM resolve_phone_number(${e164})`;
+    SELECT tenant_id, agent_id, agent_version_id, phone_number_id FROM resolve_phone_number(${e164})`;
   const r = rows[0];
-  return r ? { tenantId: r.tenant_id, agentId: r.agent_id, agentVersionId: r.agent_version_id } : null;
+  return r
+    ? {
+        tenantId: r.tenant_id,
+        agentId: r.agent_id,
+        agentVersionId: r.agent_version_id,
+        phoneNumberId: r.phone_number_id,
+      }
+    : null;
+}
+
+/** SIP calls: the platform SIP domain label a call arrived on → its trunk and business */
+export async function resolveSipTrunk(
+  prisma: PrismaClient,
+  domainName: string,
+): Promise<{ tenantId: string; sipTrunkId: string; callingCode: string } | null> {
+  const rows = await prisma.$queryRaw<{ tenant_id: string; sip_trunk_id: string; calling_code: string }[]>`
+    SELECT tenant_id, sip_trunk_id, calling_code FROM resolve_sip_trunk(${domainName})`;
+  const r = rows[0];
+  return r ? { tenantId: r.tenant_id, sipTrunkId: r.sip_trunk_id, callingCode: r.calling_code } : null;
+}
+
+/** Every active tenant with its retention setting (nightly jobs) */
+export async function activeTenants(
+  prisma: PrismaClient,
+): Promise<{ tenantId: string; retentionDays: number }[]> {
+  const rows = await prisma.$queryRaw<{ tenant_id: string; retention_days: number }[]>`
+    SELECT tenant_id, retention_days FROM active_tenants()`;
+  return rows.map((r) => ({ tenantId: r.tenant_id, retentionDays: r.retention_days }));
 }
 
 export type UserMembership = {

@@ -9,6 +9,8 @@ export type AuthContext =
       roleId: string;
       roleKey: string;
       permissions: readonly Permission[];
+      /** The signed-in session (device) */
+      familyId?: string;
     }
   | {
       kind: "api_key";

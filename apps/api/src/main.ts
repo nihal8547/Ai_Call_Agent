@@ -1,3 +1,5 @@
+// Must be first: instrumentation patches modules as they load
+import "./tracing";
 import { createApp } from "./bootstrap";
 import { loadApiEnv } from "./config/env";
 

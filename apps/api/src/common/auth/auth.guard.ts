@@ -80,6 +80,7 @@ export class AuthGuard implements CanActivate {
       permissions: membership.role.permissions.filter(
         (p): p is Permission => Permission.safeParse(p).success,
       ),
+      ...(claims.familyId ? { familyId: claims.familyId } : {}),
     };
   }
 }

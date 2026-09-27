@@ -22,7 +22,8 @@
     "db:migrate:dev": "npm run migrate:dev -w @platform/db --",
     "db:seed": "npm run seed -w @platform/db",
     "db:check": "npm run check -w @platform/db",
-    "simulate": "npm run simulate -w @platform/runtime --"
+    "simulate": "npm run simulate -w @platform/runtime --",
+    "audit:prod": "node scripts/audit.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
@@ -36,6 +37,9 @@
     "vitest": "^3.2.7"
   },
   "overrides": {
-    "@types/node": "^22.20.4"
+    "@types/node": "^22.20.4",
+    "fastify": "5.12.5",
+    "deepmerge-ts": "^8.0.2",
+    "uuid": "^11.1.1"
   }
 }

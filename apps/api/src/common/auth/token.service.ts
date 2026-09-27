@@ -5,10 +5,11 @@ import { jwtVerify, SignJWT } from "jose";
 import { randomUUID } from "node:crypto";
 import { API_ENV, type ApiEnv } from "../../config/env";
 import { PrismaService } from "../../infra/prisma.service";
+import { RedisService } from "../../infra/redis.service";
 import { AppException } from "../filters/problem-details.filter";
 import { COOKIE } from "./auth.types";
 
-export type AccessClaims = { userId: string; tenantId: string };
+export type AccessClaims = { userId: string; tenantId: string; familyId?: string };
 
 const REFRESH_PATH = "/api/v1/auth";
 
@@ -26,6 +27,7 @@ export class TokenService {
   constructor(
     @Inject(API_ENV) private readonly env: ApiEnv,
     private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
   ) {
     this.key = new TextEncoder().encode(env.JWT_SECRET);
   }
@@ -48,7 +50,8 @@ export class TokenService {
         ip: req.ip,
       },
     });
-    const access = await new SignJWT({ tid: claims.tenantId })
+    // `fid` ties the access token to its session, so revoking the session stops it at once
+    const access = await new SignJWT({ tid: claims.tenantId, fid: familyId })
       .setProtectedHeader({ alg: "HS256" })
       .setSubject(claims.userId)
       .setIssuedAt()
@@ -78,7 +81,9 @@ export class TokenService {
     try {
       const { payload } = await jwtVerify(token, this.key, { algorithms: ["HS256"] });
       if (typeof payload.sub !== "string" || typeof payload.tid !== "string") return null;
-      return { userId: payload.sub, tenantId: payload.tid };
+      const familyId = typeof payload.fid === "string" ? payload.fid : undefined;
+      if (familyId && (await this.redis.client.exists(revokedKey(familyId)))) return null;
+      return { userId: payload.sub, tenantId: payload.tid, ...(familyId ? { familyId } : {}) };
     } catch {
       return null;
     }
@@ -131,6 +136,38 @@ export class TokenService {
       where: { familyId, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+    // Access tokens already issued for it stop working too (they expire on their own after this)
+    await this.redis.client.set(revokedKey(familyId), "1", "EX", this.env.ACCESS_TOKEN_TTL_SECONDS + 60);
+  }
+
+  /** A user's signed-in devices: one per session family, with its latest use */
+  async listSessions(userId: string) {
+    const rows = await this.prisma.client.refreshToken.findMany({
+      where: { userId, revokedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: "desc" },
+      select: { familyId: true, createdAt: true, userAgent: true, ip: true },
+    });
+    const firsts = await this.prisma.client.refreshToken.groupBy({
+      by: ["familyId"],
+      where: { familyId: { in: rows.map((r) => r.familyId) } },
+      _min: { createdAt: true },
+    });
+    const signedIn = new Map(firsts.map((f) => [f.familyId, f._min.createdAt]));
+    return rows.map((r) => ({
+      id: r.familyId,
+      signedInAt: signedIn.get(r.familyId) ?? r.createdAt,
+      lastActiveAt: r.createdAt,
+      userAgent: r.userAgent,
+      ip: r.ip,
+    }));
+  }
+
+  /** Only the user's own sessions can be revoked */
+  async revokeSession(userId: string, familyId: string): Promise<boolean> {
+    const owned = await this.prisma.client.refreshToken.count({ where: { userId, familyId } });
+    if (!owned) return false;
+    await this.revokeFamily(familyId);
+    return true;
   }
 
   clearCookies(reply: FastifyReply): void {
@@ -139,3 +176,5 @@ export class TokenService {
     void reply.clearCookie(COOKIE.csrf, { path: "/" });
   }
 }
+
+const revokedKey = (familyId: string) => `revoked:family:${familyId}`;

@@ -31,6 +31,8 @@ export class TwilioAdapter implements TelephonyAdapter {
         : {}),
       ...(p.CallDuration !== undefined ? { durationSeconds: Number(p.CallDuration) } : {}),
       ...(p.DialCallStatus !== undefined ? { dialStatus: p.DialCallStatus } : {}),
+      ...(p.ForwardedFrom ? { forwardedFrom: p.ForwardedFrom } : {}),
+      ...(p.CallerName ? { callerName: p.CallerName } : {}),
     };
   }
 

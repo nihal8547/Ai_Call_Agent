@@ -1,16 +1,121 @@
-import { Body, Controller, Get, HttpCode, Post, Req, Res } from "@nestjs/common";
-import { LoginBody, RegisterBody, SwitchTenantBody } from "@platform/shared";
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Req, Res } from "@nestjs/common";
+import { DisableTotpBody, EnableTotpBody, LoginBody, LoginMfaBody, RegisterBody, SwitchTenantBody } from "@platform/shared";
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { type z } from "zod";
+import { z } from "zod";
 import type { AuthContext } from "../../common/auth/auth.types";
 import { AnyAuthenticated, CurrentAuth, Public, userAuth, UserOnly } from "../../common/auth/decorators";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
+import { requestMeta } from "../../common/http/request-meta";
 import { RateLimit } from "../../common/rate-limit/rate-limit";
+import { TokenService } from "../../common/auth/token.service";
+import { AppException } from "../../common/filters/problem-details.filter";
+import { AuditService } from "../audit/audit.service";
+import { TenantDbService } from "../../infra/tenant-db.service";
 import { AuthService } from "./auth.service";
+import { MfaService } from "./mfa.service";
+
+const FamilyParam = z.object({ id: z.uuid() });
 
 @Controller("auth")
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly mfa: MfaService,
+    private readonly tokens: TokenService,
+    private readonly audit: AuditService,
+    private readonly tenantDb: TenantDbService,
+  ) {}
+
+  /** Second step of sign-in, with the ticket the password step returned */
+  @Public()
+  @Post("login/2fa")
+  @HttpCode(200)
+  @RateLimit({ name: "login-2fa", limit: 20, windowSeconds: 300, by: "ip" })
+  loginMfa(
+    @Body(new ZodValidationPipe(LoginMfaBody)) body: z.output<typeof LoginMfaBody>,
+    @Req() req: FastifyRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ) {
+    return this.auth.loginMfa(body.mfaToken, body.code, req, reply);
+  }
+
+  // ── Two-step sign-in set-up ────────────────────────────────────────────────
+  @AnyAuthenticated()
+  @UserOnly()
+  @Post("2fa/setup")
+  @HttpCode(200)
+  setupTotp(@CurrentAuth() auth: AuthContext) {
+    return this.mfa.setup(userAuth(auth).userId);
+  }
+
+  @AnyAuthenticated()
+  @UserOnly()
+  @Post("2fa/enable")
+  @HttpCode(200)
+  @RateLimit({ name: "2fa-enable", limit: 10, windowSeconds: 300, by: "ip" })
+  async enableTotp(
+    @CurrentAuth() auth: AuthContext,
+    @Body(new ZodValidationPipe(EnableTotpBody)) body: z.output<typeof EnableTotpBody>,
+    @Req() req: FastifyRequest,
+  ) {
+    const user = userAuth(auth);
+    const result = await this.mfa.enable(user.userId, body.code);
+    await this.tenantDb.tx(user.tenantId, (tx) =>
+      this.audit.record(tx, auth, { action: "user.2fa_enabled", entityType: "user", entityId: user.userId, ...requestMeta(req) }),
+    );
+    return result;
+  }
+
+  @AnyAuthenticated()
+  @UserOnly()
+  @Post("2fa/disable")
+  @HttpCode(204)
+  @RateLimit({ name: "2fa-disable", limit: 10, windowSeconds: 300, by: "ip" })
+  async disableTotp(
+    @CurrentAuth() auth: AuthContext,
+    @Body(new ZodValidationPipe(DisableTotpBody)) body: z.output<typeof DisableTotpBody>,
+    @Req() req: FastifyRequest,
+  ): Promise<void> {
+    const user = userAuth(auth);
+    await this.mfa.disable(user.userId, body.password, body.code);
+    await this.tenantDb.tx(user.tenantId, (tx) =>
+      this.audit.record(tx, auth, { action: "user.2fa_disabled", entityType: "user", entityId: user.userId, ...requestMeta(req) }),
+    );
+  }
+
+  // ── Signed-in devices ─────────────────────────────────────────────────────
+  @AnyAuthenticated()
+  @UserOnly()
+  @Get("sessions")
+  async sessions(@CurrentAuth() auth: AuthContext) {
+    const user = userAuth(auth);
+    const items = await this.tokens.listSessions(user.userId);
+    return { items: items.map((s) => ({ ...s, current: s.id === user.familyId })) };
+  }
+
+  @AnyAuthenticated()
+  @UserOnly()
+  @Delete("sessions/:id")
+  @HttpCode(204)
+  async revokeSession(
+    @CurrentAuth() auth: AuthContext,
+    @Param(new ZodValidationPipe(FamilyParam)) { id }: { id: string },
+  ): Promise<void> {
+    if (!(await this.tokens.revokeSession(userAuth(auth).userId, id)))
+      throw new AppException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Session not found");
+  }
+
+  /** Sign out everywhere else (e.g. after losing a phone) */
+  @AnyAuthenticated()
+  @UserOnly()
+  @Post("sessions/revoke-others")
+  @HttpCode(200)
+  async revokeOthers(@CurrentAuth() auth: AuthContext) {
+    const user = userAuth(auth);
+    const others = (await this.tokens.listSessions(user.userId)).filter((s) => s.id !== user.familyId);
+    for (const s of others) await this.tokens.revokeFamily(s.id);
+    return { revoked: others.length };
+  }
 
   @Public()
   @Post("register")

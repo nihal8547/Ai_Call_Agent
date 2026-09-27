@@ -10,6 +10,7 @@ import { AppException } from "../../common/filters/problem-details.filter";
 import { QueueService } from "../../infra/queue.service";
 import { StorageService } from "../../infra/storage.service";
 import { TenantDbService } from "../../infra/tenant-db.service";
+import { AlertsService } from "../alerts/alerts.service";
 import { AuditService } from "../audit/audit.service";
 
 export type UploadInput = {
@@ -30,7 +31,21 @@ export class DocumentsService {
     private readonly storage: StorageService,
     private readonly queue: QueueService,
     private readonly audit: AuditService,
+    private readonly alerts: AlertsService,
   ) {}
+
+  /** A plan limit stopped an upload: the owner hears about it once per month */
+  private async limitReached(tenantId: string, what: string, message: string): Promise<never> {
+    await this.alerts
+      .raise(tenantId, {
+        kind: "usage_limit",
+        dedupeKey: `${what}-${new Date().toISOString().slice(0, 7)}`,
+        message: `Uploads are being refused: ${message.charAt(0).toLowerCase()}${message.slice(1)}.`,
+        data: { limit: what },
+      })
+      .catch(() => undefined);
+    throw new AppException(HttpStatus.FORBIDDEN, "USAGE_LIMIT_EXCEEDED", message);
+  }
 
   /** Validate, store and queue a new document (or a new version replacing `replaces`) */
   async upload(
@@ -184,20 +199,10 @@ export class DocumentsService {
     const [{ count, bytes }] = (await tx.$queryRaw<{ count: bigint; bytes: bigint | null }[]>(
       Prisma.sql`SELECT count(*) AS count, sum(size_bytes) AS bytes FROM documents`,
     )) as [{ count: bigint; bytes: bigint | null }];
-    if (!isReplacement && Number(count) >= limits.maxDocuments) {
-      throw new AppException(
-        HttpStatus.FORBIDDEN,
-        "USAGE_LIMIT_EXCEEDED",
-        `Your plan allows ${limits.maxDocuments} documents`,
-      );
-    }
-    if (Number(bytes ?? 0n) + size > limits.maxStorageMb * MB) {
-      throw new AppException(
-        HttpStatus.FORBIDDEN,
-        "USAGE_LIMIT_EXCEEDED",
-        `Your plan allows ${limits.maxStorageMb} MB of documents`,
-      );
-    }
+    if (!isReplacement && Number(count) >= limits.maxDocuments)
+      await this.limitReached(tenantId, "maxDocuments", `Your plan allows ${limits.maxDocuments} documents`);
+    if (Number(bytes ?? 0n) + size > limits.maxStorageMb * MB)
+      await this.limitReached(tenantId, "maxStorageMb", `Your plan allows ${limits.maxStorageMb} MB of documents`);
   }
 }
 

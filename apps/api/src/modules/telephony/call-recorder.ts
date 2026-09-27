@@ -5,6 +5,7 @@ import type { RuntimeEvent, RuntimeTurn } from "@platform/runtime";
 import type { AgentConfig } from "@platform/shared";
 import { TenantDbService } from "../../infra/tenant-db.service";
 import { CrmSyncService } from "../crm/crm-sync.service";
+import { MetricsService } from "../../observability/metrics.service";
 import { turnUsage, UsageService } from "../usage/usage.service";
 import type { CallState } from "./call-state.store";
 import { upsertLeadForCall } from "./lead-writer";
@@ -136,12 +137,29 @@ export class CallRecorder {
     private readonly tenantDb: TenantDbService,
     private readonly crm: CrmSyncService,
     private readonly usage: UsageService,
+    private readonly metrics: MetricsService,
   ) {}
+
+  private observe(turn: RuntimeTurn, rows: EventRow[]): void {
+    const ai = String(!turn.metrics.deterministic);
+    if (turn.speech) {
+      this.metrics.turns.inc({ ai });
+      this.metrics.turn.observe({ ai }, turn.metrics.totalMs / 1000);
+    }
+    for (const r of rows) {
+      if (r.type === "FALLBACK") this.metrics.fallbacks.inc({ reason: String(r.payload.reason ?? "unknown").slice(0, 40) });
+      if (r.type === "RAG_RETRIEVAL" && typeof r.payload.answered === "string")
+        this.metrics.questions.inc({ answered: r.payload.answered });
+      if (r.type === "TOOL_CALL" && r.payload.phase === "executed")
+        this.metrics.tools.inc({ tool: String(r.payload.tool), ok: String(r.payload.ok) });
+    }
+  }
 
   /** Append a turn to the timeline and update the call summary; returns the next event sequence */
   async recordTurn(state: CallState, turn: RuntimeTurn, rows: EventRow[]): Promise<number> {
     const session = turn.output.session;
     let seq = state.eventSeq;
+    this.observe(turn, rows);
     await this.tenantDb.tx(state.tenantId, async (tx) => {
       if (rows.length) {
         await tx.callEvent.createMany({

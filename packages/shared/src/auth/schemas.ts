@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { COUNTRY_CODES } from "../tenancy/countries";
 import { TenantSlug } from "../tenancy/defaults";
 import { Permission } from "./permissions";
 
@@ -40,7 +41,9 @@ export const RegisterBody = z.object({
   businessName: BusinessName,
   slug: TenantSlug.optional(),
   industry: z.string().trim().max(60).optional(),
-  timezone: Timezone.default("Asia/Kolkata"),
+  /** Sets the calling code, currency and (unless given) the time zone */
+  country: z.enum(COUNTRY_CODES).default("IN"),
+  timezone: Timezone.optional(),
 });
 export type RegisterBody = z.input<typeof RegisterBody>;
 
@@ -54,6 +57,13 @@ export type LoginBody = z.input<typeof LoginBody>;
 
 export const SwitchTenantBody = z.object({ tenantId: z.uuid() });
 
+// ── Two-step sign-in (TOTP) and sessions ────────────────────────────────────
+/** A 6-digit authenticator code, or a recovery code like 7GQ4-X2MP-KT9A */
+const MfaCode = z.string().trim().min(6).max(20);
+export const LoginMfaBody = z.object({ mfaToken: z.string().min(20).max(100), code: MfaCode });
+export const EnableTotpBody = z.object({ code: z.string().trim().regex(/^\d{6}$/, "Enter the 6-digit code") });
+export const DisableTotpBody = z.object({ password: z.string().min(1).max(128), code: MfaCode });
+
 export const MembershipSummary = z.object({
   tenantId: z.uuid(),
   tenantName: z.string(),
@@ -62,8 +72,22 @@ export const MembershipSummary = z.object({
 });
 
 export const MeResponse = z.object({
-  user: z.object({ id: z.uuid(), email: z.string(), name: z.string(), isPlatformOwner: z.boolean() }),
-  tenant: z.object({ id: z.uuid(), name: z.string(), slug: z.string(), timezone: z.string() }),
+  user: z.object({
+    id: z.uuid(),
+    email: z.string(),
+    name: z.string(),
+    isPlatformOwner: z.boolean(),
+    totpEnabled: z.boolean(),
+  }),
+  tenant: z.object({
+    id: z.uuid(),
+    name: z.string(),
+    slug: z.string(),
+    timezone: z.string(),
+    country: z.string(),
+    callingCode: z.string(),
+    currency: z.string(),
+  }),
   role: z.object({ id: z.uuid(), key: z.string(), name: z.string() }),
   permissions: z.array(z.string()),
   memberships: z.array(MembershipSummary),
@@ -76,6 +100,10 @@ export const UpdateTenantBody = z
     name: BusinessName,
     industry: z.string().trim().max(60).nullable(),
     timezone: Timezone,
+    /** Changes the calling code and currency with it */
+    country: z.enum(COUNTRY_CODES),
+    retentionDays: z.number().int().min(30).max(3650),
+    maxCallMinutes: z.number().int().min(2).max(120),
   })
   .partial()
   .refine((b) => Object.keys(b).length > 0, "Nothing to update");

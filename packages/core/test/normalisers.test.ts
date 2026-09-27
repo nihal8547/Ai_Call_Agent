@@ -157,8 +157,24 @@ describe("contact details", () => {
     ["09876543210", "+919876543210"],
     ["nine eight seven six five four three two one zero", "+919876543210"],
     ["double nine eight seven six five four three two one", "+919987654321"],
+    ["919876543210", "+919876543210"],
+    ["0091 98765 43210", "+919876543210"],
   ])("phone %s → %s", (input, expected) => {
     expect(parsePhone(input)).toBe(expected);
+  });
+
+  it.each([
+    ["5512 3456", "+97455123456"],
+    ["4412 3456", "+97444123456"],
+    ["+974 5512 3456", "+97455123456"],
+    ["00974 5512 3456", "+97455123456"],
+    ["974 55123456", "+97455123456"],
+    ["٥٥١٢٣٤٥٦", "+97455123456"],
+    ["five five one two three four five six", "+97455123456"],
+    ["551234", undefined],
+    ["98765 43210", undefined],
+  ])("Qatar phone %s → %s", (input, expected) => {
+    expect(parsePhone(input, "974")).toBe(expected);
   });
 
   it("parses spoken emails", () => {

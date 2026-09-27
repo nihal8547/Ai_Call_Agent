@@ -1,0 +1,49 @@
+# promtool test rules alerts.test.yml
+rule_files: [alerts.yml]
+evaluation_interval: 1m
+tests:
+  - interval: 1m
+    input_series:
+      # Every reply takes 1.5–2 s
+      - series: 'voice_turn_duration_seconds_bucket{le="1.2",ai="true"}'
+        values: "0+0x30"
+      - series: 'voice_turn_duration_seconds_bucket{le="2",ai="true"}'
+        values: "0+10x30"
+      - series: 'voice_turn_duration_seconds_bucket{le="+Inf",ai="true"}'
+        values: "0+10x30"
+      # 8 of 10 replies without AI
+      - series: 'voice_turns_total{ai="false"}'
+        values: "0+8x30"
+      - series: 'voice_turns_total{ai="true"}'
+        values: "0+2x30"
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: HighTurnLatencyP95
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: "p95 reply time is 1.96s (target 1.2 s)"
+              runbook: docs/RUNBOOK.md#slow-replies
+      - eval_time: 25m
+        alertname: HighFallbackRate
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: "80% of replies are without AI"
+              runbook: docs/RUNBOOK.md#ai-fallbacks
+  - interval: 1m
+    input_series:
+      # Healthy: fast replies, mostly AI
+      - series: 'voice_turn_duration_seconds_bucket{le="1.2",ai="true"}'
+        values: "0+10x30"
+      - series: 'voice_turn_duration_seconds_bucket{le="+Inf",ai="true"}'
+        values: "0+10x30"
+      - series: 'voice_turns_total{ai="true"}'
+        values: "0+10x30"
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: HighTurnLatencyP95
+        exp_alerts: []
+      - eval_time: 25m
+        alertname: HighFallbackRate
+        exp_alerts: []

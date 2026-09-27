@@ -8,6 +8,8 @@ export type VoiceReply = {
   /** `whisperUrl`: TwiML played to the person answering before they are connected (a call summary) */
   transfer?: { to: string; callerId?: string; statusCallback?: string; whisperUrl?: string };
   hangup?: boolean;
+  /** Refuse the call before answering (blocked callers, over capacity, a forwarding loop) */
+  reject?: "busy" | "rejected";
 };
 
 export type InboundCall = {
@@ -20,6 +22,9 @@ export type InboundCall = {
   durationSeconds?: number;
   /** Outcome of a <Dial> transfer: completed, answered, busy, no-answer, failed, canceled */
   dialStatus?: string;
+  /** The number that forwarded the call to us, when the carrier passes it */
+  forwardedFrom?: string;
+  callerName?: string;
 };
 
 export interface TelephonyAdapter {

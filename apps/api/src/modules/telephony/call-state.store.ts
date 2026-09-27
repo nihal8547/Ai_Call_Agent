@@ -24,6 +24,13 @@ export type CallState = {
   finalized: boolean;
   /** A transfer went unanswered and the follow-up was recorded */
   missedTransfer?: boolean;
+  /** The business's calling code, for numbers callers say without one */
+  callingCode?: string;
+  phoneNumberId?: string;
+  /** Never transfer here: it forwards back to the agent (the business's own line) */
+  businessNumber?: string | null;
+  startedAt?: number;
+  maxCallMinutes?: number;
 };
 
 const TTL_SECONDS = 3 * 60 * 60;

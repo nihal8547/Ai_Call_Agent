@@ -1,0 +1,82 @@
+# Alerts for the voice platform. Thresholds are starting points: tune them to real traffic.
+groups:
+  - name: voice-platform
+    rules:
+      - alert: HighTurnLatencyP95
+        # Callers wait for every reply; above ~1.2 s the conversation feels broken
+        expr: histogram_quantile(0.95, sum by (le) (rate(voice_turn_duration_seconds_bucket[10m]))) > 1.2
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "p95 reply time is {{ $value | humanizeDuration }} (target 1.2 s)"
+          runbook: docs/RUNBOOK.md#slow-replies
+
+      - alert: HighFallbackRate
+        # Most replies falling back to the deterministic path usually means the LLM is failing or rate-limited
+        expr: |
+          sum(rate(voice_turns_total{ai="false"}[15m])) / clamp_min(sum(rate(voice_turns_total[15m])), 1e-9) > 0.5
+          and sum(rate(voice_turns_total[15m])) > 0.05
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $value | humanizePercentage }} of replies are without AI"
+          runbook: docs/RUNBOOK.md#ai-fallbacks
+
+      - alert: ApiErrorRate
+        expr: |
+          sum(rate(http_request_duration_seconds_count{status="5xx"}[5m]))
+            / clamp_min(sum(rate(http_request_duration_seconds_count[5m])), 1e-9) > 0.02
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $value | humanizePercentage }} of API requests fail with 5xx"
+          runbook: docs/RUNBOOK.md#api-errors
+
+      - alert: CallsRefused
+        # Plan limits, capacity caps or blocklists turning callers away
+        expr: sum by (result) (increase(voice_calls_total{result=~"refused_.*"}[30m])) > 10
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $value }} calls refused in 30 min ({{ $labels.result }})"
+          runbook: docs/RUNBOOK.md#refused-calls
+
+      - alert: QueueBacklog
+        expr: max by (queue) (queue_jobs{state=~"waiting|delayed"}) > 500
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.queue }} has {{ $value }} jobs waiting"
+          runbook: docs/RUNBOOK.md#queue-backlog
+
+      - alert: DeadLetters
+        expr: sum by (queue) (increase(queue_dead_letters_total[1h])) > 5
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $value }} {{ $labels.queue }} jobs failed after every retry in the last hour"
+          runbook: docs/RUNBOOK.md#failed-deliveries
+
+      - alert: IngestionFailures
+        expr: sum(increase(worker_jobs_total{queue="ingestion",result="failed"}[1h])) > 5
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $value }} document ingestion attempts failed in the last hour"
+          runbook: docs/RUNBOOK.md#ingestion
+
+      - alert: CostSpike
+        # Estimated spend per hour more than 3× the same hour's average over the past week
+        expr: |
+          sum(increase(voice_usage_cost_micros_total[1h]))
+            > 3 * (sum(increase(voice_usage_cost_micros_total[7d])) / 168)
+          and sum(increase(voice_usage_cost_micros_total[1h])) > 5e6
+        labels: { severity: warning }
+        annotations:
+          summary: "Usage cost ${{ $value | humanize }} µ$ in the last hour, over 3× normal"
+          runbook: docs/RUNBOOK.md#cost-spike
+
+      - alert: TargetDown
+        expr: up{job=~"api|worker"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $labels.job }} is not being scraped"
+          runbook: docs/RUNBOOK.md#target-down

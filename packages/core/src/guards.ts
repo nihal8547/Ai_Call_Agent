@@ -1,3 +1,4 @@
+import { toAsciiDigits } from "./normalisers/text";
 export type GuardResult = { ok: true; text: string } | { ok: false; violations: string[] };
 
 const BLOCKED: [string, RegExp][] = [
@@ -34,7 +35,7 @@ export function guardOutput(text: string, opts: { maxChars?: number } = {}): Gua
  * must appear in the retrieved sources or the caller's own details. Catches invented figures.
  */
 export function unsupportedNumbers(answer: string, sources: readonly string[]): string[] {
-  const norm = (s: string) => s.replace(/(\d),(?=\d)/g, "$1");
+  const norm = (s: string) => toAsciiDigits(s).replace(/(\d)[,٬](?=\d)/g, "$1");
   const haystack = norm(sources.join(" "));
   const numbers = norm(answer).match(/\d+(?:\.\d+)?/g) ?? [];
   return [...new Set(numbers)].filter(

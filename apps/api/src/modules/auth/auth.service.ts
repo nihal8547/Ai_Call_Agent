@@ -14,6 +14,7 @@ import { API_ENV, type ApiEnv } from "../../config/env";
 import { PrismaService } from "../../infra/prisma.service";
 import { TenantDbService } from "../../infra/tenant-db.service";
 import { AuditService } from "../audit/audit.service";
+import { MfaService } from "./mfa.service";
 
 type RegisterInput = z.output<typeof RegisterBody>;
 type LoginInput = z.output<typeof LoginBody>;
@@ -42,6 +43,7 @@ export class AuthService {
     private readonly tenantDb: TenantDbService,
     private readonly tokens: TokenService,
     private readonly audit: AuditService,
+    private readonly mfa: MfaService,
   ) {
     this.masterKey = parseMasterKey(env.MASTER_ENCRYPTION_KEY);
   }
@@ -91,7 +93,8 @@ export class AuthService {
           name: body.businessName,
           slug,
           industry: body.industry,
-          timezone: body.timezone,
+          country: body.country,
+          ...(body.timezone ? { timezone: body.timezone } : {}),
           ownerUserId,
         });
       } catch (err) {
@@ -126,9 +129,22 @@ export class AuthService {
     if (!target) {
       throw new AppException(HttpStatus.FORBIDDEN, "FORBIDDEN", "You are not a member of an active business");
     }
-    await this.prisma.client.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
-    await this.tokens.issueSession(reply, req, { userId: user.id, tenantId: target.tenantId });
-    return this.me(user.id, target.tenantId);
+    // Two-step sign-in: the password alone opens nothing
+    if (user.totpEnabledAt)
+      return { mfaRequired: true as const, mfaToken: await this.mfa.issueTicket(user.id, target.tenantId) };
+    return this.signIn(user.id, target.tenantId, req, reply);
+  }
+
+  /** Second step of sign-in: an authenticator or recovery code */
+  async loginMfa(mfaToken: string, code: string, req: FastifyRequest, reply: FastifyReply) {
+    const { userId, tenantId } = await this.mfa.redeemTicket(mfaToken, code);
+    return this.signIn(userId, tenantId, req, reply);
+  }
+
+  private async signIn(userId: string, tenantId: string, req: FastifyRequest, reply: FastifyReply) {
+    await this.prisma.client.user.update({ where: { id: userId }, data: { lastLoginAt: new Date() } });
+    await this.tokens.issueSession(reply, req, { userId, tenantId });
+    return this.me(userId, tenantId);
   }
 
   async refresh(req: FastifyRequest, reply: FastifyReply): Promise<{ ok: true }> {
@@ -186,12 +202,21 @@ export class AuthService {
       }),
     ]);
     return {
-      user: { id: user.id, email: user.email, name: user.name, isPlatformOwner: user.isPlatformOwner },
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        isPlatformOwner: user.isPlatformOwner,
+        totpEnabled: Boolean(user.totpEnabledAt),
+      },
       tenant: {
         id: membership.tenant.id,
         name: membership.tenant.name,
         slug: membership.tenant.slug,
         timezone: membership.tenant.timezone,
+        country: membership.tenant.country,
+        callingCode: membership.tenant.callingCode,
+        currency: membership.tenant.currency,
       },
       role: { id: membership.role.id, key: membership.role.key, name: membership.role.name },
       permissions: membership.role.permissions,
