@@ -69,6 +69,8 @@ docker compose up -d --build
 
 ### Taking real phone calls (Twilio)
 
+Full step-by-step guide with troubleshooting: [docs/TWILIO_SETUP.md](docs/TWILIO_SETUP.md).
+
 1. Expose the API over HTTPS, e.g. `cloudflared tunnel --url http://localhost:4000`, and set `PUBLIC_BASE_URL` to that URL.
 2. Set `TWILIO_AUTH_TOKEN` (Twilio console → Account → API keys & tokens).
 3. Attach your Twilio number to an agent: `SEED_NUMBER_CLINIC=+91… npm run db:seed`, or add it under Settings → Phone numbers.
