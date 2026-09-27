@@ -45,6 +45,11 @@ Put a load balancer with TLS in front of `api` (Twilio webhooks) and `web` (brow
   webhook with this URL; a mismatch rejects every call.
 - `WEB_BASE_URL`, `CORS_ORIGINS` (the web origin), `TRUST_PROXY` (your load balancer's range, so
   rate limits see real client IPs), `COOKIE_SECURE=true` (the default in production).
+- **Streaming voice:** the load balancer must pass **WebSocket upgrades** to the API for
+  `/telephony/twilio/relay` (nginx: `proxy_http_version 1.1`, `Upgrade` and `Connection` headers;
+  most cloud load balancers do it by default) and allow idle connections of at least 10 minutes
+  (a call's session stays open while the caller talks). Without it, set `VOICE_STREAMING=false`:
+  every agent then answers turn by turn.
 
 With `QUEUE_CONSUMERS=false` an API instance only serves requests; keep it `true` on at least one
 (or run the call-side consumers on dedicated API instances).

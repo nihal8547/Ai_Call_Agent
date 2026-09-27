@@ -147,6 +147,8 @@ enum UsageKind {
   STORAGE_BYTES
   /// Messages the platform sent on WhatsApp (agent and staff)
   WHATSAPP_MESSAGES
+  /// Streaming voice minutes (Twilio ConversationRelay)
+  VOICE_STREAMING_MINUTES
 }
 
 // ─────────────────────── Tenancy, users, access ───────────────────────

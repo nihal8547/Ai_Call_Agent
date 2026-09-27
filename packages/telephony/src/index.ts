@@ -5,3 +5,4 @@ export * from "./types";
 export * from "./twilio/rest";
 export * from "./sip";
 export * from "./forwarding";
+export * from "./twilio/relay";

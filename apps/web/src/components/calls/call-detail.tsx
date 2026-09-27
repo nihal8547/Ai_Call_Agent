@@ -179,6 +179,8 @@ function TimelineItem({ event: e }: { event: CallEvent }) {
         >
           <p className="mb-0.5 text-[11px] font-medium opacity-70">
             {caller ? "Caller" : "Agent"}
+            {caller && p.bargeIn ? " · interrupted the agent" : ""}
+            {caller && p.keypad ? " · keypad" : ""}
             {!caller && p.deterministic === false ? " · AI phrased" : ""}
             {!caller && e.latencyMs !== null ? ` · ${e.latencyMs} ms` : ""}
           </p>
@@ -188,7 +190,7 @@ function TimelineItem({ event: e }: { event: CallEvent }) {
     );
   }
   const describe: Record<string, () => string> = {
-    CALL_STARTED: () => "Call started",
+    CALL_STARTED: () => (p.mode === "streaming" ? "Call started · streaming voice" : "Call started"),
     EXTRACTION: () =>
       `Captured ${humanize(String(p.field))}: ${fmtValue(p.value, locale)}${p.correction ? " (corrected)" : ""}`,
     VALIDATION_ERROR: () => `Rejected ${humanize(String(p.field))}: ${String(p.error)}`,
@@ -198,7 +200,10 @@ function TimelineItem({ event: e }: { event: CallEvent }) {
         : `Knowledge lookup: ${p.answered ? "found" : "nothing relevant"}`,
     TOOL_CALL: () =>
       `${String(p.tool)} ${p.phase === "requested" ? "requested" : p.ok ? "succeeded" : `failed (${String(p.error)})`}`,
-    FALLBACK: () => `Fallback: ${humanize(String(p.reason))}`,
+    FALLBACK: () =>
+      p.reason === "streaming_ended"
+        ? "Streaming stopped; the call continued turn by turn"
+        : `Fallback: ${humanize(String(p.reason))}`,
     GUARD_BLOCKED: () => "Unsafe reply blocked",
     HANDOFF: () => (p.transferred ? "Transferred to a person" : "Person unavailable, message taken"),
     CALL_ENDED: () => `Call ended: ${humanize(String(p.outcome))}`,

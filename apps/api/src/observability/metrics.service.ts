@@ -61,6 +61,18 @@ export class MetricsService implements OnModuleDestroy {
     labelNames: ["kind"] as const,
     registers: [this.registry],
   });
+  readonly relayReply = new Histogram({
+    name: "voice_streaming_reply_seconds",
+    help: "Streaming calls: from the caller finishing a sentence to the agent's reply being sent",
+    buckets: [0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 5],
+    registers: [this.registry],
+  });
+  readonly relay = new Counter({
+    name: "voice_streaming_events_total",
+    help: "Streaming calls: sessions, interruptions, fillers, silences, fallbacks and errors",
+    labelNames: ["event"] as const,
+    registers: [this.registry],
+  });
   readonly whatsapp = new Counter({
     name: "whatsapp_events_total",
     help: "WhatsApp webhook events by kind and what happened to them",

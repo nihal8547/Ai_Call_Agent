@@ -1632,6 +1632,41 @@ Plan and review: [WPIntegration.md](WPIntegration.md); operator guide:
 
 ## P13 — Streaming voice
 
+### Phase 1: Twilio ConversationRelay ✅
+
+- **Per agent:** Profile → **Conversation mode**: Classic (turn by turn, `<Gather>`) or Streaming;
+  speech recognition Automatic (Google for Arabic, Deepgram otherwise), Deepgram or Google. The
+  agent's Polly voice is used in both modes (Amazon voices in ConversationRelay).
+- **How a call runs:** the voice webhook answers with `<Connect action=…/relay-end>
+<ConversationRelay …>` whose welcome greeting is the agent's first line; Twilio opens
+  `wss://…/telephony/twilio/relay`. Every caller sentence goes through the same runtime as
+  classic calls (understanding, knowledge, workflow, tools, guards); the reply goes back as text.
+  Goodbyes and transfers end the session: `/relay-end` returns the last words and `<Hangup/>` or
+  `<Dial>` (with the whisper), exactly as classic calls do.
+- **Security:** the WebSocket handshake must carry Twilio's signature for the `wss://` address,
+  and the first message a one-time token that only this call's TwiML contained; one session per
+  call; unknown messages are ignored.
+- **Conversation handling:** barge-in (the next caller turn is marked "interrupted the agent"),
+  keypad digits as one answer (until `#` or a pause), a re-prompt after silence (the agent's
+  words' length + `RELAY_SILENCE_MS`), "One moment, please." when a reply takes longer than
+  `RELAY_FILLER_MS`; turns run one at a time per call under the call lock.
+- **Resilience:** if the stream breaks, `/relay-end` continues the call turn by turn from the last
+  question (timeline: "Streaming stopped"); `VOICE_STREAMING=false` switches streaming off.
+- **Metering and metrics:** `VOICE_STREAMING_MINUTES` per call minute instead of per-turn
+  recognition and speech; `voice_streaming_reply_seconds` and `voice_streaming_events_total`
+  (sessions, interruptions, fillers, silences, fallbacks, refusals, errors).
+- **Verified:** telephony package tests (our TwiML is identical to the official Twilio library's;
+  message parsing); API tests over a real WebSocket (booking end to end with barge-in and filler,
+  final words over `/relay-end`, per-minute usage; refusals without signature, on other paths,
+  with a wrong token, a second session; fallback to turn by turn; silence re-prompt; keypad).
+  With the built servers and a signed Twilio stand-in: a booking by streaming call, replies in
+  16–240 ms without the AI and 2–2.5 s while the free Gemini key was rate-limited; the editor and
+  the call page in the browser.
+- **Not verified:** a real Twilio ConversationRelay call (no network access); Amazon voice names
+  and the Deepgram / Google choices in ConversationRelay **(confirm)**.
+
+### Later phases
+
 - `apps/voice`:
   - Recommended: **LiveKit Agents (Node)** behind a Twilio SIP trunk.
   - Alternative: Twilio Media Streams over WebSocket.

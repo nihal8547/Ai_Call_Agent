@@ -118,6 +118,25 @@ The address must be **exactly** `PUBLIC_BASE_URL` (the signature check compares 
 
 If this works, the Twilio part is right. Only then connect an existing number.
 
+### Streaming voice (optional, recommended once calls work)
+
+With **Agent → Profile → Conversation mode → Streaming**, calls use Twilio **ConversationRelay**:
+Twilio recognises speech while the caller talks and streams the agent's reply as speech; the
+caller can interrupt. Nothing changes in the number's Voice Configuration. You need:
+
+1. Twilio Console → **Voice → Settings → General**: accept the **Predictive and Generative AI/ML
+   Features Addendum** (ConversationRelay is off until it is accepted) **(confirm the menu name)**.
+2. `PUBLIC_BASE_URL` on **https**: Twilio connects to `wss://<your-address>/telephony/twilio/relay`
+   and signs the connection with that address. ngrok and Cloudflare Tunnel pass WebSockets; behind
+   your own proxy, allow WebSocket upgrades ([DEPLOYMENT.md](DEPLOYMENT.md)).
+3. Publish the agent, call the number. The call page shows **Call started · streaming voice**;
+   callers who talk over the agent show **interrupted the agent**.
+
+If the WebSocket can't be reached or breaks, Twilio asks `/telephony/twilio/relay-end` what to do
+and the call carries on turn by turn (the timeline shows "Streaming stopped"). `VOICE_STREAMING=false`
+switches streaming off for every agent. Streaming is billed per minute by Twilio (about $0.07,
+estimated as `VOICE_STREAMING_MINUTES`); speech recognition and voice are included.
+
 ## 8. Use the business's existing number (Ooredoo, Vodafone or other)
 
 For a Qatar number, which way to choose (forwarding, PBX over SIP or a carrier SIP trunk) and
@@ -153,15 +172,16 @@ forwarding. For no forwarding costs, connect over SIP instead (**Connect over SI
 Start at Twilio Console → **Monitor → Logs → Calls** (and **Monitor → Errors**), and look at the
 API's terminal log.
 
-| What you see                                                         | Cause and fix                                                                                                                                                                |
-| -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| No call in Twilio's log at all                                       | The call never reached Twilio: forwarding isn't on (check with `*#21#` / `*#61#`), the carrier blocks international forwarding, or you answered the phone (conditional mode) |
-| Error **11200** / **11205** "HTTP retrieval failure"                 | Twilio can't reach the API: `PUBLIC_BASE_URL` is `localhost`, the tunnel isn't running or points at port 3000, or the Voice URL has an old tunnel address                    |
-| **404** on the webhook                                               | The Voice URL has `/api/v1` in it, or points at the web app instead of the API                                                                                               |
-| **403**; API log "rejected webhook with an invalid Twilio signature" | The Voice URL and `PUBLIC_BASE_URL` differ (https, slash, old address), or `TWILIO_AUTH_TOKEN` is from another account                                                       |
-| **503** "Telephony is not configured"                                | `TWILIO_AUTH_TOKEN` is missing; set it and restart the API                                                                                                                   |
-| Caller hears "this number is not in service"                         | API log "unknown number": the number in the app differs from the Twilio number (use `+` and the country code). "without an active agent": assign an agent and **Publish** it |
-| Caller hears a Twilio trial message                                  | Upgrade the Twilio account                                                                                                                                                   |
-| The call is refused straight away                                    | The number's **Max calls** is reached, the caller is blocked, or the plan limit is reached (see the dashboard alerts)                                                        |
-| Transfer to staff fails                                              | Enable the country in **Geo permissions**; on a trial account, verify the staff number                                                                                       |
-| Worked yesterday, not today (development)                            | The tunnel address changed: update `PUBLIC_BASE_URL`, restart, and update the Voice URL (step 6)                                                                             |
+| What you see                                                               | Cause and fix                                                                                                                                                                               |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No call in Twilio's log at all                                             | The call never reached Twilio: forwarding isn't on (check with `*#21#` / `*#61#`), the carrier blocks international forwarding, or you answered the phone (conditional mode)                |
+| Error **11200** / **11205** "HTTP retrieval failure"                       | Twilio can't reach the API: `PUBLIC_BASE_URL` is `localhost`, the tunnel isn't running or points at port 3000, or the Voice URL has an old tunnel address                                   |
+| **404** on the webhook                                                     | The Voice URL has `/api/v1` in it, or points at the web app instead of the API                                                                                                              |
+| **403**; API log "rejected webhook with an invalid Twilio signature"       | The Voice URL and `PUBLIC_BASE_URL` differ (https, slash, old address), or `TWILIO_AUTH_TOKEN` is from another account                                                                      |
+| **503** "Telephony is not configured"                                      | `TWILIO_AUTH_TOKEN` is missing; set it and restart the API                                                                                                                                  |
+| Caller hears "this number is not in service"                               | API log "unknown number": the number in the app differs from the Twilio number (use `+` and the country code). "without an active agent": assign an agent and **Publish** it                |
+| Caller hears a Twilio trial message                                        | Upgrade the Twilio account                                                                                                                                                                  |
+| The call is refused straight away                                          | The number's **Max calls** is reached, the caller is blocked, or the plan limit is reached (see the dashboard alerts)                                                                       |
+| Transfer to staff fails                                                    | Enable the country in **Geo permissions**; on a trial account, verify the staff number                                                                                                      |
+| Streaming agent answers turn by turn / "Streaming stopped" on the timeline | The WebSocket was refused or broke: API log "rejected streaming session" (the `wss://` address or `TWILIO_AUTH_TOKEN` differs), the proxy drops upgrades, or the AI addendum isn't accepted |
+| Worked yesterday, not today (development)                                  | The tunnel address changed: update `PUBLIC_BASE_URL`, restart, and update the Voice URL (step 6)                                                                                            |

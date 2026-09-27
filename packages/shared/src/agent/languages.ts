@@ -65,6 +65,8 @@ export function systemLines(language: string) {
   return isArabicCode(language)
     ? {
         maxDuration: "وصلنا للحد الأقصى لمدة المكالمة. سجلت كل اللي قلته، وفريقنا بيتابع معك. مع السلامة!",
+        /** Streaming calls: said when a reply takes a while (a booking, a slow answer) */
+        oneMoment: "لحظة من فضلك.",
         /** WhatsApp: the customer asked for a person (or the workflow hands over) */
         chatHandoff: "شكراً لك، حوّلت محادثتك لفريقنا وبيرد عليك أحد هنا قريباً.",
         /** WhatsApp: a voice note before voice support */
@@ -77,6 +79,7 @@ export function systemLines(language: string) {
     : {
         maxDuration:
           "We've reached the time limit for this call. I've noted everything you told me, and our team will follow up. Goodbye.",
+        oneMoment: "One moment, please.",
         chatHandoff: "Thanks, I've passed your conversation to our team. Someone will reply here shortly.",
         chatVoiceUnsupported: "Sorry, I couldn't listen to that voice message. Could you type your message?",
         chatMediaOnly: "Thanks, I've got that. Could you write how I can help you?",

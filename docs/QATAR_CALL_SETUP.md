@@ -117,14 +117,14 @@ ranges under "Twilio IP addresses for SIP") **(confirm the current list)**.
 
 ## 7. Making the voice agent sound right
 
-| Change                                       | Why                                                                                                                                                             |
-| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Paid Gemini key** (billing on the project) | The free tier allows a few requests a minute; a call needs 2 per turn. Without it the agent falls back to its rules every turn (works, but understands less).   |
-| Timeout 2500 → 3500 ms if needed             | **Agent → Profile → AI model → Timeout (ms)**. Only if `--debug` or the call log shows `timeout`; longer means slower replies.                                  |
-| Host the API near Twilio                     | Twilio processes calls in the US by default; each turn is a webhook round trip. Hosting the API in US East (or Twilio's region) cuts ~0.3–0.5 s per turn.       |
-| Arabic: `ar-QA`, Gulf voices, hints          | The Qatar templates set these; add service and place names to the knowledge base so they're recognised and answered.                                            |
-| Short greeting and questions                 | Each reply is spoken in full before the caller can answer; keep them to one sentence.                                                                           |
-| Next step: **streaming voice** (P13)         | Today each turn waits for the caller to stop (about 1–3 s). Streaming (Twilio ConversationRelay or Media Streams with Gemini Live) makes it feel like a person. |
+| Change                                       | Why                                                                                                                                                                                                                                                       |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Paid Gemini key** (billing on the project) | The free tier allows a few requests a minute; a call needs 2 per turn. Without it the agent falls back to its rules every turn (works, but understands less).                                                                                             |
+| Timeout 2500 → 3500 ms if needed             | **Agent → Profile → AI model → Timeout (ms)**. Only if `--debug` or the call log shows `timeout`; longer means slower replies.                                                                                                                            |
+| Host the API near Twilio                     | Twilio processes calls in the US by default; each turn is a webhook round trip. Hosting the API in US East (or Twilio's region) cuts ~0.3–0.5 s per turn.                                                                                                 |
+| Arabic: `ar-QA`, Gulf voices, hints          | The Qatar templates set these; add service and place names to the knowledge base so they're recognised and answered.                                                                                                                                      |
+| Short greeting and questions                 | Each reply is spoken in full before the caller can answer; keep them to one sentence.                                                                                                                                                                     |
+| **Streaming voice** (built)                  | **Agent → Profile → Conversation mode → Streaming**: replies start sooner and callers can interrupt. Arabic uses Google recognition and the same Gulf voice. See [TWILIO_SETUP.md](TWILIO_SETUP.md#streaming-voice-optional-recommended-once-calls-work). |
 
 ## 8. Test plan before real customers
 

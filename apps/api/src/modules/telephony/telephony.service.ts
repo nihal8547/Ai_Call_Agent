@@ -3,7 +3,15 @@ import { createLLMProvider } from "@platform/ai";
 import { type EngineContext, endCall, parsePhone, renderTemplate, type ToolCall } from "@platform/core";
 import { createRuntime, type RuntimeTurn } from "@platform/runtime";
 import type { AgentConfig } from "@platform/shared";
-import { type InboundCall, TwilioAdapter, type VoiceReply } from "@platform/telephony";
+import {
+  type InboundCall,
+  relayTranscriber,
+  relayTts,
+  renderConversationRelay,
+  TwilioAdapter,
+  type VoiceReply,
+} from "@platform/telephony";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { AppException } from "../../common/filters/problem-details.filter";
 import { API_ENV, type ApiEnv } from "../../config/env";
 import { PrismaService } from "../../infra/prisma.service";
@@ -24,6 +32,19 @@ import { type CallTools, ToolService } from "../tools/tool.service";
 import { upsertLeadForCall } from "./lead-writer";
 
 type CallContext = Pick<CallState, "tenantId" | "callId" | "agentId" | "callerNumber" | "timezone">;
+
+/** What the caller said, and how */
+type CallerInput = { transcript: string; confidence?: number; bargeIn?: boolean; keypad?: boolean };
+
+/** What a streaming session does after a turn */
+export type RelayOutcome =
+  | { kind: "say"; text: string }
+  /** The agent ended the session (transfer or goodbye): Twilio fetches the final TwiML */
+  | { kind: "end"; reason: string }
+  /** The call is gone or another instance holds it */
+  | { kind: "gone" };
+
+export const RELAY_PATH = "/telephony/twilio/relay";
 
 const NOT_IN_SERVICE = "Sorry, this number is not in service right now. Please try again later. Goodbye.";
 const LOST_CALL = "Sorry, we had a problem on our side. Please call us back. Goodbye.";
@@ -150,6 +171,10 @@ export class TelephonyService {
       lastReply: "",
       eventSeq: 0,
       finalized: false,
+      // Streaming voice when the agent asks for it (and the operator hasn't switched it off)
+      ...(this.env.VOICE_STREAMING && config.voice.mode === "streaming" && turn.output.control === "listen"
+        ? { relay: { token: randomBytes(24).toString("base64url") } }
+        : {}),
     };
     const rows = [
       {
@@ -160,12 +185,13 @@ export class TelephonyService {
           via: route.connection,
           ...(route.forwardedFrom ? { forwardedFrom: route.forwardedFrom } : {}),
           agentVersionId: route.agentVersionId,
+          mode: state.relay ? "streaming" : "classic",
         },
       },
       ...timelineEvents(turn),
       ...executionEvents(tools.drain()),
     ];
-    return this.complete(state, config, turn, rows);
+    return (await this.complete(state, config, turn, rows)).twiml;
   }
 
   /** The caller said something (or stayed silent) */
@@ -174,27 +200,7 @@ export class TelephonyService {
       const state = await this.store.get(call.callSid);
       if (!state) return this.render({ say: LOST_CALL, hangup: true });
       if (seq !== state.seq || state.finalized) return state.lastReply; // retry or stale request
-      const { config } = await this.configs.published(state.tenantId, state.agentVersionId);
-      const speech = call.speech ?? { transcript: "" };
-      if (
-        state.startedAt &&
-        state.maxCallMinutes &&
-        Date.now() - state.startedAt > state.maxCallMinutes * 60_000
-      ) {
-        const end = this.systemEnd(state, config, "max_duration", systemLines(config.language).maxDuration);
-        return this.complete(state, config, end, timelineEvents(end, speech));
-      }
-      const tools = this.tools(state, config);
-      const turn = await this.runtimeFor(state, config, tools).turn(
-        config,
-        state.session,
-        speech,
-        this.ctx(state),
-      );
-      return this.complete(state, config, turn, [
-        ...timelineEvents(turn, speech),
-        ...executionEvents(tools.drain()),
-      ]);
+      return (await this.advance(state, call.speech ?? { transcript: "" })).twiml;
     });
     // Another instance is still working on this call's previous request
     return (
@@ -202,6 +208,117 @@ export class TelephonyService {
       (await this.store.get(call.callSid))?.lastReply ??
       this.render({ say: LOST_CALL, hangup: true })
     );
+  }
+
+  /** One caller turn through the runtime (both modes), or the end when the call is too long */
+  private async advance(state: CallState, speech: CallerInput) {
+    const { config } = await this.configs.published(state.tenantId, state.agentVersionId);
+    if (
+      state.startedAt &&
+      state.maxCallMinutes &&
+      Date.now() - state.startedAt > state.maxCallMinutes * 60_000
+    ) {
+      const end = this.systemEnd(state, config, "max_duration", systemLines(config.language).maxDuration);
+      return this.complete(state, config, end, timelineEvents(end, speech));
+    }
+    const tools = this.tools(state, config);
+    const turn = await this.runtimeFor(state, config, tools).turn(
+      config,
+      state.session,
+      {
+        transcript: speech.transcript,
+        ...(speech.confidence !== undefined ? { confidence: speech.confidence } : {}),
+      },
+      this.ctx(state),
+    );
+    return this.complete(state, config, turn, [
+      ...timelineEvents(turn, speech),
+      ...executionEvents(tools.drain()),
+    ]);
+  }
+
+  // ── Streaming voice (Twilio ConversationRelay) ─────────────────────────────
+
+  /**
+   * A streaming session opened for a call: it must name a live streaming call and carry that
+   * call's one-time token. Returns what the session needs, or null to refuse it.
+   */
+  async relayConnect(
+    callSid: string,
+    token: string | undefined,
+    sessionId: string,
+  ): Promise<{ greeting: string; language: string; filler: string } | null> {
+    const result = await this.store.withLock(callSid, async () => {
+      const state = await this.store.get(callSid);
+      const expected = state?.relay?.token;
+      if (!state || !expected || !token || state.finalized || state.relay?.fellBack) return null;
+      const a = Buffer.from(expected);
+      const b = Buffer.from(token);
+      if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+      // One session per call (a second socket with the same token is refused)
+      if (state.relay!.sessionId && state.relay!.sessionId !== sessionId) return null;
+      state.relay!.sessionId = sessionId;
+      await this.store.set(callSid, state);
+      const { config } = await this.configs.published(state.tenantId, state.agentVersionId);
+      return {
+        greeting: state.lastSpeech ?? "",
+        language: config.language,
+        filler: systemLines(config.language).oneMoment,
+      };
+    });
+    return result ?? null;
+  }
+
+  /** The caller finished speaking (or stayed silent) on a streaming call */
+  async relayTurn(callSid: string, sessionId: string, speech: CallerInput): Promise<RelayOutcome> {
+    const result = await this.store.withLock(
+      callSid,
+      async (): Promise<RelayOutcome> => {
+        const state = await this.store.get(callSid);
+        if (!state || state.relay?.sessionId !== sessionId || state.relay.fellBack) return { kind: "gone" };
+        if (state.finalized) return { kind: "end", reason: "finished" };
+        const done = await this.advance(state, speech);
+        return done.control === "listen"
+          ? { kind: "say", text: done.speech }
+          : { kind: "end", reason: done.control };
+      },
+      15_000,
+    );
+    return result ?? { kind: "gone" };
+  }
+
+  /**
+   * The streaming session ended and Twilio asks what next. After the agent's goodbye or transfer
+   * that is the stored TwiML (its last words, then <Hangup/> or <Dial>); if the stream broke
+   * mid-conversation, the call carries on turn by turn from the last question.
+   */
+  async relayEnded(call: InboundCall): Promise<string> {
+    const result = await this.store.withLock(call.callSid, async () => {
+      const state = await this.store.get(call.callSid);
+      if (!state) return this.render({ say: "", hangup: true });
+      if (state.finalized || !state.relay || state.relay.fellBack) return state.lastReply;
+      state.relay.fellBack = true;
+      this.metrics.relay.inc({ event: "fallback" });
+      this.logger.warn({ callId: state.callId }, "streaming session ended mid-call; continuing turn by turn");
+      await this.tenantDb.db(state.tenantId).callEvent.create({
+        data: {
+          tenantId: state.tenantId,
+          callId: state.callId,
+          seq: state.eventSeq++,
+          type: "FALLBACK",
+          payload: { reason: "streaming_ended" },
+        },
+      });
+      state.lastReply = state.resume ?? this.render({ say: LOST_CALL, hangup: true });
+      await this.store.set(state.callSid, state);
+      return state.lastReply;
+    });
+    return result ?? this.render({ say: LOST_CALL, hangup: true });
+  }
+
+  /** wss:// address of the streaming endpoint, as Twilio is told to connect (and signs) */
+  relayUrl(): string {
+    return `${this.env.PUBLIC_BASE_URL.replace(/^http/, "ws")}${RELAY_PATH}`;
   }
 
   /** Final call status from the provider (also covers the caller hanging up mid-conversation) */
@@ -243,7 +360,7 @@ export class TelephonyService {
     config: AgentConfig,
     turn: RuntimeTurn,
     rows: ReturnType<typeof timelineEvents>,
-  ): Promise<string> {
+  ): Promise<{ twiml: string; control: string; speech: string }> {
     const out = turn.output;
     state.session = out.session;
     state.eventSeq = await this.recorder.recordTurn(state, turn, rows);
@@ -299,8 +416,27 @@ export class TelephonyService {
 
     state.seq += 1;
     state.lastReply = this.render(reply, config);
+    state.lastSpeech = turn.speech;
+    if (state.relay && !state.relay.fellBack && out.control === "listen" && !toOwnLine) {
+      // Streaming: the turn-by-turn TwiML is kept in case the stream breaks
+      state.resume = state.lastReply;
+      if (!state.relay.sessionId) {
+        // The call's first reply: hand it to the streaming session, which speaks it as the greeting
+        this.metrics.relay.inc({ event: "session" });
+        state.lastReply = renderConversationRelay({
+          url: this.relayUrl(),
+          action: `${this.env.PUBLIC_BASE_URL}/telephony/twilio/relay-end`,
+          greeting: turn.speech,
+          language: config.language,
+          tts: relayTts(voiceForLanguage(config.language, config.voice.voice)),
+          transcriber: relayTranscriber(config.language, config.voice.transcriber),
+          hints: this.hints(config, out),
+          parameters: { token: state.relay.token },
+        });
+      }
+    }
     await this.store.set(state.callSid, state);
-    return state.lastReply;
+    return { twiml: state.lastReply, control: toOwnLine ? "hangup" : out.control, speech: turn.speech };
   }
 
   private render(

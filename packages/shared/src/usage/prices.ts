@@ -10,6 +10,7 @@ export const USAGE_KINDS = [
   "STT_SECONDS",
   "STORAGE_BYTES",
   "WHATSAPP_MESSAGES",
+  "VOICE_STREAMING_MINUTES",
 ] as const;
 export type UsageKind = (typeof USAGE_KINDS)[number];
 
@@ -18,7 +19,8 @@ export type UsageKind = (typeof USAGE_KINDS)[number];
  * These are public list prices used for estimates, not invoices: set USAGE_PRICES to your own
  * contract rates. Sources: Gemini Flash text ($0.30 / $2.50 per million tokens), Gemini
  * embeddings ($0.15 per million tokens), a typical Twilio inbound minute ($0.0085), Amazon Polly
- * neural voices ($16 per million characters), Twilio <Gather> speech recognition ($0.02 per 15 s).
+ * neural voices ($16 per million characters), Twilio <Gather> speech recognition ($0.02 per 15 s),
+ * Twilio ConversationRelay for streaming calls ($0.07 a minute).
  */
 export const DEFAULT_PRICES: Readonly<Record<string, number>> = {
   LLM_INPUT_TOKENS: 0.3,
@@ -31,6 +33,8 @@ export const DEFAULT_PRICES: Readonly<Record<string, number>> = {
   STORAGE_BYTES: 0,
   // Replies inside the 24-hour customer service window are free on Meta; set your rate if charged
   WHATSAPP_MESSAGES: 0,
+  // Twilio ConversationRelay (speech recognition and voices included), per started minute
+  VOICE_STREAMING_MINUTES: 70_000,
 };
 
 export type PriceTable = Readonly<Record<string, number>>;

@@ -124,6 +124,13 @@ export const VoiceConfig = z.object({
   /** Provider voice id, e.g. "Polly.Kajal-Neural" */
   voice: z.string().min(1).max(80).default("Polly.Kajal-Neural"),
   speed: z.number().min(0.5).max(2).default(1),
+  /**
+   * classic: turn by turn (Twilio <Gather>, the caller waits for each reply to finish);
+   * streaming: Twilio ConversationRelay, faster turns and the caller can interrupt
+   */
+  mode: z.enum(["classic", "streaming"]).default("classic"),
+  /** Streaming only: speech recognition (auto = Google for Arabic, Deepgram otherwise) */
+  transcriber: z.enum(["auto", "deepgram", "google"]).default("auto"),
 });
 
 /** Deterministic lines used by the fallback path; every one is configurable per agent */

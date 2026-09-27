@@ -48,6 +48,14 @@ export class TwilioController {
     return this.telephony.dialStatus(this.telephony.adapter().parse(toStringRecord(body)));
   }
 
+  /** A streaming session ended (the agent finished, or the stream broke): what the call does next */
+  @Post("relay-end")
+  @HttpCode(200)
+  @Header("content-type", "text/xml")
+  relayEnd(@Body() body: unknown): Promise<string> {
+    return this.telephony.relayEnded(this.telephony.adapter().parse(toStringRecord(body)));
+  }
+
   /** Spoken to the staff member answering a transfer, before the caller is connected */
   @Post("whisper")
   @HttpCode(200)

@@ -22,7 +22,8 @@ or more.
 | Integrations with one-click sign-in (Google, Microsoft, HubSpot, Zoho) or manual    | Built, not on real APIs |
 | Queues, retries, failed deliveries, analytics, usage metering, cost estimates       | Built                   |
 | Security hardening, observability, Docker deployment, backups, runbook              | Built                   |
-| Billing, platform admin console, streaming voice                                    | **Not built**           |
+| Streaming voice (Twilio ConversationRelay, per agent)                               | Built, not on real line |
+| Billing, platform admin console                                                     | **Not built**           |
 
 ## 1. Before launch: must build (P1)
 
@@ -87,19 +88,22 @@ reach the real service.
 | Arabic dashboard (web UI)        | M    | Agents speak Arabic, but the web app itself is English only; add translations and a right-to-left layout                                                                                   |
 | Dark mode                        | S    | The app is white-and-black by design; dark classes remain in the code and can be switched back on                                                                                          |
 
-## 5. P13 — Streaming voice (P2, L)
+## 5. P13 — Streaming voice (P2)
 
-Today each turn waits for the caller to stop, then Twilio recognises speech and plays the reply
-(about 1–3 s per turn with AI). Streaming makes it feel like a real conversation:
+**Built (phase 1):** per-agent **Streaming** mode on Twilio ConversationRelay: Twilio's streaming
+recognition (Deepgram / Google) and voices, barge-in, keypad input, silence re-prompts, "one
+moment" on slow replies, turn-by-turn fallback if the stream breaks, per-minute metering and
+reply-latency metrics. **Not verified on a real Twilio call** (no network access here).
 
-- A voice service (`apps/voice`): LiveKit Agents behind a Twilio SIP trunk, or Twilio Media
-  Streams over WebSocket.
-- Streaming speech recognition (e.g. Deepgram), voice activity and turn detection, streaming
-  LLM tokens, sentence chunking, streaming text-to-speech (e.g. Cartesia / ElevenLabs).
-- Barge-in (the caller interrupts), endpointing 300–500 ms, filler audio for slow tools.
-- Per-agent choice between webhook and streaming mode; latency dashboard per hop (target under
-  800 ms end to end).
-- Likely needed for good Arabic and Malayalam recognition, and for live call monitoring.
+Still open:
+
+- Measure real latency and Arabic recognition on real calls; tune `RELAY_*` settings.
+- Stream the AI's reply as it's written (token by token, sentence chunks) instead of after the
+  whole turn; today a turn with AI takes the understanding + phrasing time (about 1–2 s on a paid
+  Gemini key; turning off "Natural rephrasing" halves it).
+- Own media pipeline for more control and lower cost: Twilio Media Streams (or LiveKit) with
+  Gemini Live or Deepgram + ElevenLabs/Cartesia; latency dashboard per hop (target under 800 ms).
+- Live call monitoring (listen in, whisper, take over) builds on the streaming session.
 
 ## 6. P14 — Advanced AI, RAG and enterprise (P3)
 
@@ -135,4 +139,4 @@ Today each turn waits for the caller to stop, then Twilio recognises speech and 
 3. Billing and Twilio subaccounts.
 4. Terms and consent wording, browser tests in CI; then launch to the first businesses.
 5. P2 items by customer demand (recordings, outbound calls and WhatsApp are usually asked for
-   first), then streaming voice.
+   first), then streaming voice on real calls and its next phases (section 5).

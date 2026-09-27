@@ -86,6 +86,20 @@ export const ApiEnvSchema = z
     TWILIO_API_KEY_SECRET: z.string().min(16).optional(),
     /** Base URL of Twilio's REST API (tests point it at a fake) */
     TWILIO_API_BASE_URL: envPrimitives.url.default("https://api.twilio.com"),
+    /**
+     * Streaming voice (Twilio ConversationRelay) for agents set to it. "false" answers every call
+     * turn by turn (<Gather>) whatever the agents say, e.g. if the WebSocket can't be reached.
+     */
+    VOICE_STREAMING: z
+      .enum(["true", "false"])
+      .default("true")
+      .transform((v) => v === "true"),
+    /** Streaming: re-prompt a silent caller this long after the agent's words should have finished */
+    RELAY_SILENCE_MS: z.coerce.number().int().min(200).max(60_000).default(8000),
+    /** Streaming: how long speech takes per character (for the silence timer); ~14 characters a second */
+    RELAY_SPEECH_CHAR_MS: z.coerce.number().int().min(0).max(500).default(70),
+    /** Streaming: say "one moment" when a reply takes longer than this (0 = never) */
+    RELAY_FILLER_MS: z.coerce.number().int().min(0).max(30_000).default(3000),
     /** Without it, calls run on deterministic understanding and wording */
     GEMINI_API_KEY: z.string().min(10).optional(),
     /** Country calling code for phone numbers spoken without one */

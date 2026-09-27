@@ -15,13 +15,19 @@ type EventRow = { type: CallEventType; payload: Record<string, unknown>; latency
 /** Map engine + runtime events onto the call timeline (step transitions and successful LLM calls are metrics, not events) */
 export function timelineEvents(
   turn: RuntimeTurn,
-  caller?: { transcript: string; confidence?: number },
+  caller?: { transcript: string; confidence?: number; bargeIn?: boolean; keypad?: boolean },
 ): EventRow[] {
   const rows: EventRow[] = [];
   if (caller)
     rows.push({
       type: "USER_TURN",
-      payload: { text: caller.transcript, confidence: caller.confidence ?? null },
+      payload: {
+        text: caller.transcript,
+        confidence: caller.confidence ?? null,
+        // Streaming calls: the caller spoke over the agent, or typed on the keypad
+        ...(caller.bargeIn ? { bargeIn: true } : {}),
+        ...(caller.keypad ? { keypad: true } : {}),
+      },
     });
 
   for (const e of turn.runtimeEvents as RuntimeEvent[]) {
@@ -190,7 +196,11 @@ export class CallRecorder {
         tx,
         state.tenantId,
         state.callId,
-        turnUsage(turn, { callerSpoke: rows.some((r) => r.type === "USER_TURN") }),
+        // Streaming calls pay per minute for recognition and voice (in markStatus), not per turn
+        turnUsage(turn, {
+          callerSpoke: rows.some((r) => r.type === "USER_TURN"),
+          spoken: !(state.relay && !state.relay.fellBack),
+        }),
       );
     });
     return seq;
@@ -237,6 +247,17 @@ export class CallRecorder {
             provider: "twilio",
             model: null,
           },
+          // Streaming voice is billed per minute of the session (the whole call, near enough)
+          ...(state.relay?.sessionId
+            ? [
+                {
+                  kind: "VOICE_STREAMING_MINUTES" as const,
+                  quantity: Math.ceil(durationSec / 60),
+                  provider: "twilio",
+                  model: "conversation-relay",
+                },
+              ]
+            : []),
         ]);
     });
   }

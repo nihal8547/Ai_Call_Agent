@@ -73,6 +73,43 @@ export function ProfileTab() {
       </Section>
 
       <Section
+        title="Conversation"
+        description="How calls flow. Streaming feels like talking to a person: replies start sooner and callers can interrupt."
+      >
+        <div className="grid gap-4 md:grid-cols-2">
+          <SelectField
+            label="Conversation mode"
+            value={config.voice.mode ?? "classic"}
+            error={errorFor("voice.mode")}
+            hint={
+              (config.voice.mode ?? "classic") === "streaming"
+                ? "Twilio ConversationRelay: speech is recognised as it's spoken and the reply is streamed. Billed per minute. If the stream breaks, the call carries on turn by turn."
+                : "Turn by turn: the caller finishes, then the agent answers. Works everywhere."
+            }
+            onChange={(e) => update((c) => void (c.voice.mode = e.target.value as "classic" | "streaming"))}
+          >
+            <option value="classic">Classic (turn by turn)</option>
+            <option value="streaming">Streaming (natural, interruptible)</option>
+          </SelectField>
+          {(config.voice.mode ?? "classic") === "streaming" ? (
+            <SelectField
+              label="Speech recognition"
+              value={config.voice.transcriber ?? "auto"}
+              error={errorFor("voice.transcriber")}
+              hint="Automatic uses Google for Arabic and Deepgram for English and Hindi."
+              onChange={(e) =>
+                update((c) => void (c.voice.transcriber = e.target.value as "auto" | "deepgram" | "google"))
+              }
+            >
+              <option value="auto">Automatic</option>
+              <option value="deepgram">Deepgram</option>
+              <option value="google">Google</option>
+            </SelectField>
+          ) : null}
+        </div>
+      </Section>
+
+      <Section
         title="Behaviour"
         description="Guidance for the AI when it phrases replies and understands callers."
       >

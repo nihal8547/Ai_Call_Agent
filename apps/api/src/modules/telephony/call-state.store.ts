@@ -31,6 +31,15 @@ export type CallState = {
   businessNumber?: string | null;
   startedAt?: number;
   maxCallMinutes?: number;
+  /**
+   * Streaming voice (Twilio ConversationRelay). `token` authenticates the call's WebSocket;
+   * `fellBack` means the stream broke and the call carries on turn by turn.
+   */
+  relay?: { token: string; sessionId?: string; fellBack?: boolean };
+  /** The agent's last words, for the WebSocket's silence timer */
+  lastSpeech?: string;
+  /** TwiML that carries on turn by turn from here, if the stream breaks */
+  resume?: string;
 };
 
 const TTL_SECONDS = 3 * 60 * 60;

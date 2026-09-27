@@ -92,6 +92,8 @@ const USAGE: Record<string, [string, string]> = {
   EMBEDDING_TOKENS: ["Knowledge embeddings", "tokens"],
   TTS_CHARACTERS: ["Speech (text-to-speech)", "characters"],
   STT_SECONDS: ["Speech recognition", "seconds"],
+  VOICE_STREAMING_MINUTES: ["Streaming voice", "min"],
+  WHATSAPP_MESSAGES: ["WhatsApp messages", "messages"],
 };
 
 const money = (micros: number) =>
