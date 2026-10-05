@@ -24,13 +24,13 @@
   "dependencies": {
     "@platform/core": "*",
     "@platform/shared": "*",
-    "nodemailer": "^10.0.10",
+    "nodemailer": "^10.0.13",
     "zod": "^4.6.5"
   },
   "devDependencies": {
     "@platform/templates": "*",
     "@types/nodemailer": "^8.0.2",
     "@types/smtp-server": "^3.5.13",
-    "smtp-server": "^3.19.13"
+    "smtp-server": "^3.19.16"
   }
 }
