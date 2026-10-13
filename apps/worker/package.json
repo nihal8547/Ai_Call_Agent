@@ -13,9 +13,9 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@opentelemetry/auto-instrumentations-node": "^0.80.0",
-    "@opentelemetry/exporter-trace-otlp-http": "^0.222.0",
-    "@opentelemetry/sdk-node": "^0.222.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.81.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.223.0",
+    "@opentelemetry/sdk-node": "^0.223.0",
     "@platform/ai": "*",
     "@platform/db": "*",
     "@platform/rag": "*",

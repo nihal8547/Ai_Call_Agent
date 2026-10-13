@@ -23,8 +23,8 @@
     "simulate": "tsx --env-file-if-exists=../../.env scripts/simulate.ts"
   },
   "dependencies": {
-    "@langchain/core": "^1.1.0",
-    "@langchain/langgraph": "^1.4.0",
+    "@langchain/core": "^1.2.17",
+    "@langchain/langgraph": "^1.4.21",
     "@platform/ai": "*",
     "@platform/core": "*",
     "@platform/shared": "*",
