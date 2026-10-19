@@ -22,7 +22,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.900.0",
-    "zod": "^4.6.5"
+    "@aws-sdk/client-s3": "^3.1152.0",
+    "zod": "^4.6.7"
   }
 }
