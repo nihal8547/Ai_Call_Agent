@@ -31,10 +31,10 @@
     "@types/node": "^22.20.4",
     "eslint": "^9.39.5",
     "globals": "^16.0.0",
-    "prettier": "^3.6.0",
-    "turbo": "^2.11.4",
+    "prettier": "^3.9.10",
+    "turbo": "^2.11.10",
     "typescript": "~5.9.3",
-    "typescript-eslint": "^8.46.0",
+    "typescript-eslint": "^8.72.0",
     "vitest": "^3.2.7"
   },
   "overrides": {
