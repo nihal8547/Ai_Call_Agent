@@ -32,7 +32,7 @@
   },
   "dependencies": {
     "@prisma/client": "~6.19.3",
-    "zod": "^4.6.5",
+    "zod": "^4.6.7",
     "@platform/crypto": "*",
     "@platform/shared": "*"
   },
